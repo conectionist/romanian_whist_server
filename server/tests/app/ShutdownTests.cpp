@@ -122,28 +122,22 @@ private:
     std::string log_;
 };
 
-// From the rest of a "listening on 127.0.0.1:41234 - Server.cpp:80" line.
-std::uint16_t portOf(const std::string& rest)
-{
-    const std::string address = rest.substr(0, rest.find(' '));
-    return static_cast<std::uint16_t>(std::stoul(address.substr(address.rfind(':') + 1)));
-}
-
 } // namespace
 
 TEST_CASE("SIGTERM stops the server after the shutdown delay, serving until then", "[spike][sigterm]")
 {
     TempDir dir;
+    const std::uint16_t port = freePort();
     dir.write("index.html", "<!doctype html><title>test</title>\n");
-    dir.write("config.json", R"({"port": 0, "shutdown_delay_ms": 1000, "document_root": ")"
+    dir.write("config.json", R"({"port": )" + std::to_string(port) + R"(, "shutdown_delay_ms": 1000, "document_root": ")"
                              + dir.path().string() + R"("})");
 
     ServerProcess server((dir.path() / "config.json").string());
-    const std::optional<std::string> address = server.waitForLine("listening on ", 10s);
+    const bool listening = server.waitForLine("listening on ", 10s).has_value();
     INFO(server.log());
-    REQUIRE(address);
+    REQUIRE(listening);
 
-    TestClient client(portOf(*address), "/ws");
+    TestClient client(port, "/ws");
     client.send("before");
     REQUIRE(client.waitForMessages(1, 5s));
 

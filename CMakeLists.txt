@@ -37,7 +37,8 @@ set(BUILD_SHARED_LIBS OFF)
 set(BUILD_TESTING OFF)
 set(BUILD_C-ARES OFF)
 set(USE_SUBMODULE ON)
-set(TRANTOR_USE_TLS openssl)
+# A cache entry, because trantor declares this one as such and would drop a plain variable.
+set(TRANTOR_USE_TLS openssl CACHE STRING "The TLS library trantor uses")
 add_subdirectory(libs/drogon SYSTEM)
 
 # ---------------------------------------------------------------------------

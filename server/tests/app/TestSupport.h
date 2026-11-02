@@ -46,6 +46,10 @@ inline constexpr const char* indexMarker = "whist-test-index";
 
 const TestServer& testServer();
 
+// A port nothing listens on just now. Servers are never given port 0, which would give each of
+// their I/O threads a different port.
+std::uint16_t freePort();
+
 // A WebSocket client on a loop of its own. The constructor connects or fails the test.
 class TestClient
 {

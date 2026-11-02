@@ -25,13 +25,13 @@ TEST_CASE("An empty config keeps every default", "[options]")
 TEST_CASE("A config overrides the keys it names", "[options]")
 {
     const whist::ServerOptions options = parseOptions(R"({
-        "address": "0.0.0.0", "port": 0, "document_root": "/srv/whist",
+        "address": "::1", "port": 9000, "document_root": "/srv/whist",
         "io_threads": 4, "max_message_bytes": 1024, "ping_interval_ms": 250,
         "shutdown_delay_ms": 900000, "log_level": "debug"
     })");
 
-    CHECK(options.address == "0.0.0.0");
-    CHECK(options.port == 0);
+    CHECK(options.address == "::1");
+    CHECK(options.port == 9000);
     CHECK(options.documentRoot == "/srv/whist");
     CHECK(options.ioThreads == 4);
     CHECK(options.maxMessageBytes == 1024);
@@ -46,10 +46,13 @@ TEST_CASE("A config is refused for what is wrong with it", "[options]")
     CHECK_THROWS_WITH(parseOptions(R"({"port": "8080"})"), ContainsSubstring("\"port\""));
     CHECK_THROWS_WITH(parseOptions(R"({"port": 70000})"), ContainsSubstring("\"port\""));
     CHECK_THROWS_WITH(parseOptions(R"({"port": -1})"), ContainsSubstring("\"port\""));
+    CHECK_THROWS_WITH(parseOptions(R"({"port": 0})"), ContainsSubstring("\"port\""));
     CHECK_THROWS_WITH(parseOptions(R"({"io_threads": 0})"), ContainsSubstring("\"io_threads\""));
     CHECK_THROWS_WITH(parseOptions(R"({"ping_interval_ms": 0})"), ContainsSubstring("\"ping_interval_ms\""));
     CHECK_THROWS_WITH(parseOptions(R"({"ping_interval_ms": true})"), ContainsSubstring("\"ping_interval_ms\""));
     CHECK_THROWS_WITH(parseOptions(R"({"address": ""})"), ContainsSubstring("\"address\""));
+    CHECK_THROWS_WITH(parseOptions(R"({"address": "localhost"})"), ContainsSubstring("must be an IP address"));
+    CHECK_THROWS_WITH(parseOptions(R"({"address": "127.0.0.256"})"), ContainsSubstring("must be an IP address"));
     CHECK_THROWS_WITH(parseOptions(R"({"log_level": "loud"})"), ContainsSubstring("\"log_level\""));
     CHECK_THROWS_WITH(parseOptions("[]"), ContainsSubstring("must be a JSON object"));
     CHECK_THROWS_WITH(parseOptions("{"), ContainsSubstring("not valid JSON"));

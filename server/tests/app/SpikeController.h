@@ -11,10 +11,9 @@
 namespace whist::test
 {
 
-// A WebSocket at /spike, for checking what the server's design takes for granted about Drogon.
-// Text it does not recognise is echoed. "burst" starts two threads, neither of them Drogon's, that
-// each send 500 numbered messages at once. "late" starts one that keeps sending for a while,
-// so that it is still sending after the client has gone.
+// A WebSocket for checking what the server takes for granted about Drogon. "burst" has two threads
+// of ours send 500 numbered messages each at once; "late" has one send for long enough to outlast
+// its client. Other text is echoed.
 class SpikeController : public drogon::WebSocketController<SpikeController, false>
 {
 public:

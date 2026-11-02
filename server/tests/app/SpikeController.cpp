@@ -49,7 +49,7 @@ void SpikeController::handleNewMessage(const drogon::WebSocketConnectionPtr& con
             const auto end = std::chrono::steady_clock::now() + 1500ms;
             for(int i = 0 ; std::chrono::steady_clock::now() < end ; i++)
             {
-                const bool closed = closed_.load() > 0;
+                const bool closed = connection->disconnected();
                 connection->send("late:" + std::to_string(i));
                 if(closed)
                     sendsAfterClose_++;

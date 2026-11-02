@@ -6,6 +6,8 @@
 #include <drogon/drogon.h>
 
 #include <atomic>
+#include <csignal>
+#include <filesystem>
 #include <memory>
 #include <set>
 #include <string>
@@ -16,14 +18,24 @@ namespace whist
 namespace
 {
 
-// Drogon calls the SIGTERM and SIGINT handlers inside the signal handler itself, where taking a
-// lock can deadlock. So the handler only sets this, and a timer on the main loop acts on it.
+// Set from the signal handler, so it must stay lock-free. A timer on the main loop acts on it.
 std::atomic<bool> stopRequested{false};
 static_assert(std::atomic<bool>::is_always_lock_free);
 
-void requestStop()
+void onStopSignal(int)
 {
     stopRequested.store(true);
+}
+
+// Drogon's own handler logs inside the signal handler, which can allocate, and would hang if the
+// signal landed on a thread holding the allocator's lock. Ours only sets the flag.
+void installStopHandlers()
+{
+    struct sigaction action{};
+    action.sa_handler = onStopSignal;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGTERM, &action, nullptr);
+    sigaction(SIGINT, &action, nullptr);
 }
 
 trantor::Logger::LogLevel toLogLevel(const std::string& name)
@@ -54,37 +66,65 @@ void watchForStop(std::chrono::milliseconds delay)
     });
 }
 
+void announce()
+{
+    LOG_INFO << "whist_server " << std::string(serverVersion()) << ", engine " << std::string(engineVersion());
+
+    // Drogon opens one socket per I/O thread on each address, so each is listed once.
+    std::set<std::string> addresses;
+    for(const trantor::InetAddress& address : drogon::app().getListeners())
+        addresses.insert(address.toIpPort());
+    for(const std::string& address : addresses)
+        LOG_INFO << "listening on " << address;
+}
+
+// Each listener's listen() is queued on its own I/O loop when the main loop starts the listeners,
+// just after the beginning advices. Queued after it on every I/O loop, `done` runs once all listen.
+void whenListening(std::function<void()> done)
+{
+    drogon::app().getLoop()->queueInLoop([done = std::move(done)]
+    {
+        const std::size_t loops = drogon::app().getThreadNum();
+        auto waiting = std::make_shared<std::atomic<std::size_t>>(loops);
+        for(std::size_t i = 0 ; i < loops ; i++)
+            drogon::app().getIOLoop(i)->queueInLoop([waiting, done]
+            {
+                if(--*waiting == 0)
+                    drogon::app().getLoop()->queueInLoop(done);
+            });
+    });
+}
+
 } // namespace
 
-void configureApp(const ServerOptions& options)
+void configureApp(const ServerOptions& options, std::function<void()> onListening)
 {
+    // Drogon makes this folder, with 256 more inside it, wherever it is told to. The server takes
+    // no uploads, so the folder goes where it is out of the way.
+    const std::filesystem::path uploads = std::filesystem::temp_directory_path() / "whist_server-uploads";
+
     drogon::app()
         .setLogLevel(toLogLevel(options.logLevel))
         .addListener(options.address, options.port)
         .setDocumentRoot(options.documentRoot)
         .setHomePage("index.html")
+        .setUploadPath(uploads.string())
         .setThreadNum(options.ioThreads)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
         .registerController(std::make_shared<EchoController>(options.pingInterval))
-        .setTermSignalHandler(requestStop)
-        .setIntSignalHandler(requestStop)
-        .registerBeginningAdvice([shutdownDelay = options.shutdownDelay]
+        .disableSigtermHandling()
+        .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, onListening = std::move(onListening)]
         {
-            // Beginning advices run just before the listeners start listening. Queued, this runs
-            // just after, so whoever reads "listening on" can connect at once.
-            drogon::app().getLoop()->queueInLoop([shutdownDelay]
+            watchForStop(shutdownDelay);
+            whenListening([onListening]
             {
-                LOG_INFO << "whist_server " << std::string(serverVersion()) << ", engine " << std::string(engineVersion());
-                // Drogon opens one socket per I/O thread on each address, so each is listed once.
-                std::set<std::string> addresses;
-                for(const trantor::InetAddress& address : drogon::app().getListeners())
-                    addresses.insert(address.toIpPort());
-                for(const std::string& address : addresses)
-                    LOG_INFO << "listening on " << address;
-
-                watchForStop(shutdownDelay);
+                announce();
+                if(onListening)
+                    onListening();
             });
         });
+
+    installStopHandlers();
 }
 
 } // namespace whist

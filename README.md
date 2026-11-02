@@ -52,9 +52,9 @@ the server on port 8080.
 ## Tests
 
 ```
-nice -n 19 ctest --preset default -j 1        # the server
-cd web && npx vitest run                      # the page's unit tests
-cd web && npm run e2e                         # the page against the server, in Chromium
+nice -n 19 ctest --preset default -j 1                     # the server
+cd web && nice -n 19 npx vitest run --maxWorkers=2         # the page's unit tests
+cd web && nice -n 19 npm run e2e -- --workers=1            # the page against the server, in Chromium
 ```
 
 The end-to-end tests need Playwright's Chromium once: `npx playwright install chromium`.

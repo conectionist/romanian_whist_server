@@ -2,6 +2,8 @@
 
 #include <json/json.h>
 
+#include <arpa/inet.h>
+
 #include <fstream>
 #include <functional>
 #include <limits>
@@ -39,6 +41,13 @@ std::uint64_t readCount(const Json::Value& value, const std::string& key, std::u
     return value.asUInt64();
 }
 
+// Drogon aborts on a host name, so only an address it can parse gets through.
+bool isIpAddress(const std::string& text)
+{
+    in6_addr parsed{};
+    return ::inet_pton(AF_INET, text.c_str(), &parsed) == 1 || ::inet_pton(AF_INET6, text.c_str(), &parsed) == 1;
+}
+
 } // namespace
 
 ServerOptions parseOptions(std::string_view json)
@@ -63,9 +72,13 @@ ServerOptions parseOptions(std::string_view json)
         const Json::Value& value = root[key];
 
         if(key == "address")
+        {
             options.address = readString(value, key);
+            if(!isIpAddress(options.address))
+                refuse(key, "must be an IP address, such as 127.0.0.1 or ::1");
+        }
         else if(key == "port")
-            options.port = static_cast<std::uint16_t>(readCount(value, key, 0, std::numeric_limits<std::uint16_t>::max()));
+            options.port = static_cast<std::uint16_t>(readCount(value, key, 1, std::numeric_limits<std::uint16_t>::max()));
         else if(key == "document_root")
             options.documentRoot = readString(value, key);
         else if(key == "io_threads")

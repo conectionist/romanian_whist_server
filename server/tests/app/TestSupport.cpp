@@ -14,6 +14,9 @@
 #include <memory>
 #include <random>
 #include <thread>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 namespace whist::test
@@ -48,6 +51,7 @@ struct RunningServer
     TempDir documentRoot;
     TestServer info;
     std::thread thread;
+    bool started = false;
 };
 
 std::unique_ptr<RunningServer>& runningServer()
@@ -67,6 +71,14 @@ public:
         if(!server)
             return;
 
+        if(!server->started)
+        {
+            // It never came up, so quit() would not reach it and a join would hang.
+            server->thread.detach();
+            return;
+        }
+
+        // The senders go first: a send after quit() would reach an I/O loop that no longer exists.
         spike().joinSenders();
         drogon::app().quit();
         server->thread.join();
@@ -94,39 +106,51 @@ SpikeController& spike()
     return *spikeController();
 }
 
+std::uint16_t freePort()
+{
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socklen_t length = sizeof address;
+    const bool bound = ::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0
+                    && ::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) == 0;
+    ::close(fd);
+
+    REQUIRE(bound);
+    return ntohs(address.sin_port);
+}
+
 const TestServer& testServer()
 {
     std::unique_ptr<RunningServer>& server = runningServer();
     if(server)
+    {
+        REQUIRE(server->started);
         return server->info;
+    }
 
     server = std::make_unique<RunningServer>();
     server->documentRoot.write("index.html",
         std::string("<!doctype html><title>test</title><p>") + indexMarker + "</p>\n");
 
     ServerOptions options;
-    options.port = 0;
+    options.port = freePort();
     options.documentRoot = server->documentRoot.path().string();
     options.logLevel = "warn";
-    configureApp(options);
 
+    auto listening = std::make_shared<std::promise<void>>();
+    std::future<void> ready = listening->get_future();
+    configureApp(options, [listening] { listening->set_value(); });
     drogon::app().registerController(spikeController());
-
-    std::promise<std::uint16_t> listening;
-    drogon::app().registerBeginningAdvice([&listening]
-    {
-        // Queued after configureApp()'s announcement, so the listeners are listening by now.
-        drogon::app().getLoop()->queueInLoop([&listening]
-        {
-            listening.set_value(drogon::app().getListeners().front().toPort());
-        });
-    });
 
     server->thread = std::thread([] { drogon::app().run(); });
 
-    std::future<std::uint16_t> port = listening.get_future();
-    REQUIRE(port.wait_for(10s) == std::future_status::ready);
-    server->info = {port.get(), server->documentRoot.path()};
+    REQUIRE(ready.wait_for(10s) == std::future_status::ready);
+    server->info = {options.port, server->documentRoot.path()};
+    server->started = true;
     return server->info;
 }
 
