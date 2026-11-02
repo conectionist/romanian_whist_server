@@ -8,7 +8,7 @@
 namespace whist
 {
 
-// Sends every text frame straight back. The server's only WebSocket until the protocol arrives.
+// Sends every text frame straight back.
 class EchoController : public drogon::WebSocketController<EchoController, false>
 {
 public:

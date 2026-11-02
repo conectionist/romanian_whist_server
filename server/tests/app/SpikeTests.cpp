@@ -89,6 +89,6 @@ TEST_CASE("A message over the size cap ends the connection", "[spike][size]")
     CHECK(eventually([] { return spike().closedConnections(); }, 1, 5s));
     CHECK(client.messages().size() == 1);
 
-    // Drogon ends the TCP connection without a Close frame, so a browser sees close code 1006.
+    // Drogon ends the TCP connection without a Close frame, which a browser reports as code 1006.
     CHECK_FALSE(client.sawCloseFrame());
 }
