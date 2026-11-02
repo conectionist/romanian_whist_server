@@ -1223,6 +1223,7 @@ M, L.
 - **Before the merge:** the phase branch's CI, a code review and the owner's review all pass, and
   the phase is marked complete in this plan, with its outcome.
 - **Then** the phase branch is merged into its parent.
+- **When every phase is done,** the parent branch is merged into master.
 
 **Code reviews**, as the owner set them out on 2026-11-02:
 
@@ -1254,7 +1255,7 @@ the server.
   three platforms.
 
 **Outcome** (engine branch `web/phase-0-engine-groundwork`, commit `fc4b8ec`, merged into the
-engine's parent branch; the `v5.1.0` tag waits for master):
+engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`):
 
 - **E1, the snapshot.** It lives in `romanian_whist/Snapshot.h`: `GameSnapshot`, `SeatSnapshot` and
   `snapshotFrom(engine, viewer)`, with §3.1's fields. Where the build departs from §3.1:

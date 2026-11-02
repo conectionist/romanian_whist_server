@@ -1,0 +1,6 @@
+[submodule "libs/RomanianWhistEngine"]
+	path = libs/RomanianWhistEngine
+	url = https://github.com/conectionist/romanian_whist_engine.git
+[submodule "libs/drogon"]
+	path = libs/drogon
+	url = https://github.com/drogonframework/drogon.git
