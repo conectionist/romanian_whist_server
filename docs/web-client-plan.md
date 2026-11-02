@@ -1,6 +1,7 @@
 # Romanian Whist on the web: implementation plan
 
-> **Status: proposal, 2026-10-27. Nothing here is built yet.**
+> **Status: phase 0 is complete (2026-11-02), and engine 5.1.0 carries it. Phases 1 to 11 are not
+> built yet.**
 >
 > The plan spans two repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Every later
@@ -1215,14 +1216,72 @@ Each phase is a branch and a pull request. Its outcome is written under it when 
 built, what the owner decided, and where the build departed from this plan. Sizes are relative: S,
 M, L.
 
+**Branches are stacked**, as the owner set out on 2026-11-02:
+
+- **The parent branch** comes off master, in each repository a phase changes.
+- **Each phase gets its own branch** off that parent, `web/phase-N-<name>`.
+- **Before the merge:** the phase branch's CI, a code review and the owner's review all pass, and
+  the phase is marked complete in this plan, with its outcome.
+- **Then** the phase branch is merged into its parent.
+
 After phase 3, the page (phases 6–8) can be built against fixtures while phases 4 and 5 go on in
 the server.
 
-### Phase 0: engine groundwork (the engine repository) — M
+### Phase 0: engine groundwork (the engine repository) — M ✅ COMPLETE
 
 - **Work:** E1 and E2 (§3.1, §3.2); E3 if phase 10 is wanted. README and CHANGELOG. Release 5.1.0.
 - **Done when:** the pinned snapshots, the leak property and the stand-in tests pass on CI on all
   three platforms.
+
+**Outcome** (engine branch `web/phase-0-engine-groundwork`, commit `c5c06d6`, merged into the
+engine's parent branch; the `v5.1.0` tag waits for master):
+
+- **E1, the snapshot.** It lives in `romanian_whist/Snapshot.h`: `GameSnapshot`, `SeatSnapshot` and
+  `snapshotFrom(engine, viewer)`, with §3.1's fields. Where the build departs from §3.1:
+  - **`winning` is one seat**, `std::optional<Seat>`, not a flag on every card. The table reuses
+    the engine's own `PlayedCard`. The server can still write a flag per card in §6.5's JSON.
+  - **Seats are `std::optional<Seat>`**, not plain indices. `roundLeader` and `ledBy` are engaged
+    in every snapshot.
+  - **The snapshot carries its `viewer`**, which is where §6.5's `you` comes from.
+  - **It refuses bad calls:** `std::logic_error` before `start()`, and `std::out_of_range` for a
+    viewer who is not at the table.
+  - **The header guard is `ROMANIAN_WHIST_SNAPSHOT_H`**, because the desktop's own
+    `src/core/Snapshot.h` already uses `SNAPSHOT_H`. Should the desktop client adopt the engine's
+    snapshot, its global `GameSnapshot` would clash with `romanian_whist::GameSnapshot` in the files
+    that say `using namespace romanian_whist;`.
+- **E1's tests,** in `tests/SnapshotTests.cpp`:
+  - **Eight pinned frames**, as text. Besides §3.1's points, they pin a Forehead deal and
+    `onGameOver`.
+  - **The leak property** covers 80 games: 4 seeds at each table size, both structures, and both
+    Forehead settings. It checks every viewer's snapshot at every callback, against `canSeeHand()`
+    and against a truth table written in the test. 200 games took 11 s in the Debug build, so the
+    count was cut.
+  - **`ledBy` is followed across every frame of a trick.**
+  - **Mutation checks** confirmed that the leak property catches a missing `canSeeHand()`, and the
+    drift test catches `ledBy` read from `getTrickLeaderSeat()`.
+- **E2, the stand-ins.** A README section, "A strategy for a seat it does not play", and the
+  promise on `ReckonerStrategy::setSeat()`. `tests/StandbyTests.cpp` tests the Cyborg and all four
+  Reckoner presets at seven moments: a bid, a round's first lead, a lead mid-round, a follow, a
+  Forehead bid, a Hidden bid, and any decision. Where the build departs from §3.2:
+  - **The memory check.** The Reckoner has no fallback counter: it quietly plays its first legal
+    card when its memory disagrees. So the test checks the stand-in's memory against the engine at
+    every one of the seat's decisions, before and after the takeover, for the Cyborg too.
+  - **Added: an equivalence test.** A stand-in that takes over at the first decision plays exactly
+    the game of the same strategy seated by its factory. This is checked for the Cyborg and Reckoner
+    Alpha at every table size, and for Reckoner Beta at 3.
+  - **Gamma and Delta play at 2 seats**, to keep CI's Debug cell quick.
+  - **Found:** the Reckoner treats any seat whose name contains "LowRisk" or "Ducking" as
+    deterministic, `setSeat()` or not. §7.3 already keeps humans off those names, and the README
+    now says so.
+- **Cost.** The new tests take under 2 s in Release. In Debug they take about 15 s, and the suite
+  went from 44 s to 59 s.
+- **Reviews.**
+  - CI ran by hand on the branch (run 164) and is green on Linux, Linux Debug, Windows and macOS.
+  - A code review found nothing that breaks, and 10 smaller findings. 7 were fixed. 3 were left:
+    - `betsPlaced` and `betSum` stay, because §6.5 sends them;
+    - two small duplications in test helpers.
+- **Left out, by the owner's choice:** E3 (the Emscripten CI job) and the Reckoner refusing a name
+  that matches no seat.
 
 ### Phase 1: skeleton — S
 
