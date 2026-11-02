@@ -1321,6 +1321,8 @@ engine's parent branch; the `v5.1.0` tag waits for master):
     were fixed, as the owner chose.
   - **CI** ran by hand on the branch (run 166, at `fc4b8ec`) and is green on Linux, Linux Debug,
     Windows and macOS.
+  - **The owner approved** the phase on 2026-11-02, and chose to skip a third cold review of the
+    last two fix commits.
 - **Left out, by the owner's choice:** E3 (the Emscripten CI job) and the Reckoner refusing a name
   that matches no seat.
 
