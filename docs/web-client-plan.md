@@ -1,6 +1,7 @@
 # Romanian Whist on the web: implementation plan
 
-> **Status: proposal, 2026-10-27. Nothing here is built yet.**
+> **Status: phase 0 is complete (2026-11-02), and engine 5.1.0 carries it. Phases 1 to 11 are not
+> built yet.**
 >
 > The plan spans two repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Every later
@@ -1215,14 +1216,115 @@ Each phase is a branch and a pull request. Its outcome is written under it when 
 built, what the owner decided, and where the build departed from this plan. Sizes are relative: S,
 M, L.
 
+**Branches are stacked**, as the owner set out on 2026-11-02:
+
+- **The parent branch** comes off master, in each repository a phase changes.
+- **Each phase gets its own branch** off that parent, `web/phase-N-<name>`.
+- **Before the merge:** the phase branch's CI, a code review and the owner's review all pass, and
+  the phase is marked complete in this plan, with its outcome.
+- **Then** the phase branch is merged into its parent.
+
+**Code reviews**, as the owner set them out on 2026-11-02:
+
+1. **The reviewer starts cold.** It is a fresh agent with none of the implementer's context (never
+   a fork of the implementer), runs at extra-high effort, and is read-only. Its prompt holds only:
+   - the repository, the phase branch and its parent;
+   - the phase's requirements, as they stand on the parent branch;
+   - the repository's `CLAUDE.md`;
+   - the rating scales.
+2. **Each finding comes back rated 1 to 5:**
+   - **severity:** from cosmetic (1), through an edge case (3), to a crash, a hang, a leaked card
+     or lost data (5);
+   - **fix complexity:** from a line or two (1), through a new test (3), to a redesign (5).
+3. **The implementer reports them** in a table, checks each one against the code, and then gives
+   their own view: what to fix, in what order, and what to skip.
+4. **The owner decides.** Nothing is fixed before that.
+5. **After the fixes**, both presets are built and tested and CI runs again. The owner decides
+   whether the fix commit gets a cold review of its own.
+6. **A phase's outcome is written after its review**, and the checkouts sit on their parent
+   branches while a reviewer reads, so a reviewer never sees the implementer's account.
+
 After phase 3, the page (phases 6–8) can be built against fixtures while phases 4 and 5 go on in
 the server.
 
-### Phase 0: engine groundwork (the engine repository) — M
+### Phase 0: engine groundwork (the engine repository) — M ✅ COMPLETE
 
 - **Work:** E1 and E2 (§3.1, §3.2); E3 if phase 10 is wanted. README and CHANGELOG. Release 5.1.0.
 - **Done when:** the pinned snapshots, the leak property and the stand-in tests pass on CI on all
   three platforms.
+
+**Outcome** (engine branch `web/phase-0-engine-groundwork`, commit `fc4b8ec`, merged into the
+engine's parent branch; the `v5.1.0` tag waits for master):
+
+- **E1, the snapshot.** It lives in `romanian_whist/Snapshot.h`: `GameSnapshot`, `SeatSnapshot` and
+  `snapshotFrom(engine, viewer)`, with §3.1's fields. Where the build departs from §3.1:
+  - **`winning` is one seat**, `std::optional<Seat>`, not a flag on every card. The table reuses
+    the engine's own `PlayedCard`. The server can still write a flag per card in §6.5's JSON.
+  - **Seats are `std::optional<Seat>`**, not plain indices. `roundLeader` and `ledBy` are engaged
+    in every snapshot.
+  - **The snapshot carries its `viewer`**, which is where §6.5's `you` comes from.
+  - **It refuses bad calls:** `std::logic_error` before `start()`, and `std::out_of_range` for a
+    viewer who is not at the table.
+  - **The header guard is `ROMANIAN_WHIST_SNAPSHOT_H`**, because the desktop's own
+    `src/core/Snapshot.h` already uses `SNAPSHOT_H`. Should the desktop client adopt the engine's
+    snapshot, its global `GameSnapshot` would clash with `romanian_whist::GameSnapshot` in the files
+    that say `using namespace romanian_whist;`.
+- **E1's tests,** in `tests/SnapshotTests.cpp`:
+  - **Eight pinned frames**, as text. Besides §3.1's points, they pin a Forehead deal and
+    `onGameOver`.
+  - **The leak property** covers 80 games: 4 seeds at each table size, both structures, and both
+    Forehead settings. It checks every viewer's snapshot at every callback, against `canSeeHand()`
+    and against a truth table written in the test. 200 games took 11 s in the Debug build, so the
+    count was cut.
+  - **A second leak property stops 50 games**, some at a random callback and some during a
+    Forehead round's bidding, so `onGameStopped()` is checked too. Closing a table does this.
+  - **`ledBy` is followed across every frame of a trick.**
+  - **Mutation checks** confirmed that the leak property catches a missing `canSeeHand()`, and the
+    drift test catches `ledBy` read from `getTrickLeaderSeat()`.
+- **E2, the stand-ins.** A README section, "A strategy for a seat it does not play", and the
+  promise on `ReckonerStrategy::setSeat()`. `tests/StandbyTests.cpp` tests the Cyborg and all four
+  Reckoner presets at seven moments: a bid, a round's first lead, a lead mid-round, a follow, a
+  Forehead bid, a Hidden bid, and any decision. Where the build departs from §3.2:
+  - **The memory check.** The Reckoner has no fallback counter: it quietly plays its first legal
+    card when its memory disagrees. So the test checks the stand-in's memory against the engine at
+    every one of the seat's decisions, before and after the takeover, for the Cyborg too.
+  - **Added: an equivalence test.** A stand-in that takes over at the first decision plays exactly
+    the game of the same strategy seated by its factory. This is checked for the Cyborg and Reckoner
+    Alpha at every table size, and for Reckoner Beta at 3.
+  - **Gamma and Delta play at 2 seats**, to keep CI's Debug cell quick. Games alternate 1-8-1 and
+    8-1-8, and "any decision" can fall late in a game.
+  - **Added: a shared seat.** The stand-in makes one decision in three, and the seat's own player
+    the rest, as when moves are made for an idle player (§5.2, timeline 4). After each of the
+    player's leads, the test checks the Cyborg's cashing run exactly.
+  - **Fixed in the Cyborg.** It remembered the suit it was cashing, and only its own leads changed
+    that. Sharing a seat, it never saw its player's leads, so it kept cashing a suit the seat had
+    moved on from. Now a lead it did not choose ends the run when it is in another suit, and carries
+    the run on when it is in the same suit. A Cyborg playing its own seat plays exactly as before.
+  - **Found:** the Reckoner treats any seat whose name contains "LowRisk" or "Ducking" as
+    deterministic, `setSeat()` or not. §7.3 already keeps humans off those names, and the README
+    now says so.
+- **Cost.** The new tests take about 2.6 s in Release and 16 s in Debug, where the whole suite took
+  44 s before.
+- **Reviews.**
+  - **A first code review**, before the procedure above existed, ran at high effort from an agent
+    that could see my context. It found 10 small problems; 7 were fixed.
+  - **The first cold review**, of the whole branch, found 7 problems, none above severity 2. The
+    owner chose my recommendation:
+    - fix the stale cashing suit, test stopped games, and correct the wording;
+    - add late takeovers and both structures to the stand-in tests;
+    - leave the name clash with the desktop's `GameSnapshot` for the desktop to solve, if it ever
+      adopts the engine's.
+  - **That review's tool read this plan's working copy, outcome note and all.** Hence the
+    procedure's last point.
+  - **The second cold review**, of the fix commit, found 8 problems, none above severity 2. The
+    worst was that the fix ended the run even when the player carried on in the same suit. All 8
+    were fixed, as the owner chose.
+  - **CI** ran by hand on the branch (run 166, at `fc4b8ec`) and is green on Linux, Linux Debug,
+    Windows and macOS.
+  - **The owner approved** the phase on 2026-11-02, and chose to skip a third cold review of the
+    last two fix commits.
+- **Left out, by the owner's choice:** E3 (the Emscripten CI job) and the Reckoner refusing a name
+  that matches no seat.
 
 ### Phase 1: skeleton — S
 
