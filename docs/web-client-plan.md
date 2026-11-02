@@ -1224,6 +1224,26 @@ M, L.
   the phase is marked complete in this plan, with its outcome.
 - **Then** the phase branch is merged into its parent.
 
+**Code reviews**, as the owner set them out on 2026-11-02:
+
+1. **The reviewer starts cold.** It is a fresh agent with none of the implementer's context (never
+   a fork of the implementer), runs at extra-high effort, and is read-only. Its prompt holds only:
+   - the repository, the phase branch and its parent;
+   - the phase's requirements, as they stand on the parent branch;
+   - the repository's `CLAUDE.md`;
+   - the rating scales.
+2. **Each finding comes back rated 1 to 5:**
+   - **severity:** from cosmetic (1), through an edge case (3), to a crash, a hang, a leaked card
+     or lost data (5);
+   - **fix complexity:** from a line or two (1), through a new test (3), to a redesign (5).
+3. **The implementer reports them** in a table, checks each one against the code, and then gives
+   their own view: what to fix, in what order, and what to skip.
+4. **The owner decides.** Nothing is fixed before that.
+5. **After the fixes**, both presets are built and tested and CI runs again. The owner decides
+   whether the fix commit gets a cold review of its own.
+6. **A phase's outcome is written after its review**, and the checkouts sit on their parent
+   branches while a reviewer reads, so a reviewer never sees the implementer's account.
+
 After phase 3, the page (phases 6–8) can be built against fixtures while phases 4 and 5 go on in
 the server.
 
@@ -1233,7 +1253,7 @@ the server.
 - **Done when:** the pinned snapshots, the leak property and the stand-in tests pass on CI on all
   three platforms.
 
-**Outcome** (engine branch `web/phase-0-engine-groundwork`, commit `c5c06d6`, merged into the
+**Outcome** (engine branch `web/phase-0-engine-groundwork`, commit `fc4b8ec`, merged into the
 engine's parent branch; the `v5.1.0` tag waits for master):
 
 - **E1, the snapshot.** It lives in `romanian_whist/Snapshot.h`: `GameSnapshot`, `SeatSnapshot` and
@@ -1256,6 +1276,8 @@ engine's parent branch; the `v5.1.0` tag waits for master):
     Forehead settings. It checks every viewer's snapshot at every callback, against `canSeeHand()`
     and against a truth table written in the test. 200 games took 11 s in the Debug build, so the
     count was cut.
+  - **A second leak property stops 50 games**, some at a random callback and some during a
+    Forehead round's bidding, so `onGameStopped()` is checked too. Closing a table does this.
   - **`ledBy` is followed across every frame of a trick.**
   - **Mutation checks** confirmed that the leak property catches a missing `canSeeHand()`, and the
     drift test catches `ledBy` read from `getTrickLeaderSeat()`.
@@ -1269,17 +1291,36 @@ engine's parent branch; the `v5.1.0` tag waits for master):
   - **Added: an equivalence test.** A stand-in that takes over at the first decision plays exactly
     the game of the same strategy seated by its factory. This is checked for the Cyborg and Reckoner
     Alpha at every table size, and for Reckoner Beta at 3.
-  - **Gamma and Delta play at 2 seats**, to keep CI's Debug cell quick.
+  - **Gamma and Delta play at 2 seats**, to keep CI's Debug cell quick. Games alternate 1-8-1 and
+    8-1-8, and "any decision" can fall late in a game.
+  - **Added: a shared seat.** The stand-in makes one decision in three, and the seat's own player
+    the rest, as when moves are made for an idle player (§5.2, timeline 4). After each of the
+    player's leads, the test checks the Cyborg's cashing run exactly.
+  - **Fixed in the Cyborg.** It remembered the suit it was cashing, and only its own leads changed
+    that. Sharing a seat, it never saw its player's leads, so it kept cashing a suit the seat had
+    moved on from. Now a lead it did not choose ends the run when it is in another suit, and carries
+    the run on when it is in the same suit. A Cyborg playing its own seat plays exactly as before.
   - **Found:** the Reckoner treats any seat whose name contains "LowRisk" or "Ducking" as
     deterministic, `setSeat()` or not. §7.3 already keeps humans off those names, and the README
     now says so.
-- **Cost.** The new tests take under 2 s in Release. In Debug they take about 15 s, and the suite
-  went from 44 s to 59 s.
+- **Cost.** The new tests take about 2.6 s in Release and 16 s in Debug, where the whole suite took
+  44 s before.
 - **Reviews.**
-  - CI ran by hand on the branch (run 164) and is green on Linux, Linux Debug, Windows and macOS.
-  - A code review found nothing that breaks, and 10 smaller findings. 7 were fixed. 3 were left:
-    - `betsPlaced` and `betSum` stay, because §6.5 sends them;
-    - two small duplications in test helpers.
+  - **A first code review**, before the procedure above existed, ran at high effort from an agent
+    that could see my context. It found 10 small problems; 7 were fixed.
+  - **The first cold review**, of the whole branch, found 7 problems, none above severity 2. The
+    owner chose my recommendation:
+    - fix the stale cashing suit, test stopped games, and correct the wording;
+    - add late takeovers and both structures to the stand-in tests;
+    - leave the name clash with the desktop's `GameSnapshot` for the desktop to solve, if it ever
+      adopts the engine's.
+  - **That review's tool read this plan's working copy, outcome note and all.** Hence the
+    procedure's last point.
+  - **The second cold review**, of the fix commit, found 8 problems, none above severity 2. The
+    worst was that the fix ended the run even when the player carried on in the same suit. All 8
+    were fixed, as the owner chose.
+  - **CI** ran by hand on the branch (run 166, at `fc4b8ec`) and is green on Linux, Linux Debug,
+    Windows and macOS.
 - **Left out, by the owner's choice:** E3 (the Emscripten CI job) and the Reckoner refusing a name
   that matches no seat.
 
