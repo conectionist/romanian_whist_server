@@ -1,0 +1,110 @@
+#ifndef WHIST_CORE_GAMERUN_H
+#define WHIST_CORE_GAMERUN_H
+
+#include "core/Outbox.h"
+#include "core/Protocol.h"
+#include "core/Publisher.h"
+#include "core/SeatDriver.h"
+#include "core/Settings.h"
+
+#include <romanian_whist/GameEngine.h>
+
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <thread>
+#include <vector>
+
+namespace whist
+{
+
+struct GameRunSetup
+{
+    unsigned int game = 1;
+
+    // Checked by checkSettings(): every seat filled.
+    Settings settings;
+
+    // Per seat: the member who plays it. Every human seat has one; computer seats have none.
+    std::vector<std::optional<MemberId>> seatMembers;
+
+    // People who see the game without a seat.
+    std::vector<MemberId> watchers;
+
+    std::optional<std::uint32_t> shuffleSeed;
+
+    std::chrono::milliseconds instantFloor{30};
+
+    // Game threads run below the I/O threads, so a table of Reckoners never slows the server.
+    int threadNiceness = 10;
+
+    std::shared_ptr<std::atomic<std::uint64_t>> promptIds;
+
+    // Registered before everything else, so they see each event first. For tests and tools.
+    std::vector<romanian_whist::IGameObserver*> firstObservers;
+};
+
+enum class RunOutcome
+{
+    Running,
+    Finished,
+    Stopped,
+    Abandoned,
+    Failed
+};
+
+// One game: the engine, its seats, its publisher and the thread it runs on. Built and started on
+// an I/O thread, played on its own thread, and destroyed on the joiner's.
+class GameRun
+{
+public:
+    GameRun(GameRunSetup setup, Outbox& outbox);
+
+    // Closes the game and joins its thread. Never destroy one on an I/O thread: hand it to the
+    // Joiner.
+    ~GameRun();
+
+    GameRun(const GameRun&) = delete;
+    GameRun& operator=(const GameRun&) = delete;
+
+    // Starts the thread. Called once, after everything that can fail.
+    void start();
+
+    // Any thread, any number of times. Ends the game at its next boundary, or at once for a seat
+    // waiting on its human. Does not wait for the thread.
+    void close();
+
+    bool finished() const;
+    RunOutcome outcome() const;
+    unsigned int game() const;
+
+    // Any thread.
+    SeatDriver::Submitted submit(unsigned int seat, const Answer& answer);
+
+    // Any thread. The member's sync, with their seat's open prompt when they have a seat.
+    void sendSync(MemberId member, std::optional<unsigned int> seat, TableView table);
+
+    const Publisher& publisher() const;
+
+private:
+    void play(romanian_whist::GameSetup setup);
+
+    const unsigned int game_;
+    const int threadNiceness_;
+    const std::vector<romanian_whist::IGameObserver*> firstObservers_;
+    std::optional<romanian_whist::GameSetup> engineSetup_;
+
+    // The order is the design: destruction runs in reverse, so the thread is joined first, and the
+    // engine goes before the observers it points at.
+    std::vector<std::unique_ptr<SeatDriver>> drivers_;
+    Publisher publisher_;
+    romanian_whist::GameEngine engine_;
+    std::atomic<RunOutcome> outcome_{RunOutcome::Running};
+    std::jthread thread_;
+};
+
+} // namespace whist
+
+#endif
