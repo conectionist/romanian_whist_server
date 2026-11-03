@@ -1267,6 +1267,77 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - the JSON leak scan passes;
   - the core tests pass, and one `tsan` run does too.
 
+**Outcome** (branch `web/phase-2-server-core`, PR #5, commit `dd12b44`):
+
+- **The owner's choices before it was built** (2026-11-03):
+  - the seat driver's deadline path is built now, rather than in phase 5;
+  - fixtures cover every message type now, two of them from fixed values until a game sends them;
+  - every prompt ends with exactly one `promptClosed`.
+- **Built,** in `server/core`, which still links no Drogon:
+  - **The codec.** Strict decoding of every client message: unknown types and fields refused,
+    whole numbers only, UTF-8 checked, nesting capped at 16. An encoder for every server message.
+    Cards are written `"TH"`; the engine's `Card::toString()` writes the ten as `"10"`.
+  - **Settings,** with every check the engine's `start()` would otherwise fail on the game thread,
+    and the nine computer players. A Cyborg or Reckoner is given its seat with `setSeat()`.
+  - **`Outbox`,** over a `Connection` seam that only queues.
+  - **`SeatDriver`,** a port of the desktop's `QtMoveProvider`.
+  - **`Publisher`,** with the desktop's pacing, an Instant floor of 30 ms, and the cache a sync is
+    built from.
+  - **`GameRun`, `Joiner`, `Table` and `Registry`:** solo tables, tokens and codes, a new game at
+    the same table, closing, and shutdown.
+  - **`protocol/PROTOCOL.md`**, and 24 fixtures in `protocol/fixtures/`. The core's tests check
+    them on every run, and `WHIST_WRITE_FIXTURES=1` rewrites them.
+  - **One wait helper,** `core/Wait.h`, through which both game-thread waits go: §4.1's seam for
+    phase 10.
+- **Tests:** 38 new core tests, 39 in all, and a CTest that no server code calls `getHand()`.
+  - **The leak scan.** An observer registered before every other one records which cards each
+    member may see, round by round. Every card in every message is checked against it, syncs,
+    history and last trick included, over 20 games at 2 to 6 seats with a watcher.
+  - **Mutation checks.** A blind prompt carrying its hand, and a viewer sent another seat's
+    snapshot, each fail the scan.
+  - **Cost.** The core tests take about 30 s in Debug, 24 s of it the leak scan, and about 25 s in
+    Release.
+- **Where the build departs from the plan, or found what it did not say:**
+  - **The `Outbox` keeps the member-to-connection map** (§4.4 put the connection on the `Member`).
+    The game thread deals in member ids and never touches a `Member`.
+  - **Sending under a lock.** The publisher sends its game messages under its cache lock, and the
+    table sends under its own. That keeps a sync in order with the live messages. It is safe
+    because `Outbox::send` only queues and its locks are leaves, but it departs from §4.6 rule 4's
+    "no lock is held while sending".
+  - **Who checks an answer.** The I/O thread only gates it (an open prompt, the right id, not
+    answered yet). The game thread checks it and re-prompts. So every message about a prompt comes
+    from the game thread, in order.
+  - **Prompt ids are counted per table** and never reused, so an answer from an earlier game cannot
+    match a new prompt.
+  - **The deadline is checked even when an answer wakes the wait.** Otherwise a stream of invalid
+    answers would hold the turn timer off for ever.
+  - **The `settings` shape,** which §6 never gave, is defined in `PROTOCOL.md`.
+  - **A round result** has the desktop's fields with a 0-based `index`, without the names or the
+    `held` flag.
+  - **No callback into the table.** A game never calls back into its table; the table reads
+    whether its game is over. A game that is over stays in the table until the next game or the
+    close.
+  - **A solo human seat has no computer player behind it,** because solo never replaces (§5.4).
+  - **Added: `RunOutcome::Failed`.** A game that fails ends with `gameStopped`, built from the cache.
+- **Left for later phases:**
+  - **Phase 3:** what `waitAfterRound`, `pause`, `resume` and `continue` do. They are decoded now.
+  - **Phase 4:** the name cleaning of §7.3: trimming, NFC, and refusing invisible characters. Names
+    are only checked now.
+  - **Phase 5:** the reaper.
+- **Reviews.**
+  - **The cold review,** of the whole branch, found 9 problems, none above severity 2: no race,
+    deadlock or leaked card. The worst was a sync that could carry a round's result before its
+    snapshot reached that round. The owner chose my recommendation:
+    - fix 1 to 4, 6, 8 and 9;
+    - leave 5 (name cleaning) to phase 4, and 7 (the wait after each round, the reaper) to
+      phases 3 and 5.
+  - **The owner chose to skip a second cold review** of the fixes.
+- **Builds and CI.**
+  - **`default` and `release`** pass 51 of 51 at `dd12b44`.
+  - **`tsan`,** one run with the owner's leave, was clean at `abbead5`. The fixes after it add no
+    lock and change no lock order.
+  - **CI** is green on run 1, at `abbead5`.
+
 ### Phase 3: solo, end to end — M
 
 - **Work:**
