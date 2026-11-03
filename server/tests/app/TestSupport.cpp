@@ -74,7 +74,8 @@ public:
         if(!server->started)
         {
             // It never came up, so quit() would not reach it and a join would hang.
-            server->thread.detach();
+            if(server->thread.joinable())
+                server->thread.detach();
             return;
         }
 

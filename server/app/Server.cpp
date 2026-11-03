@@ -12,6 +12,8 @@
 #include <set>
 #include <string>
 
+#include <unistd.h>
+
 namespace whist
 {
 
@@ -99,9 +101,12 @@ void whenListening(std::function<void()> done)
 
 void configureApp(const ServerOptions& options, std::function<void()> onListening)
 {
-    // Drogon makes this folder, with 256 more inside it, wherever it is told to. The server takes
-    // no uploads, so the folder goes where it is out of the way.
-    const std::filesystem::path uploads = std::filesystem::temp_directory_path() / "whist_server-uploads";
+    // Drogon makes this folder, with 256 more inside it, at start, and writes there any request body
+    // over its in-memory limit. No route takes a body, so bodies are capped at that limit and
+    // nothing is written; the folder is one per user, out of the way.
+    constexpr std::size_t maxRequestBody = 16 * 1024;
+    const std::filesystem::path uploads = std::filesystem::temp_directory_path()
+                                        / ("whist_server-uploads-" + std::to_string(::getuid()));
 
     drogon::app()
         .setLogLevel(toLogLevel(options.logLevel))
@@ -109,6 +114,8 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setDocumentRoot(options.documentRoot)
         .setHomePage("index.html")
         .setUploadPath(uploads.string())
+        .setClientMaxMemoryBodySize(maxRequestBody)
+        .setClientMaxBodySize(maxRequestBody)
         .setThreadNum(options.ioThreads)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
         .registerController(std::make_shared<EchoController>(options.pingInterval))

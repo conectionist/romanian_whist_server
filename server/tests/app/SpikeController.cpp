@@ -1,5 +1,6 @@
 #include "SpikeController.h"
 
+#include <atomic>
 #include <chrono>
 #include <latch>
 #include <memory>
@@ -14,6 +15,7 @@ void SpikeController::handleNewConnection(const drogon::HttpRequestPtr&,
                                           const drogon::WebSocketConnectionPtr& connection)
 {
     connection->setPingMessage("", 100ms);
+    connection->setContext(std::make_shared<std::atomic<bool>>(false));
 }
 
 void SpikeController::handleNewMessage(const drogon::WebSocketConnectionPtr& connection,
@@ -44,14 +46,16 @@ void SpikeController::handleNewMessage(const drogon::WebSocketConnectionPtr& con
     }
     else if(message == "late")
     {
-        senders_.emplace_back([this, connection]
+        // The connection's own state may be read only on its I/O thread, so the sender reads this.
+        auto closed = connection->getContext<std::atomic<bool>>();
+        senders_.emplace_back([this, connection, closed]
         {
             const auto end = std::chrono::steady_clock::now() + 1500ms;
             for(int i = 0 ; std::chrono::steady_clock::now() < end ; i++)
             {
-                const bool closed = connection->disconnected();
+                const bool wasClosed = closed->load();
                 connection->send("late:" + std::to_string(i));
-                if(closed)
+                if(wasClosed)
                     sendsAfterClose_++;
                 std::this_thread::sleep_for(1ms);
             }
@@ -61,9 +65,11 @@ void SpikeController::handleNewMessage(const drogon::WebSocketConnectionPtr& con
         connection->send(message);
 }
 
-void SpikeController::handleConnectionClosed(const drogon::WebSocketConnectionPtr&)
+void SpikeController::handleConnectionClosed(const drogon::WebSocketConnectionPtr& connection)
 {
     closed_++;
+    if(const auto closed = connection->getContext<std::atomic<bool>>())
+        closed->store(true);
 }
 
 void SpikeController::reset()

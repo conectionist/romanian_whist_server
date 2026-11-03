@@ -24,11 +24,10 @@ int main(int argc, char* argv[])
         }
     }
 
-    whist::ServerOptions options;
     try
     {
-        if(configPath)
-            options = whist::loadOptions(configPath);
+        const whist::ServerOptions options = configPath ? whist::loadOptions(configPath) : whist::ServerOptions{};
+        whist::configureApp(options);
     }
     catch(const std::exception& error)
     {
@@ -36,7 +35,6 @@ int main(int argc, char* argv[])
         return 2;
     }
 
-    whist::configureApp(options);
     drogon::app().run();
     return 0;
 }
