@@ -12,6 +12,11 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 - **Every message has a `type`.**
 - **Every server message also has `seq`.** It counts from 1 on each connection, and messages
   arrive in `seq` order. It is there for logs and tests; a client needs it for nothing else.
+- **One connection per member.** A `hello` with a token that another connection holds takes the
+  member over: the older connection gets `error {code: "openElsewhere"}` and is closed. A page
+  that gets it should not reconnect by itself, or the two tabs would take the member from each
+  other for ever.
+- **The fifth `badMessage` on a connection closes it.**
 - **No sentences on the wire.** Names, numbers and codes only; each client writes its own text.
 - **Words.** The protocol says `bet`, as the engine does. Players see "bid".
 
@@ -78,6 +83,7 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 
 Unknown types and unknown fields are refused with `error {code: "badMessage", detail}`, where
 `detail` names the field at fault. Whole numbers must be written as whole numbers: `3.0` is refused.
+An error always goes back on the connection whose message caused it.
 
 | `type` | Fields | Allowed |
 |---|---|---|
@@ -93,20 +99,47 @@ Unknown types and unknown fields are refused with `error {code: "badMessage", de
 | `bet` | `prompt`, `value` | Your own open prompt |
 | `play` | `prompt`, `index` | Your own open prompt |
 | `continue` | `round` | During the round hold |
-| `pause`, `resume` | – | Solo |
-| `leaveTable` | – | At a table |
+| `pause`, `resume` | – | Solo, while a game is on |
+| `leaveTable` | – | At a table. Solo: closes the table |
+
+`createTable`, `joinTable`, `updateProfile`, `takeSeat` and `setSeat` are answered `illegal` until
+the server has online tables.
+
+### hello
+
+- **It comes first, and only once.** Anything before it, and a second one, is `badMessage`.
+- **Another `protocol`** gets `error {code: "version"}`, and the connection is closed.
+- **No `token`, or one the server does not know** (it has restarted since), makes a new member.
+  Keep the `welcome`'s token, whichever it is.
+- **The answer is a `welcome`, then always a `sync`:** with `table: null` when the member is at no
+  table. Wait for the sync and render it; anything that came between the two is older than it.
+
+### Solo, while a game is on
+
+- **`pause`** holds the game at its next rest: after a computer player's move, or on a finished
+  trick or round. A move already under way finishes first. The game takes your own answers while
+  paused, then holds at its next rest, so grey your buttons. `resume` lets it go on. Both are
+  answered with a `tableState`, whose `paused` says which it is; pausing twice changes nothing and sends nothing.
+- **`updateSettings`** takes the whole settings, of which only `botSpeed` and `waitAfterRound` may
+  differ from the table's (`illegal` otherwise). A new speed applies at once, even to the rest under
+  way. The wait applies from the next scored round. Answered with a `tableState`.
+- **The wait after each round.** With `waitAfterRound` on, every scored round, the last included,
+  is followed by a `held` and the game waits for your `continue` with that round. A `continue` for
+  a round that is not held is ignored.
+- **`startGame`**, once a game is over, starts another with the same settings, at once.
+- **`leaveTable`** closes the table, game and all. You can then `createSolo` again.
 
 ## Server to client
 
 | `type` | Fields | To |
 |---|---|---|
-| `welcome` | `token`, `member`, `server` (`version`, `commit`) | The connection |
-| `tableState` | `code`, `mode`, `state`, `host`, `settings`, `seats`, `waitingFor` (only while waiting) | Everyone at the table, on every change |
+| `welcome` | `token`, `member`, `server` (`version`, `commit`) | The connection, first |
+| `tableState` | `code`, `mode`, `state`, `host`, `settings`, `seats`, `paused`, `waitingFor` (only while waiting) | Everyone at the table, on every change |
 | `game` | `game`, `event`, `snapshot` | Everyone at the table, each with their own snapshot |
 | `prompt` | see [Prompts](#prompts) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor` (seats), `deadline` | Everyone, during the round hold |
-| `sync` | see [Sync](#sync) | On joining or rejoining |
+| `sync` | see [Sync](#sync) | After every `welcome`, and on joining |
 | `error` | `code`, sometimes `detail` | The connection |
 
 ### tableState
@@ -124,7 +157,10 @@ Unknown types and unknown fields are refused with `error {code: "badMessage", de
 ```
 
 - `presence`: `here`, `away` or `replaced`.
+- `paused`: whether a solo game is paused. Always `false` online, and when no game is on.
 - `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the table waits for an away player's turn.
+- `state` turns to `finished` only in the next `tableState`; a game's end is its `gameOver` event.
+- **A closed table's `tableState` is the last message from it.** Nothing of its game follows.
 
 ### game
 
@@ -147,9 +183,6 @@ seat sharing the top score; there is no tie-breaker.
 
 A game that fails on the server ends with `gameStopped`, carrying the last snapshot sent, or `null`
 if none was.
-
-When a table closes during a game, its `tableState` with `state: "closed"` can come before the
-game's own `gameStopped`.
 
 ### Snapshot
 
@@ -234,13 +267,26 @@ The game as this viewer may see it, after the event:
 The order, for one move: the `game` event asking for it (`betRequested` or `cardRequested`),
 `prompt`, any (`error`, `prompt`) pairs, `promptClosed`, then the `game` event with the move.
 
+### held
+
+```json
+{ "type": "held", "round": 0, "waitingFor": [0], "deadline": null }
+```
+
+- `round`: the round that was scored, 0-based like a round result's `index`.
+- `waitingFor`: the seats whose `continue` is awaited. Empty in a watched solo game, which its
+  watcher continues.
+- `deadline`: the milliseconds left, or `null` when there is no limit, as in solo.
+- **A hold ends with the game's next message** (`roundComplete`), or, when you `continue` while
+  paused, with your `continue`: a `sync` then shows no hold.
+
 ### Sync
 
 Sent to a member who joins or comes back. It holds everything needed to show the table now:
 
 | Field | |
 |---|---|
-| `table` | The `tableState`, without `type` and `seq` |
+| `table` | The `tableState`, without `type` and `seq`; or `null` at no table |
 | `game` | The game's number, or `null` before the first |
 | `snapshot` | This viewer's latest snapshot, or `null` |
 | `history` | One round result per scored round |
@@ -266,6 +312,7 @@ you do not hold can be ignored.
 | `notHost` | Only the host may do that |
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
-| `illegal` | An answer the rules do not allow, or not allowed now |
+| `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, not in an online game, and so on |
 | `rateLimited` | Too many messages |
 | `draining` | The server is restarting, or cannot start a game just now, and takes no new games |
+| `openElsewhere` | Another connection has taken this member over; this one is closed |

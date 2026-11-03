@@ -5,8 +5,8 @@ The game server for Romanian Whist's online tables, built on the
 [Drogon](https://github.com/drogonframework/drogon). Its clients are the browser page, in
 [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and the Android app.
 
-**Status:** the server's core is built: tables, seats, games and the JSON protocol, tested without
-a socket. The running server still serves a static page and a WebSocket echo at `/ws`.
+**Status:** solo games can be played end to end: the server runs them at `/ws`, and a plain debug
+page in `server/www/` plays them in a browser, reloads included. Online tables come next.
 [`docs/server-plan.md`](docs/server-plan.md) is the plan for the rest. The page's part of
 it is in `romanian_whist_web`.
 
@@ -43,7 +43,8 @@ From the repository's root, after building:
 ./build/server/app/whist_server --config server/app/config.json
 ```
 
-Then open http://127.0.0.1:8080, which shows the placeholder page in `server/www/`.
+Then open http://127.0.0.1:8080, which shows the debug page in `server/www/`: pick a preset, edit
+the settings if you like, and play or watch a solo game.
 `server/app/config.json` lists every setting with its default. To serve the browser page instead,
 set `document_root` to its built `dist/` folder.
 
