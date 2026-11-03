@@ -1,0 +1,57 @@
+name: CI
+
+# A pull request is built by its pull_request run, so push builds only master.
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+# A new push to a PR cancels that PR's older run. Runs on master are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install Drogon's packages
+        run: sudo apt-get update && sudo apt-get install -y libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev
+
+      - name: Configure
+        run: cmake --preset release -DWHIST_WEB_WARNINGS_AS_ERRORS=ON
+
+      # --parallel needs a number: a bare one gives make an unlimited -j.
+      - name: Build
+        run: cmake --build --preset release --parallel 4
+
+      # --no-tests=error, so that a build with its tests switched off cannot pass.
+      - name: Test the server
+        run: ctest --preset release --output-on-failure --no-tests=error
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the page
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Test the page
+        working-directory: web
+        run: npm test

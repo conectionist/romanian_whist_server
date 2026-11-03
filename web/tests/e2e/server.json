@@ -1,0 +1,5 @@
+{
+    "port": 8090,
+    "document_root": "dist",
+    "log_level": "warn"
+}
