@@ -140,7 +140,12 @@ Registry::Created Registry::createSolo(MemberId member, const Settings& settings
         tables_[code] = table;
         record->second.table = code;
 
-        table->startGame(member);
+        if(const std::optional<ErrorCode> error = table->startGame(member))
+        {
+            tables_.erase(code);
+            record->second.table.clear();
+            return {nullptr, error, {}};
+        }
     }
     return {table, std::nullopt, {}};
 }

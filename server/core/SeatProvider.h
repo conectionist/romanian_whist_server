@@ -9,8 +9,9 @@
 namespace whist
 {
 
-// What the engine holds for a seat. The engine destroys its providers on the game thread, so this
-// owns nothing, and the GameRun keeps the driver, which an I/O thread may still be answering.
+// What the engine holds for a seat. The engine owns its providers and may destroy them early (a
+// start() it refuses destroys them at once), while the publisher and I/O threads still use the
+// drivers. So this owns nothing, and the GameRun keeps the drivers.
 class SeatProvider : public romanian_whist::IMoveProvider
 {
 public:

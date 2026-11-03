@@ -82,7 +82,8 @@ std::vector<test::Entry> play(const LeakGame& spec)
         REQUIRE(human->waitUntilOver(patience));
         CHECK(human->problems().empty());
     }
-    while(!run->finished())
+    const auto deadline = Clock::now() + patience;
+    while(!run->finished() && Clock::now() < deadline)
         std::this_thread::sleep_for(milliseconds(1));
     CHECK(run->outcome() == RunOutcome::Finished);
     humans.clear();

@@ -58,6 +58,18 @@ struct Game
         return std::chrono::duration_cast<milliseconds>(Clock::now() - started);
     }
 
+    bool waitUntilFinished()
+    {
+        const auto deadline = Clock::now() + patience;
+        while(!run->finished())
+        {
+            if(Clock::now() > deadline)
+                return false;
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+        return true;
+    }
+
     bool waitFor(MemberId member, const std::string& eventKind)
     {
         return recorder.waitFor(member, [&](const Json::Value& m)
@@ -142,11 +154,12 @@ TEST_CASE("Closing a game joins its thread at once", "[game][close]")
         game.run->start();
         REQUIRE(human.waitForPrompt(patience));
 
+        const auto started = Clock::now();
         game.run->close();
-        while(!game.run->finished())
-            std::this_thread::sleep_for(milliseconds(1));
+        REQUIRE(game.waitUntilFinished());
         CHECK(game.run->outcome() == RunOutcome::Abandoned);
-        CHECK(game.closeAndJoin() < bound);
+        game.run.reset();
+        CHECK(Clock::now() - started < bound);
     }
 
     SECTION("while resting on a finished trick")
@@ -185,8 +198,7 @@ TEST_CASE("Closing a game joins its thread at once", "[game][close]")
     {
         Game game(test::quickGame(test::tableSettings(2, {}), {}));
         game.run->start();
-        while(!game.run->finished())
-            std::this_thread::sleep_for(milliseconds(1));
+        REQUIRE(game.waitUntilFinished());
         CHECK(game.run->outcome() == RunOutcome::Finished);
         CHECK(game.closeAndJoin() < bound);
     }
@@ -241,13 +253,15 @@ TEST_CASE("Each viewer gets their own snapshot, and a watcher sees no hand", "[g
                 continue;
             CHECK(message["snapshot"]["you"] == seat);
             const Json::Value& round = message["snapshot"]["round"];
-            const bool normal = round["type"] == "normal";
             for(unsigned int s = 0 ; s < 3 ; s++)
             {
                 const bool hasHand = message["snapshot"]["seats"][s].isMember("hand");
-                if(normal)
-                    CHECK(hasHand == (static_cast<int>(s) == seat));
-                else if(round["type"] == "hidden")
+                const bool own = static_cast<int>(s) == seat;
+                if(round["type"] == "normal")
+                    CHECK(hasHand == own);
+                else if(round["type"] == "forehead")
+                    CHECK(hasHand == !own);
+                else
                     CHECK_FALSE(hasHand);
             }
         }
@@ -260,7 +274,6 @@ TEST_CASE("Each viewer gets their own snapshot, and a watcher sees no hand", "[g
             CHECK_FALSE(seat.isMember("hand"));
     }
 
-    // The publisher's cache kept a record of every round, and the last trick.
     game.run.reset();
 }
 
@@ -268,8 +281,7 @@ TEST_CASE("The publisher keeps every scored round and the last trick across roun
 {
     Game game(test::quickGame(test::tableSettings(3, {}), {}));
     game.run->start();
-    while(!game.run->finished())
-        std::this_thread::sleep_for(milliseconds(1));
+    REQUIRE(game.waitUntilFinished());
 
     const std::vector<RoundResult> history = game.run->publisher().history();
     REQUIRE(history.size() == 23);

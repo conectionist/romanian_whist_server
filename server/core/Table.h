@@ -54,7 +54,8 @@ public:
     bool hasMember(MemberId member) const;
 
     // The host starts the first game, or a new one once the last is over. The old game goes to
-    // the joiner, and everyone is sent the new tableState.
+    // the joiner, and everyone is sent the new tableState. When no thread can be made for the game,
+    // the table is left as it was and the answer is Draining.
     std::optional<ErrorCode> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is told so; a legal or

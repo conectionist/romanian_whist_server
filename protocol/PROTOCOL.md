@@ -34,8 +34,9 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 { "name": "Ana", "gender": "female", "avatar": "woman-long-red-hair" }
 ```
 
-- `name`: 1 to 20 characters, no control or bidirectional formatting characters. It may not
-  contain "LowRisk" or "Ducking", in any case.
+- `name`: 1 to 20 characters, no control or bidirectional formatting characters. A human's name
+  may not contain "LowRisk" or "Ducking", in any case: the Reckoner takes any seat so named for a
+  computer player of that kind.
 - `gender`: `female` or `male`.
 - `avatar`: a catalogue id: lower-case letters, digits and `-`, at most 40 characters.
 
@@ -144,7 +145,11 @@ callbacks:
 `place` is a competition ranking: scores 50, 40, 40, 30 place 1, 2, 2, 4. `winners` holds every
 seat sharing the top score; there is no tie-breaker.
 
-A game that fails on the server ends with `gameStopped`, carrying the last snapshot sent.
+A game that fails on the server ends with `gameStopped`, carrying the last snapshot sent, or `null`
+if none was.
+
+When a table closes during a game, its `tableState` with `state: "closed"` can come before the
+game's own `gameStopped`.
 
 ### Snapshot
 
@@ -243,7 +248,9 @@ Sent to a member who joins or comes back. It holds everything needed to show the
 | `prompt` | Your open prompt, with `deadline` the time left now; or `null` |
 | `held` | The round hold, as in `held`; or `null` |
 
-Drop whatever was queued and render the sync. Messages after it are newer.
+Drop whatever was queued and render the sync. The `game` messages after it are newer than it.
+A `prompt` after it with the sync's prompt `id` is that same prompt; a `promptClosed` for an `id`
+you do not hold can be ignored.
 
 ## Errors
 
@@ -261,4 +268,4 @@ Drop whatever was queued and render the sync. Messages after it are newer.
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now |
 | `rateLimited` | Too many messages |
-| `draining` | The server is restarting and takes no new tables |
+| `draining` | The server is restarting, or cannot start a game just now, and takes no new games |

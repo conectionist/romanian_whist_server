@@ -73,7 +73,10 @@ private:
     // The viewer slot a seat's (or a watcher's) snapshot is kept in.
     std::size_t slotOf(std::optional<unsigned int> seat) const;
 
-    void publish(const romanian_whist::GameEngine& engine, const GameEvent& event);
+    // A finished trick is cached with the snapshots that show it, so a sync never holds one
+    // without the other.
+    void publish(const romanian_whist::GameEngine& engine, const GameEvent& event,
+                 std::optional<LastTrick> finishedTrick = std::nullopt);
     void rest(Rest kind);
     bool computerMoves(romanian_whist::Seat seat) const;
 

@@ -21,8 +21,8 @@ namespace
 
 const milliseconds patience(60000 * test::slowdown);
 
-// One sample of each kind of message, named as its fixture file is. Every message here was sent
-// by a game thread alone, so its seq is the same on every run.
+// One sample of each kind of message, named as its fixture file is. Each was sent either by a game
+// thread or while its game was waiting on the human, so its seq is the same on every run.
 using Samples = std::map<std::string, Json::Value>;
 
 std::string sampleName(const Json::Value& message)

@@ -43,7 +43,7 @@ std::size_t Publisher::slotOf(std::optional<unsigned int> seat) const
     return seat ? *seat : drivers_.size();
 }
 
-void Publisher::publish(const GameEngine& engine, const GameEvent& event)
+void Publisher::publish(const GameEngine& engine, const GameEvent& event, std::optional<LastTrick> finishedTrick)
 {
     // Built and encoded outside the lock; one snapshot per distinct viewpoint.
     std::vector<std::optional<GameSnapshot>> built(latest_.size());
@@ -67,6 +67,10 @@ void Publisher::publish(const GameEngine& engine, const GameEvent& event)
         if(built[slot])
             latest_[slot] = std::move(built[slot]);
     }
+    if(finishedTrick)
+        lastTrick_ = std::move(finishedTrick);
+    if(event.result)
+        history_.push_back(*event.result);
     for(const Viewer& viewer : viewers_)
         outbox_.send(viewer.member, gameMessage(game_, event, *encoded[slotOf(viewer.seat)]));
 }
@@ -173,15 +177,11 @@ void Publisher::onTrickWon(const GameEngine& engine, Seat winner, unsigned int t
     if(table.winning)
         last.winning = table.winning->index;
     last.cards = table.table;
-    {
-        std::lock_guard lock(cacheMutex_);
-        lastTrick_ = std::move(last);
-    }
 
     GameEvent event{EventKind::TrickWon};
     event.seat = winner.index;
     event.trick = trick;
-    publish(engine, event);
+    publish(engine, event, std::move(last));
     rest(Rest::Dwell);
 }
 
@@ -200,10 +200,6 @@ void Publisher::onRoundScored(const GameEngine& engine)
     for(const SeatSnapshot& seat : scored.seats)
         result.seats.push_back({seat.bet, seat.tricksWon, seat.roundScore, seat.totalScore, seat.winStreak,
                                 seat.lossStreak});
-    {
-        std::lock_guard lock(cacheMutex_);
-        history_.push_back(result);
-    }
 
     GameEvent event{EventKind::RoundScored};
     event.result = std::move(result);

@@ -31,6 +31,8 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
     for(unsigned int i = 0 ; i < setup.settings.seats.size() ; i++)
     {
         const SeatSetting& seat = setup.settings.seats[i];
+        if(seat.kind == SeatKind::Open)
+            throw std::invalid_argument("a game needs every seat filled");
         const std::optional<std::uint32_t> seed =
             setup.shuffleSeed ? std::optional<std::uint32_t>(*setup.shuffleSeed + i) : std::nullopt;
 
@@ -110,6 +112,8 @@ void GameRun::play(GameSetup setup)
 {
     lowerPriority(threadNiceness_);
 
+    // The outcome is set last on every path: once it reads as over, the table may start the next
+    // game, whose messages must not be overtaken by this one's.
     try
     {
         for(IGameObserver* observer : firstObservers_)
@@ -132,14 +136,14 @@ void GameRun::play(GameSetup setup)
     catch(const std::exception& failure)
     {
         log(LogLevel::Error, std::string("game ") + std::to_string(game_) + " failed: " + failure.what());
-        outcome_ = RunOutcome::Failed;
         publisher_.announceFailure();
+        outcome_ = RunOutcome::Failed;
     }
     catch(...)
     {
         log(LogLevel::Error, "game " + std::to_string(game_) + " failed");
-        outcome_ = RunOutcome::Failed;
         publisher_.announceFailure();
+        outcome_ = RunOutcome::Failed;
     }
 }
 

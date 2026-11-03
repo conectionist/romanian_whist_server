@@ -1,8 +1,11 @@
 #include "core/Table.h"
 
 #include "core/Codec.h"
+#include "core/Log.h"
 
 #include <algorithm>
+#include <string>
+#include <system_error>
 #include <utility>
 
 namespace whist
@@ -144,6 +147,8 @@ std::optional<ErrorCode> Table::startGame(MemberId by)
             return ErrorCode::NotHost;
         if(stateLocked() == TableState::Playing)
             return ErrorCode::Illegal;
+        if(checkSettings(settings_, mode_))
+            return ErrorCode::BadMessage;
 
         GameRunSetup setup;
         setup.game = game_ + 1;
@@ -162,13 +167,27 @@ std::optional<ErrorCode> Table::startGame(MemberId by)
         setup.promptIds = promptIds_;
 
         auto run = std::make_unique<GameRun>(std::move(setup), outbox_);
+        const TableState before = state_;
         previous = std::exchange(run_, std::move(run));
         game_++;
         state_ = TableState::Playing;
 
         // The tableState goes out before the game's first message.
         broadcastLocked();
-        run_->start();
+        try
+        {
+            run_->start();
+        }
+        catch(const std::system_error& failure)
+        {
+            // No thread was made, so the new run has nothing to join and can go here.
+            log(LogLevel::Error, std::string("a game thread could not start: ") + failure.what());
+            run_ = std::move(previous);
+            game_--;
+            state_ = before;
+            broadcastLocked();
+            return ErrorCode::Draining;
+        }
     }
 
     joiner_->hand(std::move(previous));

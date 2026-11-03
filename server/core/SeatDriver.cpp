@@ -102,7 +102,7 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     answer_.reset();
     lastPrompt_ = prompt.id;
 
-    // Never send under the lock: the connection's own lock comes after this one.
+    // Sent with the lock released, so an answer is never held up while a prompt is encoded.
     lock.unlock();
     send(promptMessage(prompt, Clock::now()));
     lock.lock();
