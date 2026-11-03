@@ -39,7 +39,7 @@ currently `ccr-c8ac042f-e6e18n`.
 Phase branches are reviewed and PR'd against the parent branch, never `master`. When running
 `/code-review` on a phase branch, diff against the parent, or pass the PR number so GitHub's base
 branch is used. The review procedure, and when a phase branch is merged, are in section 13 of
-`docs/web-client-plan.md`.
+`docs/server-plan.md`.
 
 ## Changing a PR: never `gh pr edit`
 
