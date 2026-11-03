@@ -2,14 +2,3 @@
 /build/
 /build-*/
 compile_commands.json
-
-# The page.
-node_modules/
-/web/dist/
-/web/test-results/
-/web/playwright-report/
-/web/blob-report/
-
-# Python bytecode, written when a script under docs/ or tools/ is imported.
-__pycache__/
-*.pyc

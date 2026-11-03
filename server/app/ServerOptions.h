@@ -14,7 +14,7 @@ struct ServerOptions
 {
     std::string address = "127.0.0.1";
     std::uint16_t port = 8080;
-    std::string documentRoot = "web/dist";
+    std::string documentRoot = "server/www";
     std::size_t ioThreads = 2;
     std::size_t maxMessageBytes = 4096;
     std::chrono::milliseconds pingInterval{10000};

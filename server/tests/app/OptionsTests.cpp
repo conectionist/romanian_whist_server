@@ -14,7 +14,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
 
     CHECK(options.address == "127.0.0.1");
     CHECK(options.port == 8080);
-    CHECK(options.documentRoot == "web/dist");
+    CHECK(options.documentRoot == "server/www");
     CHECK(options.ioThreads == 2);
     CHECK(options.maxMessageBytes == 4096);
     CHECK(options.pingInterval == std::chrono::milliseconds(10000));

@@ -7,7 +7,7 @@ namespace whist
 
 std::string_view serverVersion()
 {
-    return WHIST_WEB_VERSION;
+    return WHIST_SERVER_VERSION;
 }
 
 std::string_view engineVersion()

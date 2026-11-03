@@ -3,11 +3,25 @@
 > **Status: phases 0 and 1 are complete (2026-11-03). Engine 5.1.0 carries phase 0, and this
 > repository's skeleton is phase 1. Phases 2 to 11 are not built yet.**
 >
-> The plan spans two repositories. Phase 0 changes the engine,
-> [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Every later
-> phase builds this repository, `romanian_whist_web`, which takes the engine as a submodule, the
-> way the terminal and desktop clients do. The plan was written in the engine's `docs/` and moved
-> here on 2026-10-28, once this repository existed.
+> The plan spans three repositories. Phase 0 changes the engine,
+> [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
+> 9 and 11 build this repository, `romanian_whist_server`, which takes the engine as a submodule,
+> the way the terminal and desktop clients do. Phases 6 to 8 and 10 build the page, in
+> [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web). Phases 6 and 10
+> change this repository too: phase 6 builds the fixture tool (§10.5), and phase 10 compiles
+> `server/core` for the browser. Phase 9 changes the page's repository too: its footer's source
+> links, its About page, and how it is deployed (§12). The plan was written in the engine's
+> `docs/` and moved here on 2026-10-28, once this repository existed.
+>
+> On 2026-11-03 the owner renamed this repository from `romanian_whist_web` to
+> `romanian_whist_server`, because the Android app, and later other clients, will use the same
+> server ([D2](#15-decisions-with-defaults)). The page moved to a new repository,
+> `romanian_whist_web`, and so did its part of this plan: §8, the page's tests, and phases 6, 7, 8
+> and 10. That part is the web repository's
+> [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
+> Their places here keep their numbers and point there. The links point at that repository's
+> `master`. Until the page's work reaches it, the current page plan is on the web repository's
+> parent branch. Phase 6 creates that branch, and its name is written here then.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
 to build, which existing code each part comes from, in what order, and how to tell each phase is
@@ -25,12 +39,9 @@ redesign plan does.
 3. The desktop client's `docs/QT_CLIENT_PLAN_proposal1.md`: §§3–6 (the game thread, the bridge,
    the move provider, shutdown) and §9 (the snapshot question phase 0 settles). The server repeats
    that design, with a WebSocket where the desktop client has a window.
-4. The desktop client itself, because the page must look like it: run it, or look at the pictures
-   its `tests/ScreenshotTool.cpp` takes. Then its `docs/ui-redesign/IMPLEMENTATION_PLAN.md`, whose
-   phase outcomes record where the desktop client departed from its mock-up,
-   `docs/ui-redesign/mockup/romanian_whist_table.html`. The mock-up's code is a head start and no
-   more: wherever it and the desktop client differ, the desktop client wins
-   ([§8.1](#81-the-look-the-desktop-client-wins)).
+4. If you are building the page: its own plan,
+   [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md)
+   in `romanian_whist_web`, which says what to read for the look.
 
 ---
 
@@ -89,12 +100,13 @@ it may show, and what the player may do, come from the server.
    never works state out for itself.
 6. **The desktop client decides how the page looks.** Where the desktop client and the mock-up
    differ, the desktop client wins, even when that means writing new code instead of reusing the
-   mock-up's ([§8.1](#81-the-look-the-desktop-client-wins)).
+   mock-up's ([the page's plan, §2](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#2-the-look-the-desktop-client-wins)).
 
 **Order of work.** The engine first (phase 0). Then the server and a plain debug page, until solo
 play, online play, drops and reconnection all work (phases 1–5). Then the desktop client's look
 (phases 6–8), then deployment (phase 9). An offline solo mode and game records are optional extras
-(phases 10–11). [Section 13](#13-phases) has the phases.
+(phases 10–11). [Section 13](#13-phases) has the phases; the page's, 6 to 8 and 10, are in its
+own plan.
 
 ---
 
@@ -140,7 +152,7 @@ play, online play, drops and reconnection all work (phases 1–5). Then the desk
 - **A public list of tables.** Tables are private; you join by link or code.
 - **Spectators** at someone else's table, **chat** and **rankings**.
 - **A layout for phones held upright.** Phones held sideways work
-  ([§8.10](#810-keyboard-screen-readers-touch-and-small-screens)).
+  ([the page's plan, §11](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#11-keyboard-screen-readers-touch-and-small-screens)).
 - **Taking a computer player's seat** in a game that has already started, other than reclaiming
   your own. The seat drivers make it cheap to add later ([§5.5](#55-edge-cases)).
 - **Offline play and game records:** optional phases 10 and 11.
@@ -319,28 +331,27 @@ Check the option names in its `CMakeLists.txt` at the pinned tag. The Ubuntu 24.
 ### 4.3 Repository layout
 
 ```
-romanian_whist_web/                 AGPL-3.0-or-later, like the engine
+romanian_whist_server/              AGPL-3.0-or-later, like the engine
 ├── libs/RomanianWhistEngine/       submodule, pinned to a release tag (5.1.0 or later)
 ├── libs/drogon/                    submodule, pinned to v1.9.14
 ├── server/
 │   ├── core/                       whist_session: tables, seats, games, JSON. No Drogon.
 │   ├── app/                        the Drogon program: WebSocket controller, config, main()
-│   └── tests/                      Catch2, against core/ through an in-memory transport
-├── web/
-│   ├── src/                        TypeScript: net, play, table, sheets, lobby, i18n
-│   ├── public/                     generated assets (§8.8), fonts and their licences
-│   └── tests/                      Vitest (units), Playwright (end to end, screenshots)
+│   ├── tests/                      Catch2, against core/ through an in-memory transport
+│   └── www/                        served by default: a placeholder, then phase 3's debug page
 ├── protocol/
 │   ├── PROTOCOL.md                 every message, kept beside the code
-│   └── fixtures/                   sample messages written by server tests, read by page tests
-├── tools/                          asset import, translation import, screenshot pairing
+│   ├── fixtures/                   sample messages written by server tests, read by clients' tests
+│   └── look/                       the fixture tool's snapshots, for the page's comparisons (§10.5)
+├── tools/                          the fixture tool for the page's screenshots (§10.5)
 ├── deploy/                         Caddyfile, systemd unit
 ├── docs/
 └── CLAUDE.md                       the owner's machine rules (§11)
 ```
 
 The `server/core` line matters most: everything that decides anything lives where a test can
-reach it without a socket.
+reach it without a socket. The page's repository has a layout of its own
+([the page's plan, §4](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#4-code-layout)).
 
 ### 4.4 The objects
 
@@ -478,7 +489,7 @@ asks `isHuman(seat)`, the server asks the seat driver whether a human is in char
   or for 30 s, whichever comes first. There is no pause: one player could hold up everyone, and
   the round hold is the breather.
 - **Animation speed** is not the server's business. It is each viewer's setting, applied by the
-  page ([§8.4](#84-the-playback-queue)).
+  page ([the page's plan, §5](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#5-the-playback-queue)).
 
 ### 4.9 A table's life
 
@@ -744,20 +755,21 @@ The page drops whatever it had queued and renders the sync.
 
 ### 6.8 Errors and versions
 
-- **`hello.protocol` is a whole number.** The server serves its own page, so a mismatch can happen
-  only across a deploy. The server answers `error {code: "version"}` and the page reloads itself
-  once.
+- **`hello.protocol` is a whole number.** The page is deployed with the server it was built
+  against (§12), so a mismatch can happen only across a deploy. The server answers
+  `error {code: "version"}` and the page reloads itself once.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
   `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`. Several `badMessage` errors
   close the connection.
 
 ### 6.9 Keeping the two sides in step
 
-- **`protocol/PROTOCOL.md` is the reference.** The TypeScript types in `web/src/net/protocol.ts`
-  follow it by hand; it is small.
+- **`protocol/PROTOCOL.md` is the reference.** Each client's types follow it by hand; it is
+  small. The page's are in `src/net/protocol.ts`, in `romanian_whist_web`.
 - **Contract fixtures.** Server tests write one real sample of every message to
-  `protocol/fixtures/`, taken from real games, and page tests decode every fixture with the page's
-  own decoder. A field renamed on one side fails the other side's tests.
+  `protocol/fixtures/`, taken from real games. Each client's tests decode every fixture with that
+  client's own decoder, through its submodule of this repository. A field renamed here fails a
+  client's tests once that client's submodule moves to the commit that renamed it.
 
 ---
 
@@ -825,207 +837,25 @@ Start goes straight to the table.
 
 ## 8. The browser page
 
-### 8.1 The look: the desktop client wins
+The page has its own plan, in `romanian_whist_web`:
+[`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
+This section's parts are that plan's sections:
 
-**The page must look like the desktop client. Where the desktop client and the mock-up differ, the
-desktop client wins, even when that means writing new code and throwing the mock-up's away.**
-Decided by the owner, 2026-10-27.
-
-The reference is the desktop client's current release, 2.0.0 as this is written; if its look
-changes later, the page follows. The reference is never the mock-up, and never this plan's
-description of either. It is the desktop client as it runs, and its source.
-
-The mock-up is useful because the desktop client was built from it: most of its numbers and much of
-its CSS are still the desktop client's. But the desktop client departed from it in many places over
-the redesign's 13 phases, so the mock-up's code is reused only where it still matches:
-
-1. **Before reusing any mock-up function, CSS rule or value, find the desktop code that draws the
-   same thing and compare them.** [§8.6](#86-from-the-mock-ups-script)'s last column names that
-   code for every part of the mock-up's script, and [§8.7](#87-from-the-desktop-client) for every
-   part of the desktop client. Compare sizes, positions, colours, fonts, shadows, motion paths and
-   timings, and wording.
-2. **The same:** reuse it.
-3. **Different:** write what the desktop client does, for the browser, however much of the
-   mock-up's code that replaces and whatever it costs. Reuse is never a reason to keep a
-   difference.
-4. **What the mock-up does not have at all** comes from the desktop client alone: the main menu,
-   New Game, the language dialog, pause, the final results, Forehead faces, the 2-player table.
-5. **What neither has** is new, and is drawn in the desktop client's style, with its panels, colours
-   and fonts (`src/paint/Theme.cpp`, `Panel.cpp`), never in the mock-up's: the online lobby, the
-   connection and replacement notices, the turn countdown.
-
-Some known departures, to show the kind. The desktop's redesign plan records them all, phase by
-phase, and the desktop's source is the final word:
-
-- Belleza for headings, because the mock-up's Marcellus has no ș or ț;
-- the round logo on the table, with the played cards placed round it;
-- the scoreboard's RUN column;
-- the portraits, which are files;
-- projective racks, where the mock-up tilts its fans with `rotateX`;
-- the 2-player table;
-- faces in the racks in a Forehead round;
-- no toasts: the desktop client refuses an illegal card without one;
-- every sheet.
-
-**Only two kinds of difference may stay:**
-
-- **Those the browser forces.** For example, Qt and Chrome space the same font slightly
-  differently; the desktop's redesign plan found its scoreboard lines a pixel lower than the
-  mock-up's for that reason.
-- **Those the owner accepts**, named in a phase's outcome.
-
-Each visual phase ends with side-by-side comparisons against the desktop client's own screenshots
-([§10.5](#105-the-look)).
-
-### 8.2 Technology
-
-- **TypeScript, built with Vite, and no UI framework.** The table is a fixed design space scaled
-  to the window, as in the desktop client, and the state arrives whole, so plain DOM and CSS are
-  enough. They also let the mock-up's code be reused directly wherever it matches the desktop
-  client. A framework would add a layer without removing any work.
-- **CSS** for the look; the **Web Animations API** for motion, set to the desktop client's paths
-  and timings; **CSS `matrix3d`** for the racks ([§8.7](#87-from-the-desktop-client)).
-- **Vitest** for unit tests; **Playwright** for end-to-end tests and screenshots.
-
-### 8.3 Code layout (`web/src`)
-
-```
-net/       the socket (connect, hello, reconnect with back-off), protocol types, the decoder
-play/      the store (table state, snapshot, history, last trick, prompt), the playback queue
-table/     stage scaling, seat geometry, name panels, racks, hand, trick, lead mark,
-           scoreboard, trick panel, bid strip, bid bubbles
-sheets/    round, history, last trick, final results, rules, settings, pause
-lobby/     main menu, solo setup, create and join, the table's lobby
-i18n/      t(), plural and gender helpers, the generated catalogues
-dom/       element builders; text goes in only through textContent
-assets/    the generated asset manifest (§8.8)
-```
-
-### 8.4 The playback queue
-
-- **Every server message goes into one queue, handled in order.**
-  - A `game` message animates its event (a card's flight, a trick swept to its winner, a bid
-    bubble), then renders its snapshot.
-  - A `prompt` becomes live when the queue reaches it.
-  - A `sync` empties the queue.
-- **Animation speed** is the viewer's setting: the desktop client's four stops, Off to Slow.
-- **Falling behind.** When more than a few messages are waiting, the queue applies them without
-  animation until it has caught up. This covers Instant bots, a slow device, and a tab coming back
-  from the background.
-- **Your own card moves as soon as you click.** The answer goes out, and the server's
-  `cardPlayed` for your seat confirms it without animating it again. An error puts the card back,
-  which should not happen, because the page offers only legal moves.
-- **The countdown.** A prompt's deadline shows as a ring on your name panel for its last 15 s,
-  counted from when the page received the prompt.
-
-### 8.5 Rendering
-
-- **Each element of the table is created once and updated in place** from each snapshot, keyed by
-  seat and by card, so animations and keyboard focus survive the updates. The mock-up rebuilds
-  everything with `innerHTML` on every change. That is fine for a mock-up, and wrong for a page with
-  animations running and names typed by strangers.
-- **Seats are turned so that the viewer sits at the bottom:** displayed seat = (seat − you + n)
-  mod n. A watcher sees seat 0 at the bottom. The two dozen places where the mock-up assumes that
-  you are seat 0 become "displayed seat 0".
-
-### 8.6 From the mock-up's script
-
-Line numbers are those of `docs/ui-redesign/mockup/source/table.js` in the desktop repository.
-
-"Gone" and "Replaced" are about how the page is built. Everywhere else, the desktop client decides
-what the page draws, by the procedure of [§8.1](#81-the-look-the-desktop-client-wins). The
-mock-up's code survives only where it already matches the desktop source in the last column. Paths
-in that column are in the desktop repository.
-
-| Mock-up | Lines | In the page | Desktop source that decides |
-|---|---|---|---|
-| The rules: `scheduleFor` to `scoreRound` | 3–169 | **Gone.** The engine decides, and the page shows what it is told. Keeping any of it would give two sets of rules that can disagree | – |
-| The bots and the demo game: `botBid`, `botPlay`, `autoRound`, `demoGame` | 171–240 | **Gone.** Fixtures ([§10.5](#105-the-look)) replace the demo's mid-game opening | – |
-| `portrait()` | 251–270 | **Gone.** Portraits are the catalogue's files | `src/paint/Avatars.cpp` |
-| `backSvg()`, the noise and grain, the textures | 271–291 | The textures are the desktop client's own files. The card back is ported from the desktop client's painted one. The grain is whatever the desktop's table top draws | `src/paint/CardRenderer.cpp`, `src/table/TableTopItem.cpp` |
-| `fit()`, `toStage()` | 293–335 | The desktop client fits its fixed table to the window the same way, uniformly and centred, so the idea carries over. The numbers and the corner panels' places are the desktop client's | `src/table/TableView.cpp`, `src/table/TableSpace.cpp` |
-| `LAYOUTS`, `trickPos`, `plaqueCenter`, `rackAngle` | 337–373 | The desktop client's numbers, which add the 2-player table and the played cards round the logo | `src/table/SeatLayout.cpp`, `src/table/TrickItem.cpp` |
-| `buildSeats` | 379–423 | The seats' elements, created once ([§8.5](#85-rendering)), placed where the desktop client places them | `src/table/SeatLayout.cpp`, `src/table/RackItem.cpp` |
-| `renderPlaques`, `pillFor` | 424–450 | Name panels with the portrait, name, Taken/Bid pill and turn ring, from `snapshot.seats`, plus presence from `tableState` | `src/table/SeatItem.cpp` |
-| `renderFans` | 451–462 | Projective racks drawn with `matrix3d`: backs from `cards`, faces from `hand` in a Forehead round | `src/table/RackItem.cpp` |
-| `renderHand`, `suitOrder` | 463–495 | Your `hand`, ordered and fanned as the desktop client does it; legality from the prompt | `src/table/HandItem.cpp`, `src/core/HandLayout.cpp`, `src/core/CardOrder.cpp` |
-| `renderTrick`, with the lead mark | 496–538 | From `snapshot.table` (`winning`, `ledBy`), placed round the logo; the mark only while playing | `src/table/TrickItem.cpp`, `src/table/LeadMarkItem.cpp` |
-| `renderScore` | 539–560 | Each seat's `bet`, `won` and `total`; RUN from `wins` and `losses`; `bets`; the trump | `src/table/ScoreboardItem.cpp` |
-| `renderTrickInfo` | 561–601 | From the phase, `active`, the table and the prompt; the desktop client's sentences, from `t()`, with gender agreement | `src/table/TrickPanelItem.cpp`, `src/table/PersonText.cpp` |
-| `bubble`, `animateIn`, `sweep`, `finishTrick` | 619–661 | The desktop client's motion, driven by events: its paths, timings, easing and fades | `src/table/Motion.cpp`, `src/table/BidBubbleItem.cpp` |
-| `step()` | 662–702 | **Replaced** by the playback queue ([§8.4](#84-the-playback-queue)) | – |
-| `humanPlay`, `showBidStrip`, `humanBid` | 703–747 | Send `play` or `bet` with the prompt's id. The bid strip comes from the prompt's `max` and `forbidden`, and is drawn as the desktop client draws it | `src/table/BidStripItem.cpp` |
-| The sheets: `showRoundSheet` to `showSettings` | 749–829 | The desktop client's sheets and overlay, not the mock-up's modal: their layout, sizes, buttons and wording. The data comes from `roundScored`, the sync's history, the last trick and `gameOver` | `src/ui/Overlay.cpp`, `src/ui/*Sheet.cpp`, `src/ui/GameOverPanel.cpp` |
-| `toast` | 831–839 | The desktop client has no toasts. The page still needs a notice for connection and replacement news: a new element in the desktop client's style ([§8.1](#81-the-look-the-desktop-client-wins), point 5) | `src/paint/Theme.cpp`, `src/paint/Panel.cpp` |
-| The menu bar and the players switch | 872–886 | The desktop client's menu bar. The lobby replaces the switch | `src/ui/MenuBar.cpp` |
-
-### 8.7 From the desktop client
-
-Paths are in the desktop repository.
-
-| What | Where |
+| Here | In the page's plan |
 |---|---|
-| Fitting the fixed table to the window, uniformly and centred | `src/table/TableView.cpp`, `src/table/TableSpace.cpp` |
-| Seat positions for 2 to 6 players, the corner panels | `src/table/SeatLayout.cpp`, `src/table/TableSpace.cpp` |
-| The name panels: portrait, name, Taken/Bid pill, turn ring | `src/table/SeatItem.cpp` |
-| The racks | `src/table/RackItem.cpp`. It maps each rack with `QTransform::quadToQuad`, a projective transform. A CSS `matrix3d` can hold the same 3×3 matrix (embedded in a 4×4), so port the quad maths and get the same racks exactly, instead of the mock-up's `rotateX` approximation |
-| The hand: its fan, raised cards and dimmed ones, its order | `src/table/HandItem.cpp`, `src/core/HandLayout.cpp`, `src/core/CardOrder.cpp` |
-| The played cards round the logo, the lead rhombus, the table top | `src/table/TrickItem.cpp`, `src/table/LeadMarkItem.cpp`, `src/table/TableTopItem.cpp` |
-| The scoreboard with RUN, the trick panel | `src/table/ScoreboardItem.cpp`, `src/table/TrickPanelItem.cpp` |
-| The bid strip and the bid bubbles | `src/table/BidStripItem.cpp`, `src/table/BidBubbleItem.cpp` |
-| Colours, gradients, panels, shadows, fonts | `src/paint/Theme.cpp`, `Gradients.cpp`, `Panel.cpp`, `Shadows.cpp`, `Fonts.cpp` |
-| The card back, which is painted, not a file | `src/paint/CardRenderer.cpp` (`back()`) |
-| Motion and its pace | `src/table/Motion.cpp` |
-| The sheets, the overlay, the menu bar, the main menu, New Game, the language dialog | `src/ui/` |
-| Sentences about people, with Romanian agreement | `src/table/PersonText.cpp` |
-| Every decision about the look, and why it was made | `docs/ui-redesign/IMPLEMENTATION_PLAN.md`, each phase's outcome |
+| 8.1 The look: the desktop client wins | [§2](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#2-the-look-the-desktop-client-wins) |
+| 8.2 Technology | [§3](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#3-technology) |
+| 8.3 Code layout | [§4](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#4-code-layout) |
+| 8.4 The playback queue | [§5](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#5-the-playback-queue) |
+| 8.5 Rendering | [§6](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#6-rendering) |
+| 8.6 From the mock-up's script | [§7](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#7-from-the-mock-ups-script) |
+| 8.7 From the desktop client | [§8](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#8-from-the-desktop-client) |
+| 8.8 Assets | [§9](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#9-assets) |
+| 8.9 Languages | [§10](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#10-languages) |
+| 8.10 Keyboard, screen readers, touch and small screens | [§11](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#11-keyboard-screen-readers-touch-and-small-screens) |
 
-### 8.8 Assets
-
-- **One import tool.** `tools/import_assets.py`, using Pillow as `build_mockup.py` does, takes the
-  desktop repository's `resources/` at a given commit and writes the web versions:
-  - the cards as WebP, at twice their largest size on screen;
-  - the portraits and the table textures as WebP;
-  - the fonts (Cinzel Decorative, Belleza, Alegreya Sans) as WOFF2, with their OFL licences;
-  - `avatars.json` and `player_names.json`, copied;
-  - a manifest that records the desktop commit.
-- **The card back** is painted by the desktop client, not loaded from a file. Port it as an SVG.
-- **Budget:** under about 2 MB for the first load. Portraits load as seats need them.
-
-### 8.9 Languages
-
-- **`t(context, source, args)` mirrors Qt's `translate()`**, so strings ported from the desktop
-  client keep their wording.
-- **One import tool.** `tools/import_ts.py` turns `i18n/romanian_whist_desktop_ro_RO.ts` (211
-  strings, 8 with plural forms) into `en.json` and `ro.json`.
-- **New strings**, for the lobby and the connection notices, are added by hand in both languages.
-- **Plurals:** port Qt's own Romanian rule (three forms, one line) instead of using
-  `Intl.PluralRules`. The two disagree on some numbers above 100 (101, for one), and Qt's rule is
-  the one the reviewed translation was written against.
-- **Gender agreement:** port `src/table/PersonText.cpp`.
-- **Every string goes through `t()`** from the first phase of the page, even before Romanian
-  arrives.
-
-### 8.10 Keyboard, screen readers, touch and small screens
-
-- **Keyboard:** the keys the desktop plan's §20 sets out. Digits bid and select, arrows move the
-  selection, Enter commits, Space advances between tricks and rounds, and Esc closes a sheet.
-- **Screen readers:**
-  - every name panel and card is labelled with the accessible names of the desktop plan's §20
-    ("Queen of spades, playable");
-  - a polite live region announces moves ("Ana plays the queen of hearts");
-  - colour is never the only cue (the desktop plan's §18): legal cards are lifted as well as lit,
-    and winners are starred as well as highlighted.
-- **Reduced motion:** treat `prefers-reduced-motion` as the desktop client's animation setting,
-  Off.
-- **Touch:**
-  - the first tap selects a card, shown as the desktop client shows a card selected from the
-    keyboard, and the second plays it, so a stray tap never plays;
-  - controls are at least 44 px;
-  - `touch-action: manipulation` on the table.
-- **Small screens:** the table scales to fit, as the desktop client's does (`TableView.cpp`), and
-  phones held sideways work. In the first version, a phone held upright gets a "turn your phone"
-  hint.
+The page's tests, its phases (6, 7, 8 and 10), its risks and its decisions (D5, D14 and D18) are
+there too.
 
 ---
 
@@ -1064,10 +894,10 @@ per hour, a maximum number of running games, and members per table no more than 
 
 **The page:**
 
-- Player-chosen text goes in only through `textContent`.
-- A strict Content-Security-Policy: no inline script, and `connect-src 'self'`.
-- Every asset is served by the server itself, so the page makes no third-party requests. That is
-  also a privacy point.
+- The server sends it with a strict Content-Security-Policy: no inline script, and
+  `connect-src 'self'`.
+- The page's own rules, such as player-chosen text going in only through `textContent`, are in
+  [its plan's §12](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#12-security).
 
 **Fairness:**
 
@@ -1118,31 +948,22 @@ The contract fixtures of [§6.9](#69-keeping-the-two-sides-in-step).
 
 ### 10.4 End to end
 
-- **Playwright**, headless Chromium, one worker:
-  - a solo game;
-  - an online game with three browser contexts;
-  - a reload mid-trick;
-  - a player who drops, is replaced, and comes back.
+- **The page's browser tests**, of a solo game, an online game, a reload and a drop, are in
+  [its plan's §13.2](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#132-end-to-end).
 - **A chaos test:** a Node script with a dozen headless protocol clients that disconnect and
   reconnect at random, run in the background at low priority. It passes when every game finishes,
   no table stalls, and the leak scan, run again on the client side, finds nothing.
 
 ### 10.5 The look
 
-- **The page renders from fixtures without a server**, so screens can be checked in any state.
-- **A server-side tool plays the desktop client's `tests/ScreenshotTool.cpp` games**: the same
-  seeds and players, to the same moments. It writes each viewer's snapshot as a fixture. The sheets
-  get fixtures built by hand, as the screenshot tool builds theirs.
-- **Playwright renders each fixture at the desktop shot's own size**: 1920×1080 for the
-  whole-window shots, 1920×1034 for `table-empty`, the hands and the sheets. A script pairs each
-  one with the desktop client's shot of the same name as `compare-<name>.png`, web on the left,
-  desktop on the right, in a git-ignored folder.
-- **Only the desktop client's pictures are a reference.** Never pair the page with the mock-up's
-  pictures in `docs/ui-redesign/screenshots/`: they show what the desktop client departed from.
-- **Each visual phase ends by linking these comparisons**, with a line or two on what matches and
-  what still differs. This is the desktop repository's practice for its redesign phases.
-- **Every difference that remains is one the browser forces or the owner has accepted**, and the
-  phase's outcome names it ([§8.1](#81-the-look-the-desktop-client-wins)).
+The page's comparisons with the desktop client are in
+[its plan's §13.3](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#133-the-look).
+The table's fixtures come from a tool in this repository, in `tools/`, built in phase 6. It plays
+the desktop client's `tests/ScreenshotTool.cpp` games, with the same seeds and players, to the same
+moments, and writes each viewer's snapshot into `protocol/look/`. The snapshots are committed, and
+the page reads them through its submodule. They are snapshots rather than whole messages, so the
+decoding tests of §6.9 read `protocol/fixtures/` only. The sheets' fixtures are built by hand, in
+the page's repository.
 
 ### 10.6 Load (phase 9)
 
@@ -1162,11 +983,6 @@ the desktop repository's `CLAUDE.md` goes into this repository's `CLAUDE.md`:
 - one heavy command at a time, and long jobs in the background;
 - timing runs, sanitizer builds, the chaos test and the load test only when the owner asks.
 
-For the page:
-
-- `nice -n 19 npx vitest run --maxWorkers=2`;
-- `nice -n 19 npx playwright test --workers=1`.
-
 The first build of each preset compiles Drogon too, which takes several minutes at `-j 2`, so run
 it in the background.
 
@@ -1178,17 +994,16 @@ it in the background.
 | g++ 13.3, clang 18 | Emscripten (phase 10 only) |
 | CMake 3.28 | Caddy (deployment only) |
 | Node 24, npm 11 | |
-| Python 3.12, with Pillow | |
 
 Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-not-do).
 
 - **Presets:** `default` (Debug), `release`, `clang` and `asan`, as in the desktop client, plus
   `tsan`.
-- **Day to day:** the Vite dev server (port 5173) passes `/ws` through to the server (port 8080).
-  Or the server serves `web/dist` itself, as it does in production.
+- **Day to day:** the server serves `server/www/` by default, or the page's built `dist/` when
+  `document_root` points there, as in production. The page's own dev server is in
+  [its plan's §14](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#14-building-and-running-locally).
 - **CI:** one Linux job, which builds the server with a fixed job count (as the desktop client's CI
-  does, never an unlimited `-j`), runs the core tests, builds the page and runs its unit tests.
-  End-to-end tests and screenshots run locally, at the end of a phase.
+  does, never an unlimited `-j`) and runs its tests. The page has a CI job of its own.
 - **Pull requests:** change a PR's title or description with
   `gh api -X PATCH repos/<owner>/<repo>/pulls/<N> -F body=@<file>`. `gh pr edit` fails on the
   owner's repositories with a "Projects (classic)" GraphQL error.
@@ -1198,7 +1013,11 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 ## 12. Deployment and operations
 
 - **A small Linux server:** 2 vCPUs and 2–4 GB, Debian or Ubuntu LTS. The server runs as a release
-  build, with `web/dist` as Drogon's document root and one configuration file.
+  build, with the page's built `dist/` as Drogon's document root, and one configuration file. The
+  page is built from the latest `romanian_whist_web` commit whose submodule points at the server
+  being deployed. A server change that no such commit points at gets a submodule update in
+  `romanian_whist_web` before it is deployed. So the two speak the same protocol, except in a page
+  left open across a deploy (§6.8).
 - **Caddy in front** gives HTTPS automatically. `reverse_proxy localhost:8080` passes WebSockets
   through as they are. Drogon listens on localhost only.
 - **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
@@ -1218,8 +1037,9 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
   - `GET /health` (`app().registerHandler`), for uptime monitoring;
   - one log line a minute with counters: connections, tables by state, game threads, moves made by
     stand-ins, CPU.
-- **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to the
-  repository at that commit, which covers the AGPL's section 13 for the server and the engine.
+- **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to this
+  repository at that commit, which covers the AGPL's section 13 for the server and the engine. It
+  links `romanian_whist_web` too, at the commit the page was built from.
 - **Privacy:** no accounts and no cookies, only a chosen display name and a random token in the
   browser's storage. An About page says so.
 
@@ -1260,8 +1080,8 @@ M, L.
 6. **A phase's outcome is written after its review**, and the checkouts sit on their parent
    branches while a reviewer reads, so a reviewer never sees the implementer's account.
 
-After phase 3, the page (phases 6–8) can be built against fixtures while phases 4 and 5 go on in
-the server.
+After phase 3, the page (phases 6–8, in its own plan) can be built against fixtures while phases 4
+and 5 go on in the server. Phase 6 starts in the server, with the fixture tool (§10.5).
 
 ### Phase 0: engine groundwork (the engine repository) — M ✅ COMPLETE
 
@@ -1451,7 +1271,8 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 - **Work:**
   - the Drogon controller over the core: `hello`, tokens, `createSolo`, prompts, answers, `sync`;
   - pause, and settings changed mid-game;
-  - a plain debug page: the snapshot as text, buttons for the legal bids and cards.
+  - a plain debug page in `server/www/`, in place of the placeholder: the snapshot as text,
+    buttons for the legal bids and cards.
 - **Done when:**
   - a whole solo game can be played in a browser;
   - a reload mid-trick resumes it;
@@ -1476,54 +1297,29 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 
 ### Phase 6: the table page — L
 
-- **Work:**
-  - the stage and seat geometry, name panels, racks, hand, played cards, lead mark, scoreboard,
-    trick panel, bid strip and bid bubbles;
-  - the playback queue;
-  - rendering from fixtures;
-  - `t()` everywhere, English only so far;
-  - every element ported from its desktop source ([§8.6](#86-from-the-mock-ups-script)'s last
-    column), with the mock-up's code kept only where it matches
-    ([§8.1](#81-the-look-the-desktop-client-wins)).
-- **Done when:**
-  - the comparisons with the desktop client's `table-3-players` to `table-6-players`, `bidding`,
-    `table-empty` and `hand-*` shots are linked;
-  - no difference from the desktop client remains that the browser does not force or the owner
-    has not accepted;
-  - the owner approves.
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-6-the-table-page--l).
+In this repository it first builds the fixture tool (§10.5), on a phase branch of its own off this
+repository's parent branch. That branch is reviewed like any phase's, and merged with a merge
+commit before the page needs the fixtures. The page's submodule then moves to that merge.
 
 ### Phase 7: sheets and menus — L
 
-- **Work:**
-  - the round sheet, history, last trick, final results, rules, settings and pause, as the
-    desktop client's overlay and sheets draw them, not the mock-up's modal;
-  - the main menu and solo setup, as the desktop client's main menu and New Game;
-  - the online lobby and its screens, which neither client has, in the desktop client's style
-    ([§8.1](#81-the-look-the-desktop-client-wins), point 5);
-  - the menu bar.
-- **Done when:**
-  - the comparisons with the `sheet-*` and `menu` shots are linked;
-  - no difference from the desktop client remains that the browser does not force or the owner
-    has not accepted;
-  - everything in [§2.1](#21-carried-over-from-the-desktop-client) works in solo play.
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-7-sheets-and-menus--l).
 
 ### Phase 8: Romanian, keyboard, touch — M
 
-- **Work:**
-  - the imported translations, the new strings in Romanian, gender agreement and plurals;
-  - keyboard play, the live region, touch, small screens.
-- **Done when:**
-  - the owner has reviewed the Romanian;
-  - a game can be played with the keyboard alone;
-  - a phone held sideways finishes a game.
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-8-romanian-keyboard-touch--m).
 
 ### Phase 9: hardening and deployment — M
 
 - **Work:**
   - the limits and rate limits, the Content-Security-Policy;
-  - the drain, `/health`, `/version` and the source link;
+  - the drain, `/health`, and `/version`, which the page's source links read;
   - the load test;
-  - the server, Caddy, systemd, a domain.
+  - the server, Caddy, systemd, a domain;
+  - the page's share, in `romanian_whist_web`: the footer's source links and the About page
+    ([the page's plan, §12](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#12-security)),
+    and the page built and deployed as §12 says.
 - **Done when:**
   - it is deployed;
   - the load test has set the running-game cap;
@@ -1531,14 +1327,10 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 
 ### Phase 10 (optional): offline solo — M to L
 
-- **Work:**
-  - `server/core`, without Drogon, compiled with Emscripten and run in a Web Worker. The seat
-    driver's wait becomes an awaited message from the page, using JSPI (Chrome and Edge 137+,
-    Firefox 153+, Safari 27+), with Asyncify as the fallback for other browsers (about 50% larger
-    code, and its handling of virtual calls needs tuning);
-  - the same protocol, over `postMessage`;
-  - a service worker that caches the page.
-- **Done when:** a solo game finishes with the network off.
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-10-optional-offline-solo--m-to-l).
+In this repository it compiles `server/core` with Emscripten, behind its two seams (§4.1). That
+work goes on a phase branch of its own off this repository's parent branch, as phase 6's does, and
+is merged before the page's part needs it.
 
 ### Phase 11 (optional): game records and recovery — M
 
@@ -1560,13 +1352,13 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 | A table stalls on a wait with no way out | Every wait has a deadline or a cancel (rule 4), with a test for each, and a log line when a wait outlives its deadline |
 | A stand-in plays badly after taking over mid-round | Phase 0's stand-in tests: legal moves, and no Cyborg fallbacks |
 | A restart loses games | The drain (phase 9), and recovery by replay (phase 11) |
-| Mock-up code kept where the desktop client differs | The check of [§8.1](#81-the-look-the-desktop-client-wins) before any reuse; [§8.6](#86-from-the-mock-ups-script)'s last column; comparisons only against the desktop client's pictures |
-| The look takes longer than planned, because more of the mock-up's code has to be replaced than hoped | Expected, and never a reason to keep a difference ([§8.1](#81-the-look-the-desktop-client-wins)); phases 6 and 7 are sized L for it. Port the desktop client's geometry and numbers, not Qt's mechanisms. Fixtures, and comparisons in every visual phase |
 | Reckoners load a small server | The running-game cap, the lower thread priority, and the measurements of phase 9 |
 | Abuse: floods of tables or messages | The limits of [§9](#9-security-and-fairness) |
 | Silent disconnects | Detection by pong, checked in phase 1 |
 | Names that spoof or inject | Text-only rendering, the Content-Security-Policy, the name rules of [§7.3](#73-names-genders-and-portraits) |
 | Drogon behaves differently from what this plan assumes | Phase 1's spikes, before anything depends on them |
+
+The page's own risks, about its look, are in [its plan's §16](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#16-risks).
 
 ---
 
@@ -1577,10 +1369,10 @@ The plan assumes each default until the owner decides otherwise.
 | # | Question | Default |
 |---|---|---|
 | D1 | Where do solo games run? | On the server. Offline in the browser later (phase 10) |
-| D2 | Where does the web client's code live? | **Decided by the owner, 2026-10-28:** a new repository, `romanian_whist_web`, this one |
+| D2 | Where does the web client's code live? | **Decided by the owner, 2026-10-28:** a new repository, `romanian_whist_web`, this one. **Changed by the owner, 2026-11-03:** this repository is now `romanian_whist_server`, for the server, its protocol and `server/core`, which the Android app uses too. The page moved to a new `romanian_whist_web` the same day, with its part of this plan |
 | D3 | Which Drogon? | 1.9.14, as a submodule built with the project |
 | D4 | Which JSON library? | jsoncpp, which Drogon already uses |
-| D5 | What is the page built with? | TypeScript and Vite, no UI framework |
+| D5 | What is the page built with? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D6 | Accounts? | None: a display name and a token in the browser |
 | D7 | How are tables found? | By link or code only; no public list |
 | D8 | How long is the grace period? | 30 s |
@@ -1589,11 +1381,11 @@ The plan assumes each default until the owner decides otherwise.
 | D11 | When does a returning player get the seat back? | At once, from the next decision |
 | D12 | The online round hold? | Until every connected human presses Continue, at most 30 s |
 | D13 | Pause in online games? | No |
-| D14 | Phones? | Held sideways: yes. Held upright: later |
+| D14 | Phones? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D15 | Spectators at others' tables? | Later, and never seeing hands while humans play |
 | D16 | Seeds in online games? | Not offered |
 | D17 | A solo player who goes away? | The game holds for up to 30 minutes |
-| D18 | Which look? | **Decided by the owner, 2026-10-27:** the desktop client. Where it and the mock-up differ, the desktop client wins, even when that means new code instead of the mock-up's ([§8.1](#81-the-look-the-desktop-client-wins)) |
+| D18 | Which look? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D19 | Chat? | None |
 | D20 | Hosting? | One small server, with Caddy and systemd |
 
@@ -1615,7 +1407,7 @@ The plan assumes each default until the owner decides otherwise.
 **The desktop client** (`romanian_whist_desktop`)
 
 - `docs/QT_CLIENT_PLAN_proposal1.md`: §§3–6 (thread, bridge, provider, shutdown), §9 (the
-  snapshot), §10 (the clients compared), §18 (colour is never the only cue), §20 (keyboard).
+  snapshot) and §10 (the clients compared).
 - `src/core/GameSnapshot.h`, `src/core/Snapshot.cpp`: the snapshot and its traps.
 - `src/engine/Prompts.h`, `src/engine/QtMoveProvider.cpp`: prompts, the generation gate,
   re-prompting.
@@ -1626,9 +1418,10 @@ The plan assumes each default until the owner decides otherwise.
 - `src/ui/PlayerNames.cpp`, `src/paint/Avatars.cpp`, `resources/names/player_names.json`,
   `resources/images/avatars/avatars.json`: names and portraits.
 - `src/ui/LastTrick.h`: the last trick, kept across rounds.
-- [§8.7](#87-from-the-desktop-client)'s table, for the look.
-- `tests/ScreenshotTool.cpp`: the screens to compare against.
-- `docs/ui-redesign/`: the redesign plan, the mock-up and its source.
+
+**The page** (`romanian_whist_web`)
+
+- `docs/page-plan.md`: the page's plan, with its own references for the look.
 
 **Outside**
 

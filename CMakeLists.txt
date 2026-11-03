@@ -1,9 +1,9 @@
 # 3.25 for add_subdirectory(SYSTEM), which keeps Drogon's headers out of our warnings.
 cmake_minimum_required(VERSION 3.25)
 
-project(romanian_whist_web
+project(romanian_whist_server
     VERSION 0.1.0
-    DESCRIPTION "Romanian Whist in the browser: the game server and its page"
+    DESCRIPTION "The Romanian Whist game server"
     LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -44,11 +44,11 @@ add_subdirectory(libs/drogon SYSTEM)
 # ---------------------------------------------------------------------------
 # Warnings, on our targets only
 # ---------------------------------------------------------------------------
-option(WHIST_WEB_WARNINGS_AS_ERRORS "Treat warnings in our own code as errors" OFF)
+option(WHIST_SERVER_WARNINGS_AS_ERRORS "Treat warnings in our own code as errors" OFF)
 
-set(WHIST_WEB_WARNINGS -Wall -Wextra -Wpedantic -Wshadow)
-if(WHIST_WEB_WARNINGS_AS_ERRORS)
-    list(APPEND WHIST_WEB_WARNINGS -Werror)
+set(WHIST_SERVER_WARNINGS -Wall -Wextra -Wpedantic -Wshadow)
+if(WHIST_SERVER_WARNINGS_AS_ERRORS)
+    list(APPEND WHIST_SERVER_WARNINGS -Werror)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -57,9 +57,9 @@ endif()
 add_subdirectory(server/core)
 add_subdirectory(server/app)
 
-option(WHIST_WEB_BUILD_TESTS "Build the server's tests" ${PROJECT_IS_TOP_LEVEL})
+option(WHIST_SERVER_BUILD_TESTS "Build the server's tests" ${PROJECT_IS_TOP_LEVEL})
 
-if(WHIST_WEB_BUILD_TESTS)
+if(WHIST_SERVER_BUILD_TESTS)
     enable_testing()
     add_subdirectory(server/tests)
 endif()
