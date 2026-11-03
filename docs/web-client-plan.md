@@ -1431,7 +1431,9 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **`tsan`,** three runs, each with the owner's leave: clean at `2e8b420`, one race at
     `0b5704a`, and clean at `8be1a50`.
   - **The default and release presets** pass 12 of 12 at `8be1a50`, and the browser test passes.
-    CI is green on runs 1 and 2, at `2e8b420` and `0b5704a`.
+    CI is green on runs 1, 2 and 4, at `2e8b420`, `0b5704a` and `362be11`. Run 3, at `8be1a50`,
+    was cancelled when run 4 started, and run 4 has the same code.
+  - **The owner approved** the phase on 2026-11-03.
 
 ### Phase 2: the server's core — L
 
