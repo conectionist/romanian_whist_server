@@ -6,7 +6,7 @@ The game server for Romanian Whist's online tables, built on the
 [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and the Android app.
 
 **Status:** a skeleton. The server serves a static page and answers on a WebSocket echo at `/ws`.
-[`docs/web-client-plan.md`](docs/web-client-plan.md) is the plan for the rest. The page's part of
+[`docs/server-plan.md`](docs/server-plan.md) is the plan for the rest. The page's part of
 it is in `romanian_whist_web`.
 
 ## Getting the code

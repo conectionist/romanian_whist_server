@@ -1,4 +1,4 @@
-# Romanian Whist on the web: implementation plan
+# Romanian Whist online: the server's implementation plan
 
 > **Status: phases 0 and 1 are complete (2026-11-03). Engine 5.1.0 carries phase 0, and this
 > repository's skeleton is phase 1. Phases 2 to 11 are not built yet.**
@@ -21,7 +21,8 @@
 > [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
 > Their places here keep their numbers and point there. The links point at that repository's
 > `master`. Until the page's work reaches it, the current page plan is on the web repository's
-> parent branch. Phase 6 creates that branch, and its name is written here then.
+> parent branch. Phase 6 creates that branch, and its name is written here then. The same day,
+> this file was renamed from `docs/web-client-plan.md` to `docs/server-plan.md`.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
 to build, which existing code each part comes from, in what order, and how to tell each phase is
