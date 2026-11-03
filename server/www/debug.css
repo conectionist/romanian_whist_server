@@ -1,0 +1,63 @@
+body
+{
+    font-family: system-ui, sans-serif;
+    margin: 1rem;
+    max-width: 70rem;
+    background: #fff;
+    color: #111;
+}
+
+pre, textarea
+{
+    font-family: ui-monospace, monospace;
+    font-size: 0.9rem;
+}
+
+pre
+{
+    background: #f3f3f3;
+    padding: 0.5rem;
+    overflow-x: auto;
+}
+
+textarea
+{
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.note
+{
+    color: #555;
+    font-size: 0.9rem;
+}
+
+.controls
+{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    align-items: center;
+}
+
+.box
+{
+    border: 2px solid #333;
+    padding: 0.5rem 1rem;
+    margin: 1rem 0;
+}
+
+#choices button
+{
+    margin: 0.2rem;
+    min-width: 3rem;
+    font-size: 1.1rem;
+}
+
+#events, #errors
+{
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    max-height: 16rem;
+    overflow-y: auto;
+}
