@@ -10,7 +10,10 @@
 #include <romanian_whist/IGameObserver.h>
 #include <romanian_whist/Snapshot.h>
 
+#include <atomic>
 #include <condition_variable>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -31,7 +34,7 @@ struct Viewer
 class Publisher : public romanian_whist::IGameObserver
 {
 public:
-    Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing,
+    Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
               const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox);
 
     void onGameStarted(const romanian_whist::GameEngine& engine) override;
@@ -49,9 +52,25 @@ public:
     void onGameOver(const romanian_whist::GameEngine& engine) override;
     void onGameStopped(const romanian_whist::GameEngine& engine) override;
 
-    // Any thread. Ends any rest at once and keeps later ones from starting. Rests return rather
-    // than throw, so the game reaches its next boundary and stops there cleanly.
+    // Any thread. Ends any rest or hold at once and keeps later ones from starting. Rests return
+    // rather than throw, so the game reaches its next boundary and stops there cleanly.
     void cancel();
+
+    // Any thread. Nothing is sent after it returns, not even the game's own gameStopped.
+    void silence();
+
+    // Any thread. A pause lands at the game's next rest and holds it there until resumed.
+    void setPaused(bool paused);
+
+    // Any thread. Ends the hold on `round`, if that round is held; anything else changes nothing.
+    void continueRound(unsigned int round);
+
+    // Any thread. A new speed applies to the rest under way. The wait applies from the next scored
+    // round, so a hold already on stays on.
+    void setPacing(Pacing pacing, bool waitAfterRound);
+
+    // Any thread. True once gameOver has been sent: nothing else of this game's follows it.
+    bool gameOverSent() const;
 
     // Game thread, after run() failed: tells every viewer the game stopped, from the cache.
     void announceFailure();
@@ -80,9 +99,13 @@ private:
     void rest(Rest kind);
     bool computerMoves(romanian_whist::Seat seat) const;
 
+    std::chrono::milliseconds lengthOf(Rest kind) const;
+
+    // Sends to every viewer. Called with cacheMutex_ held.
+    void broadcastLocked(const std::function<Json::Value(const Viewer&)>& message);
+
     const unsigned int game_;
     const std::vector<Viewer> viewers_;
-    const Pacing pacing_;
     const std::vector<std::unique_ptr<SeatDriver>>& drivers_;
     Outbox& outbox_;
     const bool anyHuman_;
@@ -93,9 +116,19 @@ private:
     std::vector<std::optional<romanian_whist::GameSnapshot>> latest_;
     std::vector<RoundResult> history_;
     std::optional<LastTrick> lastTrick_;
+    std::optional<HoldView> hold_;
+    bool silenced_ = false;
 
+    std::atomic<bool> gameOverSent_{false};
+
+    // Guards everything below, and is never held with cacheMutex_.
     std::mutex restMutex_;
     std::condition_variable restChanged_;
+    Pacing pacing_;
+    std::uint64_t pacingVersion_ = 0;
+    bool waitAfterRound_;
+    bool paused_ = false;
+    std::optional<unsigned int> heldRound_;
     bool cancelled_ = false;
 };
 

@@ -26,15 +26,16 @@ std::vector<StandingRow> rows(const std::vector<Standing>& standings)
 
 } // namespace
 
-Publisher::Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing,
+Publisher::Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
                      const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox)
     : game_(game),
       viewers_(std::move(viewers)),
-      pacing_(pacing),
       drivers_(drivers),
       outbox_(outbox),
       anyHuman_(std::ranges::any_of(drivers, [](const auto& driver) { return driver->humanInCharge(); })),
-      latest_(drivers.size() + 1)
+      latest_(drivers.size() + 1),
+      pacing_(pacing),
+      waitAfterRound_(waitAfterRound)
 {
 }
 
@@ -71,8 +72,17 @@ void Publisher::publish(const GameEngine& engine, const GameEvent& event, std::o
         lastTrick_ = std::move(finishedTrick);
     if(event.result)
         history_.push_back(*event.result);
+    broadcastLocked([&](const Viewer& viewer) { return gameMessage(game_, event, *encoded[slotOf(viewer.seat)]); });
+    if(event.kind == EventKind::GameOver)
+        gameOverSent_ = true;
+}
+
+void Publisher::broadcastLocked(const std::function<Json::Value(const Viewer&)>& message)
+{
+    if(silenced_)
+        return;
     for(const Viewer& viewer : viewers_)
-        outbox_.send(viewer.member, gameMessage(game_, event, *encoded[slotOf(viewer.seat)]));
+        outbox_.send(viewer.member, message(viewer));
 }
 
 bool Publisher::computerMoves(Seat seat) const
@@ -80,17 +90,35 @@ bool Publisher::computerMoves(Seat seat) const
     return !drivers_.at(seat.index)->humanInCharge();
 }
 
+std::chrono::milliseconds Publisher::lengthOf(Rest kind) const
+{
+    if(kind == Rest::Dwell)
+        return pacing_.trickDwell;
+    return anyHuman_ ? pacing_.beat : pacing_.spectatorBeat;
+}
+
+// The desktop's pace(): a pause or a hold waits out the rest under way, then holds, and a rest that
+// begins paused or held is the hold alone. Neither has a deadline: the closing path cancels.
 void Publisher::rest(Rest kind)
 {
-    std::chrono::milliseconds length = pacing_.trickDwell;
-    if(kind == Rest::Beat)
-        length = anyHuman_ ? pacing_.beat : pacing_.spectatorBeat;
-
-    if(length.count() <= 0)
-        return;
-
     std::unique_lock lock(restMutex_);
-    waitUntil(restChanged_, lock, Clock::now() + length, [this] { return cancelled_; });
+    if(!paused_ && !heldRound_)
+    {
+        const Clock::time_point started = Clock::now();
+        while(!cancelled_)
+        {
+            // Measured again on every wake, so a new speed applies to this rest too.
+            const Clock::time_point end = started + lengthOf(kind);
+            if(Clock::now() >= end)
+                break;
+
+            // A wait with a deadline wakes early only when its condition holds, so a speed change
+            // needs one of its own.
+            const std::uint64_t seen = pacingVersion_;
+            waitUntil(restChanged_, lock, end, [&] { return cancelled_ || pacingVersion_ != seen; });
+        }
+    }
+    waitUntil(restChanged_, lock, std::nullopt, [this] { return cancelled_ || (!paused_ && !heldRound_); });
 }
 
 void Publisher::cancel()
@@ -100,6 +128,53 @@ void Publisher::cancel()
         cancelled_ = true;
     }
     restChanged_.notify_all();
+}
+
+void Publisher::silence()
+{
+    std::lock_guard lock(cacheMutex_);
+    silenced_ = true;
+}
+
+void Publisher::setPaused(bool paused)
+{
+    {
+        std::lock_guard lock(restMutex_);
+        paused_ = paused;
+    }
+    restChanged_.notify_all();
+}
+
+void Publisher::continueRound(unsigned int round)
+{
+    {
+        std::lock_guard lock(restMutex_);
+        if(heldRound_ != round)
+            return;
+        heldRound_.reset();
+    }
+    restChanged_.notify_all();
+
+    // Cleared here too, so a sync taken while the game is still paused shows no hold to continue.
+    std::lock_guard lock(cacheMutex_);
+    if(hold_ && hold_->round == round)
+        hold_.reset();
+}
+
+void Publisher::setPacing(Pacing pacing, bool waitAfterRound)
+{
+    {
+        std::lock_guard lock(restMutex_);
+        pacing_ = pacing;
+        waitAfterRound_ = waitAfterRound;
+        pacingVersion_++;
+    }
+    restChanged_.notify_all();
+}
+
+bool Publisher::gameOverSent() const
+{
+    return gameOverSent_;
 }
 
 void Publisher::onGameStarted(const GameEngine& engine)
@@ -201,10 +276,41 @@ void Publisher::onRoundScored(const GameEngine& engine)
         result.seats.push_back({seat.bet, seat.tricksWon, seat.roundScore, seat.totalScore, seat.winStreak,
                                 seat.lossStreak});
 
+    const unsigned int round = result.index;
     GameEvent event{EventKind::RoundScored};
     event.result = std::move(result);
     publish(engine, event);
+
+    // Read once, as the desktop does: changing the setting later leaves this round's hold alone.
+    bool hold = false;
+    {
+        std::lock_guard lock(restMutex_);
+        hold = waitAfterRound_ && !cancelled_;
+        if(hold)
+            heldRound_ = round;
+    }
+    if(hold)
+    {
+        HoldView view;
+        view.round = round;
+        for(unsigned int seat = 0 ; seat < drivers_.size() ; seat++)
+        {
+            if(drivers_[seat]->humanInCharge())
+                view.waitingFor.push_back(seat);
+        }
+
+        std::lock_guard lock(cacheMutex_);
+        hold_ = view;
+        broadcastLocked([&](const Viewer&) { return heldMessage(view); });
+    }
+
     rest(Rest::Dwell);
+
+    if(hold)
+    {
+        std::lock_guard lock(cacheMutex_);
+        hold_.reset();
+    }
 }
 
 void Publisher::onRoundComplete(const GameEngine& engine)
@@ -228,12 +334,12 @@ void Publisher::onGameStopped(const GameEngine& engine)
 void Publisher::announceFailure()
 {
     std::lock_guard lock(cacheMutex_);
-    for(const Viewer& viewer : viewers_)
+    broadcastLocked([&](const Viewer& viewer)
     {
         const std::optional<GameSnapshot>& snapshot = latest_[slotOf(viewer.seat)];
-        outbox_.send(viewer.member, gameMessage(game_, {EventKind::GameStopped},
-                                                snapshot ? encodeSnapshot(*snapshot) : Json::Value(Json::nullValue)));
-    }
+        return gameMessage(game_, {EventKind::GameStopped},
+                           snapshot ? encodeSnapshot(*snapshot) : Json::Value(Json::nullValue));
+    });
 }
 
 void Publisher::sendSync(MemberId member, TableView table, const std::optional<Prompt>& prompt)
@@ -256,6 +362,7 @@ void Publisher::sendSync(MemberId member, TableView table, const std::optional<P
         sync.snapshot = encodeSnapshot(*snapshot);
     sync.history = history_;
     sync.lastTrick = lastTrick_;
+    sync.held = hold_;
     outbox_.send(member, syncMessage(sync, Clock::now()));
 }
 

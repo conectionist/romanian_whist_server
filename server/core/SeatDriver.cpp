@@ -195,7 +195,9 @@ IGameObserver* SeatDriver::observer() const
 
 void SeatDriver::send(Json::Value message)
 {
-    if(member_)
+    // Checked under the lock abandon() takes, so an abandoned seat sends nothing more.
+    std::lock_guard lock(mutex_);
+    if(member_ && !abandoned_)
         outbox_.send(*member_, std::move(message));
 }
 

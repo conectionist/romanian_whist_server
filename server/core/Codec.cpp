@@ -447,6 +447,7 @@ std::string_view errorName(ErrorCode code)
         case ErrorCode::Illegal: return "illegal";
         case ErrorCode::RateLimited: return "rateLimited";
         case ErrorCode::Draining: return "draining";
+        case ErrorCode::OpenElsewhere: return "openElsewhere";
     }
     return "badMessage";
 }
@@ -744,6 +745,7 @@ Json::Value encodeTableView(const TableView& view)
         waiting["deadline"] = milliseconds(view.waitingFor->deadline);
         value["waitingFor"] = waiting;
     }
+    value["paused"] = view.paused;
     return value;
 }
 
@@ -755,7 +757,7 @@ Json::Value encodeHold(const HoldView& hold)
     for(unsigned int seat : hold.waitingFor)
         waiting.append(seat);
     value["waitingFor"] = waiting;
-    value["deadline"] = milliseconds(hold.deadline);
+    value["deadline"] = hold.deadline ? milliseconds(*hold.deadline) : Json::Value(Json::nullValue);
     return value;
 }
 
@@ -860,7 +862,7 @@ Json::Value errorMessage(ErrorCode code, std::string_view detail)
 Json::Value syncMessage(const SyncView& sync, Clock::time_point now)
 {
     Json::Value message = typed("sync");
-    message["table"] = encodeTableView(sync.table);
+    message["table"] = sync.table ? encodeTableView(*sync.table) : Json::Value(Json::nullValue);
     message["game"] = optionalNumber(sync.game);
     message["snapshot"] = sync.snapshot ? *sync.snapshot : Json::Value(Json::nullValue);
 

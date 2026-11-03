@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
+#include <thread>
 
 using namespace whist;
 using std::chrono::milliseconds;
@@ -186,6 +187,33 @@ TEST_CASE("Closing a game joins its thread at once", "[game][close]")
         REQUIRE(game.waitFor(watcher, "betRequested"));
 
         CHECK(game.closeAndJoin() < bound);
+    }
+
+    SECTION("while paused")
+    {
+        GameRunSetup setup = test::quickGame(test::tableSettings(3, {}), {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->setPaused(true);
+        game.run->start();
+        REQUIRE(game.waitFor(watcher, "betPlaced"));
+        std::this_thread::sleep_for(milliseconds(50));
+
+        CHECK(game.closeAndJoin() < bound);
+    }
+
+    SECTION("during the hold after a round")
+    {
+        Settings settings = test::tableSettings(3, {});
+        settings.waitAfterRound = true;
+        GameRunSetup setup = test::quickGame(settings, {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->start();
+        REQUIRE(game.recorder.waitFor(watcher, [](const Json::Value& m) { return m["type"] == "held"; }, patience));
+
+        CHECK(game.closeAndJoin() < bound);
+        CHECK(game.recorder.messagesTo(watcher).back()["event"]["kind"] == "gameStopped");
     }
 
     SECTION("before it ever started")

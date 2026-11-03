@@ -2,6 +2,7 @@
 
 #include "core/Codec.h"
 #include "core/Log.h"
+#include "core/Pacing.h"
 
 #include <algorithm>
 #include <string>
@@ -78,7 +79,7 @@ std::optional<RunOutcome> Table::outcome() const
 TableState Table::stateLocked() const
 {
     // Nothing on the game thread calls back into the table, so a game's end is read off its run.
-    if(state_ == TableState::Playing && run_ && run_->finished())
+    if(state_ == TableState::Playing && run_ && run_->over())
         return TableState::Finished;
     return state_;
 }
@@ -101,6 +102,7 @@ TableView Table::viewLocked(MemberId member) const
     view.state = stateLocked();
     view.host = seatOfLocked(host_);
     view.settings = settings_;
+    view.paused = paused_ && view.state == TableState::Playing;
 
     for(unsigned int i = 0 ; i < settings_.seats.size() ; i++)
     {
@@ -168,9 +170,11 @@ std::optional<ErrorCode> Table::startGame(MemberId by)
 
         auto run = std::make_unique<GameRun>(std::move(setup), outbox_);
         const TableState before = state_;
+        const bool pausedBefore = paused_;
         previous = std::exchange(run_, std::move(run));
         game_++;
         state_ = TableState::Playing;
+        paused_ = false;
 
         // The tableState goes out before the game's first message.
         broadcastLocked();
@@ -185,16 +189,21 @@ std::optional<ErrorCode> Table::startGame(MemberId by)
             run_ = std::move(previous);
             game_--;
             state_ = before;
+            paused_ = pausedBefore;
             broadcastLocked();
             return ErrorCode::Draining;
         }
+
+        // It has sent gameOver; whatever it might still send must not follow the new game's start.
+        if(previous)
+            previous->silence();
     }
 
     joiner_->hand(std::move(previous));
     return std::nullopt;
 }
 
-void Table::answer(MemberId member, const Answer& answer)
+std::optional<ErrorCode> Table::answer(MemberId member, const Answer& answer)
 {
     SeatDriver::Submitted submitted = SeatDriver::Submitted::NotYourTurn;
     {
@@ -204,17 +213,87 @@ void Table::answer(MemberId member, const Answer& answer)
             submitted = run_->submit(*seat, answer);
     }
 
-    if(submitted == SeatDriver::Submitted::Stale)
-        outbox_.send(member, errorMessage(ErrorCode::StalePrompt));
-    else if(submitted == SeatDriver::Submitted::NotYourTurn)
-        outbox_.send(member, errorMessage(ErrorCode::NotYourTurn));
+    switch(submitted)
+    {
+        case SeatDriver::Submitted::Taken: return std::nullopt;
+        case SeatDriver::Submitted::Stale: return ErrorCode::StalePrompt;
+        case SeatDriver::Submitted::NotYourTurn: return ErrorCode::NotYourTurn;
+    }
+    return ErrorCode::NotYourTurn;
 }
 
-void Table::sync(MemberId member)
+std::optional<ErrorCode> Table::checkSoloPlayingLocked(MemberId by) const
+{
+    if(state_ == TableState::Closed)
+        return ErrorCode::NotFound;
+    if(by != host_)
+        return ErrorCode::NotHost;
+    if(mode_ != Mode::Solo || stateLocked() != TableState::Playing || !run_)
+        return ErrorCode::Illegal;
+    return std::nullopt;
+}
+
+std::optional<ErrorCode> Table::setPaused(MemberId by, bool paused)
 {
     std::lock_guard lock(mutex_);
-    if(!std::ranges::any_of(members_, [member](const TableMember& m) { return m.id == member; }))
-        return;
+    if(const std::optional<ErrorCode> refused = checkSoloPlayingLocked(by))
+        return refused;
+    if(paused_ == paused)
+        return std::nullopt;
+
+    paused_ = paused;
+    run_->setPaused(paused);
+    broadcastLocked();
+    return std::nullopt;
+}
+
+std::optional<ErrorCode> Table::updateSettings(MemberId by, const Settings& settings)
+{
+    if(checkSettings(settings, mode_))
+        return ErrorCode::BadMessage;
+
+    std::lock_guard lock(mutex_);
+    if(state_ == TableState::Closed)
+        return ErrorCode::NotFound;
+    if(by != host_)
+        return ErrorCode::NotHost;
+    if(mode_ != Mode::Solo)
+        return ErrorCode::Illegal;
+
+    Settings unchanged = settings;
+    unchanged.botSpeed = settings_.botSpeed;
+    unchanged.waitAfterRound = settings_.waitAfterRound;
+    if(unchanged != settings_)
+        return ErrorCode::Illegal;
+
+    settings_.botSpeed = settings.botSpeed;
+    settings_.waitAfterRound = settings.waitAfterRound;
+    if(run_)
+        run_->setPacing(pacingFor(settings_.botSpeed, options_.instantFloor), settings_.waitAfterRound);
+    broadcastLocked();
+    return std::nullopt;
+}
+
+std::optional<ErrorCode> Table::continueRound(MemberId by, unsigned int round)
+{
+    std::lock_guard lock(mutex_);
+    if(const std::optional<ErrorCode> refused = checkSoloPlayingLocked(by))
+    {
+        // A Continue that arrives just after the game ended is not worth an error.
+        if(refused == ErrorCode::Illegal)
+            return std::nullopt;
+        return refused;
+    }
+    run_->continueRound(round);
+    return std::nullopt;
+}
+
+bool Table::sync(MemberId member)
+{
+    std::lock_guard lock(mutex_);
+    if(state_ == TableState::Closed ||
+       !std::ranges::any_of(members_, [member](const TableMember& m) { return m.id == member; }))
+        return false;
 
     TableView view = viewLocked(member);
     if(!run_)
@@ -222,9 +301,10 @@ void Table::sync(MemberId member)
         SyncView sync;
         sync.table = std::move(view);
         outbox_.send(member, syncMessage(sync, Clock::now()));
-        return;
+        return true;
     }
     run_->sendSync(member, seatOfLocked(member), std::move(view));
+    return true;
 }
 
 void Table::close()
@@ -236,6 +316,8 @@ void Table::close()
             return;
         state_ = TableState::Closed;
         run = std::move(run_);
+        if(run)
+            run->silence();
         broadcastLocked();
     }
     joiner_->hand(std::move(run));

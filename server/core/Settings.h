@@ -49,6 +49,8 @@ struct Profile
     std::string name;
     std::string gender;
     std::string avatar;
+
+    bool operator==(const Profile&) const = default;
 };
 
 struct SeatSetting
@@ -60,6 +62,8 @@ struct SeatSetting
 
     // Human and computer seats.
     Profile profile;
+
+    bool operator==(const SeatSetting&) const = default;
 };
 
 struct Settings
@@ -79,6 +83,8 @@ struct Settings
     // Online only. Who plays a human's seat while they cannot, and how long a turn may take.
     std::optional<Level> replacement;
     std::optional<std::chrono::milliseconds> turnTimer;
+
+    bool operator==(const Settings&) const = default;
 };
 
 inline constexpr int slowestSpeed = 0;

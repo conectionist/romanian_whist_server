@@ -94,8 +94,7 @@ TEST_CASE("Creating a solo table checks its settings and its member", "[registry
 
     REQUIRE(registry.createSolo(member.id, test::tableSettings(3, {})).table);
     const Registry::Created twice = registry.createSolo(member.id, test::tableSettings(3, {}));
-    CHECK(twice.error == ErrorCode::BadMessage);
-    CHECK(twice.detail == "table");
+    CHECK(twice.error == ErrorCode::Illegal);
 
     registry.shutdown();
     const Registry::NewMember late = registry.newMember();
@@ -132,8 +131,7 @@ TEST_CASE("A solo table plays, finishes, plays again and closes", "[table]")
 
     // A stranger may not start the next game, and an answer now finds no prompt.
     CHECK(table->startGame(ana.id + 100) == ErrorCode::NotHost);
-    table->answer(ana.id, Answer{PromptKind::Bet, 1, 0});
-    CHECK(recorder.messagesTo(ana.id).back()["code"] == "stalePrompt");
+    CHECK(table->answer(ana.id, Answer{PromptKind::Bet, 1, 0}) == ErrorCode::StalePrompt);
 
     // A new game at the same table: the old one is joined off this thread.
     const std::size_t before = recorder.messagesTo(ana.id).size();
@@ -149,9 +147,11 @@ TEST_CASE("A solo table plays, finishes, plays again and closes", "[table]")
     CHECK_FALSE(registry.findTable(table->code()));
     CHECK_FALSE(registry.tableOf(ana.id));
     CHECK(waitUntil([&] { return registry.joiner().joined() == 2; }));
-    // The game may still report its own stop after the table says it closed.
+
+    // Nothing of the game's follows the table's own word that it closed.
     const auto closing = recorder.messagesTo(ana.id);
-    CHECK(std::ranges::any_of(closing, [](const Json::Value& m) { return m["type"] == "tableState" && m["state"] == "closed"; }));
+    CHECK(closing.back()["type"] == "tableState");
+    CHECK(closing.back()["state"] == "closed");
 }
 
 TEST_CASE("Watching a solo game: the member has no seat and sees no hand", "[table]")

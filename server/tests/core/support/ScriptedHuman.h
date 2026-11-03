@@ -43,7 +43,11 @@ public:
     // Returning true means it answered the prompt itself.
     using OnPrompt = std::function<bool(const Json::Value&)>;
 
-    ScriptedHuman(Recorder& recorder, MemberId member, Answerer answer, Behaviour behaviour, OnPrompt onPrompt = {});
+    // Called with a hold's round, to send the Continue that ends it.
+    using Continuer = std::function<void(unsigned int)>;
+
+    ScriptedHuman(Recorder& recorder, MemberId member, Answerer answer, Behaviour behaviour, OnPrompt onPrompt = {},
+                  Continuer onHeld = {});
     ~ScriptedHuman();
 
     ScriptedHuman(const ScriptedHuman&) = delete;
@@ -64,6 +68,7 @@ public:
         std::size_t illegal = 0;
         std::size_t stale = 0;
         std::size_t notYourTurn = 0;
+        std::size_t holds = 0;
     };
 
     Counts counts() const;
@@ -81,6 +86,7 @@ private:
     const Answerer answer_;
     const Behaviour behaviour_;
     const OnPrompt onPrompt_;
+    const Continuer onHeld_;
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;

@@ -29,6 +29,10 @@ add_library(whist_session STATIC
     SeatDriver.h
     SeatDriver.cpp
     SeatProvider.h
+    Service.h
+    Service.cpp
+    Session.h
+    Session.cpp
     Settings.h
     Settings.cpp
     Table.h
@@ -42,5 +46,16 @@ find_package(jsoncpp CONFIG REQUIRED)
 target_include_directories(whist_session PUBLIC ${PROJECT_SOURCE_DIR}/server)
 target_compile_features(whist_session PUBLIC cxx_std_20)
 target_compile_options(whist_session PRIVATE ${WHIST_SERVER_WARNINGS})
-target_compile_definitions(whist_session PRIVATE WHIST_SERVER_VERSION="${PROJECT_VERSION}")
+
+# Recorded when CMake configures, so it can lag behind a later commit until the next configure.
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE WHIST_SERVER_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+target_compile_definitions(whist_session PRIVATE WHIST_SERVER_VERSION="${PROJECT_VERSION}"
+                                                 WHIST_SERVER_COMMIT="${WHIST_SERVER_COMMIT}")
 target_link_libraries(whist_session PUBLIC RomanianWhist::engine jsoncpp_lib)

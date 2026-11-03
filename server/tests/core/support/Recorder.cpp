@@ -17,8 +17,9 @@ namespace
 class RecordingConnection : public Connection
 {
 public:
-    RecordingConnection(MemberId member, std::function<void(MemberId, std::string)> record)
-        : record_(std::move(record)), member_(member)
+    RecordingConnection(MemberId member, std::function<void(MemberId, std::string)> record,
+                        std::function<void(MemberId)> close)
+        : record_(std::move(record)), close_(std::move(close)), member_(member)
     {
     }
 
@@ -27,8 +28,14 @@ public:
         record_(member_, std::move(text));
     }
 
+    void close() override
+    {
+        close_(member_);
+    }
+
 private:
     std::function<void(MemberId, std::string)> record_;
+    std::function<void(MemberId)> close_;
     MemberId member_;
 };
 
@@ -63,7 +70,33 @@ Json::Value parse(const std::string& text)
 
 std::shared_ptr<Connection> Recorder::connect(MemberId member)
 {
-    return std::make_shared<RecordingConnection>(member, [this](MemberId to, std::string text) { record(to, std::move(text)); });
+    return std::make_shared<RecordingConnection>(member,
+                                                 [this](MemberId to, std::string text) { record(to, std::move(text)); },
+                                                 [this](MemberId to) { recordClose(to); });
+}
+
+void Recorder::recordClose(MemberId member)
+{
+    {
+        std::lock_guard lock(mutex_);
+        closedAfter_.try_emplace(member, byMember_[member].size());
+    }
+    changed_.notify_all();
+}
+
+std::optional<std::size_t> Recorder::closedAfter(MemberId member) const
+{
+    std::lock_guard lock(mutex_);
+    const auto found = closedAfter_.find(member);
+    if(found == closedAfter_.end())
+        return std::nullopt;
+    return found->second;
+}
+
+bool Recorder::waitForClose(MemberId member, std::chrono::milliseconds timeout)
+{
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, timeout, [&] { return closedAfter_.contains(member); });
 }
 
 void Recorder::record(MemberId member, std::string text)

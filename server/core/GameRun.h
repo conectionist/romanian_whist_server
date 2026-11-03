@@ -76,12 +76,25 @@ public:
     // waiting on its human. Does not wait for the thread.
     void close();
 
+    // Any thread. Closes the game, and nothing more is sent from it after this returns, not even its
+    // gameStopped. For a table letting go of a game, so its messages never follow the table's own.
+    void silence();
+
+    // True once the game thread is done with the engine.
     bool finished() const;
+
+    // True once the game has sent gameOver or its thread is done: nothing more of it will follow.
+    bool over() const;
     RunOutcome outcome() const;
     unsigned int game() const;
 
     // Any thread.
     SeatDriver::Submitted submit(unsigned int seat, const Answer& answer);
+
+    // Any thread. See Publisher.
+    void setPaused(bool paused);
+    void continueRound(unsigned int round);
+    void setPacing(Pacing pacing, bool waitAfterRound);
 
     // Any thread. The member's sync, with their seat's open prompt when they have a seat.
     void sendSync(MemberId member, std::optional<unsigned int> seat, TableView table);

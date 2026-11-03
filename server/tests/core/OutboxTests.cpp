@@ -19,27 +19,88 @@ TEST_CASE("The Outbox numbers each connection's messages and drops them for nobo
     outbox.send(1, message);
     CHECK_FALSE(outbox.isConnected(1));
 
-    const auto first = recorder.connect(1);
+    // Each connection is logged under a number of its own: 11 and 12 are both member 1's.
+    const auto first = recorder.connect(11);
     outbox.attach(1, first);
     CHECK(outbox.isConnected(1));
+    CHECK(outbox.isCurrent(1, first.get()));
     outbox.send(1, message);
     outbox.send(1, message);
 
-    // A newer connection starts its own count, and an old one's late close leaves it alone.
-    const auto second = recorder.connect(1);
+    // A newer connection wins: the older is told why and closed, and its late close of its own
+    // leaves the newer alone. The newer starts its own count.
+    const auto second = recorder.connect(12);
     outbox.attach(1, second);
+    CHECK_FALSE(outbox.isCurrent(1, first.get()));
     outbox.detach(1, first.get());
     CHECK(outbox.isConnected(1));
     outbox.send(1, message);
 
-    const auto messages = recorder.messagesTo(1);
-    REQUIRE(messages.size() == 3);
-    CHECK(messages[0]["seq"] == 1);
-    CHECK(messages[1]["seq"] == 2);
-    CHECK(messages[2]["seq"] == 1);
+    const auto older = recorder.messagesTo(11);
+    REQUIRE(older.size() == 3);
+    CHECK(older[0]["seq"] == 1);
+    CHECK(older[1]["seq"] == 2);
+    CHECK(older[2]["code"] == "openElsewhere");
+    CHECK(older[2]["seq"] == 3);
+    CHECK(recorder.closedAfter(11) == 3u);
+
+    const auto newer = recorder.messagesTo(12);
+    REQUIRE(newer.size() == 1);
+    CHECK(newer[0]["seq"] == 1);
+    CHECK_FALSE(recorder.closedAfter(12));
 
     outbox.detach(1, second.get());
     CHECK_FALSE(outbox.isConnected(1));
+}
+
+TEST_CASE("A connection is numbered on its own, whoever it belongs to", "[outbox]")
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    const auto link = outbox.open(recorder.connect(5));
+
+    Json::Value error(Json::objectValue);
+    error["type"] = "error";
+    outbox.post(*link, error);
+
+    Json::Value welcome(Json::objectValue);
+    welcome["type"] = "welcome";
+    REQUIRE(outbox.attach(1, link, welcome));
+    outbox.send(1, error);
+
+    // Closed: nothing more goes out, and the member is not attached again.
+    outbox.close(*link);
+    outbox.post(*link, error);
+    outbox.send(1, error);
+    CHECK_FALSE(outbox.attach(2, link, welcome));
+
+    const auto messages = recorder.messagesTo(5);
+    REQUIRE(messages.size() == 3);
+    CHECK(messages[0]["seq"] == 1);
+    CHECK(messages[1]["type"] == "welcome");
+    CHECK(messages[1]["seq"] == 2);
+    CHECK(messages[2]["seq"] == 3);
+    CHECK(recorder.closedAfter(5) == 3u);
+}
+
+TEST_CASE("Once stopped, the Outbox sends and attaches nothing", "[outbox]")
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    outbox.attach(1, recorder.connect(1));
+    const auto link = outbox.open(recorder.connect(2));
+    outbox.stop();
+
+    Json::Value message(Json::objectValue);
+    message["type"] = "error";
+    outbox.send(1, message);
+    outbox.post(*link, message);
+    outbox.close(*link);
+    CHECK_FALSE(outbox.attach(3, link, message));
+    CHECK_FALSE(outbox.isConnected(1));
+    CHECK(recorder.messagesTo(1).empty());
+    CHECK(recorder.messagesTo(2).empty());
+    CHECK_FALSE(recorder.closedAfter(2));
 }
 
 TEST_CASE("Messages sent from many threads leave in seq order", "[outbox]")

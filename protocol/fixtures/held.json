@@ -1,11 +1,10 @@
 {
-  "deadline" : 30000,
-  "round" : 7,
-  "seq" : 812,
+  "deadline" : null,
+  "round" : 0,
+  "seq" : 26,
   "type" : "held",
   "waitingFor" : 
   [
-    0,
-    2
+    0
   ]
 }

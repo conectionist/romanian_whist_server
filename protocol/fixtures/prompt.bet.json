@@ -10,6 +10,6 @@
   "kind" : "bet",
   "max" : 1,
   "roundType" : "normal",
-  "seq" : 5,
+  "seq" : 7,
   "type" : "prompt"
 }

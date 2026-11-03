@@ -58,16 +58,29 @@ public:
     // the table is left as it was and the answer is Draining.
     std::optional<ErrorCode> startGame(MemberId by);
 
-    // A bet or a play from an I/O thread. An answer to no open prompt is told so; a legal or
-    // illegal answer to the open one is the game thread's to handle.
-    void answer(MemberId member, const Answer& answer);
+    // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
+    // returned, which goes back to the connection it came from; a legal or illegal answer to the
+    // open one is the game thread's to handle.
+    std::optional<ErrorCode> answer(MemberId member, const Answer& answer);
 
-    // Sends the member everything they need to pick the game up where it is.
-    void sync(MemberId member);
+    // Solo, while a game is on: holds it at its next rest, or lets it go on.
+    std::optional<ErrorCode> setPaused(MemberId by, bool paused);
+
+    // Solo: only the bot speed and the wait after each round may change once the table exists. A
+    // running game takes them up at once.
+    std::optional<ErrorCode> updateSettings(MemberId by, const Settings& settings);
+
+    // Ends the hold on that round, if it is on. Anything else is ignored.
+    std::optional<ErrorCode> continueRound(MemberId by, unsigned int round);
+
+    // Sends the member everything they need to pick the game up where it is. False when they are
+    // not at this table, and nothing was sent.
+    bool sync(MemberId member);
 
     TableView viewFor(MemberId member) const;
 
-    // Ends the game, if one is running, and tells everyone the table is closed.
+    // Ends the game, if one is running, and tells everyone the table is closed. That is the last
+    // message anyone gets from this table.
     void close();
 
     // For tests: the outcome of the current game, if there is one.
@@ -78,6 +91,9 @@ private:
     TableView viewLocked(MemberId member) const;
     std::optional<unsigned int> seatOfLocked(MemberId member) const;
     void broadcastLocked() const;
+
+    // Solo, by the host, with a game playing.
+    std::optional<ErrorCode> checkSoloPlayingLocked(MemberId by) const;
 
     const std::string code_;
     const Mode mode_;
@@ -94,6 +110,7 @@ private:
     std::vector<TableMember> members_;
     MemberId host_;
     TableState state_ = TableState::Lobby;
+    bool paused_ = false;
     unsigned int game_ = 0;
     std::unique_ptr<GameRun> run_;
 };
