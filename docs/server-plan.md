@@ -1,7 +1,8 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 and 1 are complete (2026-11-03). Engine 5.1.0 carries phase 0, and this
-> repository's skeleton is phase 1. Phases 2 to 11 are not built yet.**
+> **Status: phases 0, 1 and 2 are complete (2026-11-03). Engine 5.1.0 carries phase 0. This
+> repository's skeleton is phase 1, and its core, `server/core`, is phase 2. Phases 3 to 11 are
+> not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1256,7 +1257,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
     was cancelled when run 4 started, and run 4 has the same code.
   - **The owner approved** the phase on 2026-11-03.
 
-### Phase 2: the server's core — L
+### Phase 2: the server's core — L ✅ COMPLETE
 
 - **Work:** `Registry`, `Table`, `GameRun`, `SeatDriver`, `Publisher` and `Outbox` in
   `server/core`; the JSON encoding of every message; the fixtures.
@@ -1336,7 +1337,9 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **`default` and `release`** pass 51 of 51 at `dd12b44`.
   - **`tsan`,** one run with the owner's leave, was clean at `abbead5`. The fixes after it add no
     lock and change no lock order.
-  - **CI** is green on run 1, at `abbead5`.
+  - **CI** is green on runs 10 and 12, at `abbead5` and `b6a7cef`. Run 11, at `dd12b44`, was
+    cancelled when run 12 started, and run 12 has the same code.
+  - **The owner approved** the phase on 2026-11-03.
 
 ### Phase 3: solo, end to end — M
 
