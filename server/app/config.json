@@ -6,5 +6,6 @@
     "max_message_bytes": 4096,
     "ping_interval_ms": 10000,
     "shutdown_delay_ms": 0,
+    "instant_floor_ms": 30,
     "log_level": "info"
 }
