@@ -1,0 +1,16 @@
+{
+  "blind" : false,
+  "deadline" : null,
+  "hand" : 
+  [
+    "JS"
+  ],
+  "id" : 2,
+  "kind" : "play",
+  "legal" : 
+  [
+    0
+  ],
+  "seq" : 15,
+  "type" : "prompt"
+}

@@ -1,0 +1,121 @@
+{
+  "event" : 
+  {
+    "kind" : "gameOver",
+    "standings" : 
+    [
+      {
+        "name" : "Bogdan",
+        "place" : 1,
+        "score" : 40,
+        "seat" : 1
+      },
+      {
+        "name" : "Cora",
+        "place" : 2,
+        "score" : 18,
+        "seat" : 2
+      },
+      {
+        "name" : "Ana",
+        "place" : 3,
+        "score" : -4,
+        "seat" : 0
+      }
+    ],
+    "winners" : 
+    [
+      {
+        "name" : "Bogdan",
+        "place" : 1,
+        "score" : 40,
+        "seat" : 1
+      }
+    ]
+  },
+  "game" : 1,
+  "seq" : 1142,
+  "snapshot" : 
+  {
+    "active" : null,
+    "bets" : 
+    {
+      "placed" : 3,
+      "sum" : 0
+    },
+    "forbiddenBet" : null,
+    "phase" : "gameOver",
+    "round" : 
+    {
+      "count" : 23,
+      "index" : 22,
+      "leader" : 1,
+      "trick" : 1,
+      "tricks" : 1,
+      "trump" : "AC",
+      "type" : "hidden"
+    },
+    "seats" : 
+    [
+      {
+        "bet" : 0,
+        "bidOrder" : 3,
+        "cards" : 0,
+        "losses" : 0,
+        "name" : "Ana",
+        "roundScore" : 0,
+        "total" : -4,
+        "wins" : 1,
+        "won" : 0
+      },
+      {
+        "bet" : 0,
+        "bidOrder" : 1,
+        "cards" : 0,
+        "losses" : 1,
+        "name" : "Bogdan",
+        "roundScore" : 0,
+        "total" : 40,
+        "wins" : 0,
+        "won" : 0
+      },
+      {
+        "bet" : 0,
+        "bidOrder" : 2,
+        "cards" : 0,
+        "losses" : 2,
+        "name" : "Cora",
+        "roundScore" : 0,
+        "total" : 18,
+        "wins" : 0,
+        "won" : 1
+      }
+    ],
+    "status" : "finished",
+    "table" : 
+    {
+      "cards" : 
+      [
+        {
+          "card" : "QD",
+          "seat" : 1,
+          "winning" : false
+        },
+        {
+          "card" : "KD",
+          "seat" : 2,
+          "winning" : true
+        },
+        {
+          "card" : "9S",
+          "seat" : 0,
+          "winning" : false
+        }
+      ],
+      "leadSuit" : "D",
+      "ledBy" : 1
+    },
+    "you" : 0
+  },
+  "type" : "game"
+}

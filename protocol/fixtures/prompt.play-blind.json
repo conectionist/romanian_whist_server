@@ -1,0 +1,13 @@
+{
+  "blind" : true,
+  "deadline" : null,
+  "handSize" : 1,
+  "id" : 107,
+  "kind" : "play",
+  "legal" : 
+  [
+    0
+  ],
+  "seq" : 1110,
+  "type" : "prompt"
+}

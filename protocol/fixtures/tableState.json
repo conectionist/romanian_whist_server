@@ -1,0 +1,65 @@
+{
+  "code" : "6BR92T",
+  "host" : 0,
+  "mode" : "solo",
+  "seats" : 
+  [
+    {
+      "avatar" : "test-face",
+      "gender" : "female",
+      "kind" : "human",
+      "name" : "Ana",
+      "presence" : "here",
+      "you" : true
+    },
+    {
+      "avatar" : "test-face",
+      "gender" : "male",
+      "kind" : "computer",
+      "level" : "cyborg",
+      "name" : "Bogdan"
+    },
+    {
+      "avatar" : "test-face",
+      "gender" : "female",
+      "kind" : "computer",
+      "level" : "cyborg",
+      "name" : "Cora"
+    }
+  ],
+  "seq" : 1,
+  "settings" : 
+  {
+    "allOneCardForehead" : false,
+    "botSpeed" : 4,
+    "foreheadAndHidden" : true,
+    "seats" : 
+    [
+      {
+        "avatar" : "test-face",
+        "gender" : "female",
+        "kind" : "human",
+        "name" : "Ana"
+      },
+      {
+        "avatar" : "test-face",
+        "gender" : "male",
+        "kind" : "computer",
+        "level" : "cyborg",
+        "name" : "Bogdan"
+      },
+      {
+        "avatar" : "test-face",
+        "gender" : "female",
+        "kind" : "computer",
+        "level" : "cyborg",
+        "name" : "Cora"
+      }
+    ],
+    "seed" : 7,
+    "structure" : "1-8-1",
+    "waitAfterRound" : false
+  },
+  "state" : "playing",
+  "type" : "tableState"
+}

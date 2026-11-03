@@ -1,0 +1,11 @@
+{
+  "member" : 1,
+  "seq" : 1,
+  "server" : 
+  {
+    "commit" : "0123abc",
+    "version" : "0.1.0"
+  },
+  "token" : "q2Jd8m0FzR3kXw7LbY1vTg",
+  "type" : "welcome"
+}

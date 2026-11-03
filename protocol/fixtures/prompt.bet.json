@@ -1,0 +1,15 @@
+{
+  "deadline" : null,
+  "first" : true,
+  "forbidden" : null,
+  "hand" : 
+  [
+    "JS"
+  ],
+  "id" : 1,
+  "kind" : "bet",
+  "max" : 1,
+  "roundType" : "normal",
+  "seq" : 5,
+  "type" : "prompt"
+}

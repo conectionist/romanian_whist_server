@@ -1,0 +1,434 @@
+{
+  "game" : 1,
+  "held" : null,
+  "history" : 
+  [
+    {
+      "count" : 23,
+      "index" : 0,
+      "nextCountsForStreaks" : false,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : -1,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 1
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        }
+      ],
+      "tricks" : 1,
+      "trump" : "9H",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 1,
+      "nextCountsForStreaks" : false,
+      "seats" : 
+      [
+        {
+          "bet" : 1,
+          "losses" : 0,
+          "roundScore" : -1,
+          "total" : -1,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 1,
+          "losses" : 0,
+          "roundScore" : 6,
+          "total" : 5,
+          "wins" : 0,
+          "won" : 1
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 5,
+          "wins" : 0,
+          "won" : 0
+        }
+      ],
+      "tricks" : 1,
+      "trump" : "KC",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 2,
+      "nextCountsForStreaks" : true,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : -2,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : -1,
+          "total" : 11,
+          "wins" : 0,
+          "won" : 1
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 10,
+          "wins" : 0,
+          "won" : 0
+        }
+      ],
+      "tricks" : 1,
+      "trump" : "TS",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 3,
+      "nextCountsForStreaks" : true,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 3,
+          "wins" : 1,
+          "won" : 0
+        },
+        {
+          "bet" : 1,
+          "losses" : 1,
+          "roundScore" : -1,
+          "total" : 10,
+          "wins" : 0,
+          "won" : 2
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 15,
+          "wins" : 1,
+          "won" : 0
+        }
+      ],
+      "tricks" : 2,
+      "trump" : "KS",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 4,
+      "nextCountsForStreaks" : true,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 1,
+          "roundScore" : -2,
+          "total" : 8,
+          "wins" : 0,
+          "won" : 2
+        },
+        {
+          "bet" : 0,
+          "losses" : 0,
+          "roundScore" : 5,
+          "total" : 9,
+          "wins" : 1,
+          "won" : 0
+        },
+        {
+          "bet" : 0,
+          "losses" : 1,
+          "roundScore" : -1,
+          "total" : 20,
+          "wins" : 0,
+          "won" : 1
+        }
+      ],
+      "tricks" : 3,
+      "trump" : "JD",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 5,
+      "nextCountsForStreaks" : true,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 2,
+          "roundScore" : -1,
+          "total" : 6,
+          "wins" : 0,
+          "won" : 1
+        },
+        {
+          "bet" : 1,
+          "losses" : 1,
+          "roundScore" : -1,
+          "total" : 14,
+          "wins" : 0,
+          "won" : 2
+        },
+        {
+          "bet" : 0,
+          "losses" : 2,
+          "roundScore" : -1,
+          "total" : 19,
+          "wins" : 0,
+          "won" : 1
+        }
+      ],
+      "tricks" : 4,
+      "trump" : "KD",
+      "type" : "normal"
+    },
+    {
+      "count" : 23,
+      "index" : 6,
+      "nextCountsForStreaks" : true,
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "losses" : 3,
+          "roundScore" : -3,
+          "total" : 5,
+          "wins" : 0,
+          "won" : 3
+        },
+        {
+          "bet" : 1,
+          "losses" : 2,
+          "roundScore" : -1,
+          "total" : 13,
+          "wins" : 0,
+          "won" : 2
+        },
+        {
+          "bet" : 1,
+          "losses" : 3,
+          "roundScore" : -1,
+          "total" : 18,
+          "wins" : 0,
+          "won" : 0
+        }
+      ],
+      "tricks" : 5,
+      "trump" : "JD",
+      "type" : "normal"
+    }
+  ],
+  "lastTrick" : 
+  {
+    "cards" : 
+    [
+      {
+        "card" : "9S",
+        "seat" : 1,
+        "winning" : false
+      },
+      {
+        "card" : "KS",
+        "seat" : 2,
+        "winning" : true
+      },
+      {
+        "card" : "QS",
+        "seat" : 0,
+        "winning" : false
+      }
+    ],
+    "ledBy" : 1,
+    "round" : 7
+  },
+  "prompt" : 
+  {
+    "blind" : false,
+    "deadline" : null,
+    "hand" : 
+    [
+      "9C",
+      "AS"
+    ],
+    "id" : 30,
+    "kind" : "play",
+    "legal" : 
+    [
+      0
+    ]
+  },
+  "seq" : 314,
+  "snapshot" : 
+  {
+    "active" : 0,
+    "bets" : 
+    {
+      "placed" : 3,
+      "sum" : 2
+    },
+    "forbiddenBet" : null,
+    "phase" : "playing",
+    "round" : 
+    {
+      "count" : 23,
+      "index" : 7,
+      "leader" : 1,
+      "trick" : 5,
+      "tricks" : 6,
+      "trump" : "KC",
+      "type" : "normal"
+    },
+    "seats" : 
+    [
+      {
+        "bet" : 0,
+        "bidOrder" : 3,
+        "cards" : 2,
+        "hand" : 
+        [
+          "9C",
+          "AS"
+        ],
+        "losses" : 3,
+        "name" : "Ana",
+        "roundScore" : 0,
+        "total" : 2,
+        "wins" : 0,
+        "won" : 1
+      },
+      {
+        "bet" : 1,
+        "bidOrder" : 1,
+        "cards" : 2,
+        "losses" : 2,
+        "name" : "Bogdan",
+        "roundScore" : 0,
+        "total" : 12,
+        "wins" : 0,
+        "won" : 1
+      },
+      {
+        "bet" : 1,
+        "bidOrder" : 2,
+        "cards" : 1,
+        "losses" : 3,
+        "name" : "Cora",
+        "roundScore" : 0,
+        "total" : 17,
+        "wins" : 0,
+        "won" : 2
+      }
+    ],
+    "status" : "inProgress",
+    "table" : 
+    {
+      "cards" : 
+      [
+        {
+          "card" : "JH",
+          "seat" : 2,
+          "winning" : true
+        }
+      ],
+      "leadSuit" : "H",
+      "ledBy" : 2
+    },
+    "you" : 0
+  },
+  "table" : 
+  {
+    "code" : "6BR92T",
+    "host" : 0,
+    "mode" : "solo",
+    "seats" : 
+    [
+      {
+        "avatar" : "test-face",
+        "gender" : "female",
+        "kind" : "human",
+        "name" : "Ana",
+        "presence" : "here",
+        "you" : true
+      },
+      {
+        "avatar" : "test-face",
+        "gender" : "male",
+        "kind" : "computer",
+        "level" : "cyborg",
+        "name" : "Bogdan"
+      },
+      {
+        "avatar" : "test-face",
+        "gender" : "female",
+        "kind" : "computer",
+        "level" : "cyborg",
+        "name" : "Cora"
+      }
+    ],
+    "settings" : 
+    {
+      "allOneCardForehead" : false,
+      "botSpeed" : 4,
+      "foreheadAndHidden" : true,
+      "seats" : 
+      [
+        {
+          "avatar" : "test-face",
+          "gender" : "female",
+          "kind" : "human",
+          "name" : "Ana"
+        },
+        {
+          "avatar" : "test-face",
+          "gender" : "male",
+          "kind" : "computer",
+          "level" : "cyborg",
+          "name" : "Bogdan"
+        },
+        {
+          "avatar" : "test-face",
+          "gender" : "female",
+          "kind" : "computer",
+          "level" : "cyborg",
+          "name" : "Cora"
+        }
+      ],
+      "seed" : 7,
+      "structure" : "1-8-1",
+      "waitAfterRound" : false
+    },
+    "state" : "playing"
+  },
+  "type" : "sync"
+}

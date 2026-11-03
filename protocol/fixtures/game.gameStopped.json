@@ -1,0 +1,91 @@
+{
+  "event" : 
+  {
+    "kind" : "gameStopped"
+  },
+  "game" : 1,
+  "seq" : 36,
+  "snapshot" : 
+  {
+    "active" : null,
+    "bets" : 
+    {
+      "placed" : 3,
+      "sum" : 0
+    },
+    "forbiddenBet" : null,
+    "phase" : "playing",
+    "round" : 
+    {
+      "count" : 23,
+      "index" : 1,
+      "leader" : 1,
+      "trick" : 1,
+      "tricks" : 1,
+      "trump" : "KC",
+      "type" : "normal"
+    },
+    "seats" : 
+    [
+      {
+        "bet" : 0,
+        "bidOrder" : 3,
+        "cards" : 0,
+        "losses" : 0,
+        "name" : "Ana",
+        "roundScore" : 0,
+        "total" : -1,
+        "wins" : 0,
+        "won" : 0
+      },
+      {
+        "bet" : 0,
+        "bidOrder" : 1,
+        "cards" : 0,
+        "losses" : 0,
+        "name" : "Bogdan",
+        "roundScore" : 0,
+        "total" : 5,
+        "wins" : 0,
+        "won" : 1
+      },
+      {
+        "bet" : 0,
+        "bidOrder" : 2,
+        "cards" : 0,
+        "losses" : 0,
+        "name" : "Cora",
+        "roundScore" : 0,
+        "total" : 5,
+        "wins" : 0,
+        "won" : 0
+      }
+    ],
+    "status" : "stopped",
+    "table" : 
+    {
+      "cards" : 
+      [
+        {
+          "card" : "AS",
+          "seat" : 1,
+          "winning" : true
+        },
+        {
+          "card" : "9H",
+          "seat" : 2,
+          "winning" : false
+        },
+        {
+          "card" : "JH",
+          "seat" : 0,
+          "winning" : false
+        }
+      ],
+      "leadSuit" : "S",
+      "ledBy" : 1
+    },
+    "you" : null
+  },
+  "type" : "game"
+}
