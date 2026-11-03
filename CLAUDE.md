@@ -51,8 +51,8 @@ deprecated …", and changes nothing. Don't try it first. Change a PR's descript
 the REST API from the start, with the body written to a file:
 
 ```
-gh api -X PATCH repos/conectionist/romanian_whist_web/pulls/<N> -F body=@<file>
-gh api -X PATCH repos/conectionist/romanian_whist_web/pulls/<N> -f title='<title>'
+gh api -X PATCH repos/conectionist/romanian_whist_server/pulls/<N> -F body=@<file>
+gh api -X PATCH repos/conectionist/romanian_whist_server/pulls/<N> -f title='<title>'
 ```
 
 `gh pr view` and `gh pr create` work as usual.

@@ -1,8 +1,11 @@
-# Romanian Whist on the web
+# Romanian Whist server
 
-Romanian Whist in a browser: a C++ game server built on the
+The game server for Romanian Whist's online tables, built on the
 [Romanian Whist engine](https://github.com/conectionist/romanian_whist_engine) and
-[Drogon](https://github.com/drogonframework/drogon), and the page it serves.
+[Drogon](https://github.com/drogonframework/drogon). Its clients are the browser page and the
+Android app. The page is moving to its own repository,
+[`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web). Until it has moved,
+it is in `web/` here.
 
 **Status:** a skeleton. The server serves the page and answers on a WebSocket echo at `/ws`.
 [`docs/web-client-plan.md`](docs/web-client-plan.md) is the plan for the rest.
@@ -10,7 +13,7 @@ Romanian Whist in a browser: a C++ game server built on the
 ## Getting the code
 
 ```
-git clone --recurse-submodules https://github.com/conectionist/romanian_whist_web.git
+git clone --recurse-submodules https://github.com/conectionist/romanian_whist_server.git
 ```
 
 Cloned without `--recurse-submodules`? Run `git submodule update --init --recursive`.

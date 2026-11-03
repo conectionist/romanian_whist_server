@@ -5,9 +5,15 @@
 >
 > The plan spans two repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Every later
-> phase builds this repository, `romanian_whist_web`, which takes the engine as a submodule, the
-> way the terminal and desktop clients do. The plan was written in the engine's `docs/` and moved
-> here on 2026-10-28, once this repository existed.
+> phase builds this repository, `romanian_whist_server`, which takes the engine as a submodule,
+> the way the terminal and desktop clients do. The plan was written in the engine's `docs/` and
+> moved here on 2026-10-28, once this repository existed.
+>
+> On 2026-11-03 the owner renamed this repository from `romanian_whist_web` to
+> `romanian_whist_server`, because the Android app, and later other clients, will use the same
+> server ([D2](#15-decisions-with-defaults)). The page is to move to a new repository,
+> [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and this plan is to
+> be split between the two. Until then, `web/` and the whole plan stay here.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
 to build, which existing code each part comes from, in what order, and how to tell each phase is
@@ -319,7 +325,7 @@ Check the option names in its `CMakeLists.txt` at the pinned tag. The Ubuntu 24.
 ### 4.3 Repository layout
 
 ```
-romanian_whist_web/                 AGPL-3.0-or-later, like the engine
+romanian_whist_server/              AGPL-3.0-or-later, like the engine
 ├── libs/RomanianWhistEngine/       submodule, pinned to a release tag (5.1.0 or later)
 ├── libs/drogon/                    submodule, pinned to v1.9.14
 ├── server/
@@ -1577,7 +1583,7 @@ The plan assumes each default until the owner decides otherwise.
 | # | Question | Default |
 |---|---|---|
 | D1 | Where do solo games run? | On the server. Offline in the browser later (phase 10) |
-| D2 | Where does the web client's code live? | **Decided by the owner, 2026-10-28:** a new repository, `romanian_whist_web`, this one |
+| D2 | Where does the web client's code live? | **Decided by the owner, 2026-10-28:** a new repository, `romanian_whist_web`, this one. **Changed by the owner, 2026-11-03:** this repository is now `romanian_whist_server`, for the server, its protocol and `server/core`, which the Android app uses too. The page is to move to a new `romanian_whist_web` |
 | D3 | Which Drogon? | 1.9.14, as a submodule built with the project |
 | D4 | Which JSON library? | jsoncpp, which Drogon already uses |
 | D5 | What is the page built with? | TypeScript and Vite, no UI framework |

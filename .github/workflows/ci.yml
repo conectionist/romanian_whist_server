@@ -30,7 +30,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev
 
       - name: Configure
-        run: cmake --preset release -DWHIST_WEB_WARNINGS_AS_ERRORS=ON
+        run: cmake --preset release -DWHIST_SERVER_WARNINGS_AS_ERRORS=ON
 
       # --parallel needs a number: a bare one gives make an unlimited -j.
       - name: Build
