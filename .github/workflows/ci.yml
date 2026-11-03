@@ -40,18 +40,3 @@ jobs:
       - name: Test the server
         run: ctest --preset release --output-on-failure --no-tests=error
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Build the page
-        working-directory: web
-        run: |
-          npm ci
-          npm run build
-
-      - name: Test the page
-        working-directory: web
-        run: npm test

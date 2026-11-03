@@ -1,7 +1,7 @@
 {
     "address": "127.0.0.1",
     "port": 8080,
-    "document_root": "web/dist",
+    "document_root": "server/www",
     "io_threads": 2,
     "max_message_bytes": 4096,
     "ping_interval_ms": 10000,

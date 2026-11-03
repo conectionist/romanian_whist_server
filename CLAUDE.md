@@ -10,9 +10,6 @@ and that is worse than any wait. **Slower is always acceptable; a frozen desktop
   background.
 - **Server tests:** `nice -n 19 ctest --preset <p> -j 1`, or one binary filtered by tag while
   iterating: `nice -n 19 ./build/server/tests/app_tests "[spike]"`. The whole suite once at the end.
-- **Page tests:** `nice -n 19 npx vitest run --maxWorkers=2` and
-  `nice -n 19 npm run e2e -- --workers=1`, both in `web/`. The end-to-end tests start
-  `build/server/app/whist_server`, so build the `default` preset first.
 - **One heavy command at a time.** Never build or test several presets in one command or back to
   back without being asked. Build and test the other presets (`release`, `clang`) only when the
   owner asks, or once before a PR, one preset per command.
