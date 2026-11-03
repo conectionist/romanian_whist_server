@@ -9,8 +9,9 @@
 > the way the terminal and desktop clients do. Phases 6 to 8 and 10 build the page, in
 > [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web). Phases 6 and 10
 > change this repository too: phase 6 builds the fixture tool (§10.5), and phase 10 compiles
-> `server/core` for the browser. The plan was written in the engine's `docs/` and moved here on
-> 2026-10-28, once this repository existed.
+> `server/core` for the browser. Phase 9 changes the page's repository too: its footer's source
+> links, its About page, and how it is deployed (§12). The plan was written in the engine's
+> `docs/` and moved here on 2026-10-28, once this repository existed.
 >
 > On 2026-11-03 the owner renamed this repository from `romanian_whist_web` to
 > `romanian_whist_server`, because the Android app, and later other clients, will use the same
@@ -19,8 +20,8 @@
 > and 10. That part is the web repository's
 > [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
 > Their places here keep their numbers and point there. The links point at that repository's
-> `master`. While its phases are under way, the current page plan is on its parent branch, which
-> its `CLAUDE.md` names.
+> `master`. Until the page's work reaches it, the current page plan is on the web repository's
+> parent branch. Phase 6 creates that branch, and its name is written here then.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
 to build, which existing code each part comes from, in what order, and how to tell each phase is
@@ -340,7 +341,8 @@ romanian_whist_server/              AGPL-3.0-or-later, like the engine
 │   └── www/                        served by default: a placeholder, then phase 3's debug page
 ├── protocol/
 │   ├── PROTOCOL.md                 every message, kept beside the code
-│   └── fixtures/                   sample messages written by server tests, read by clients' tests
+│   ├── fixtures/                   sample messages written by server tests, read by clients' tests
+│   └── look/                       the fixture tool's snapshots, for the page's comparisons (§10.5)
 ├── tools/                          the fixture tool for the page's screenshots (§10.5)
 ├── deploy/                         Caddyfile, systemd unit
 ├── docs/
@@ -754,8 +756,8 @@ The page drops whatever it had queued and renders the sync.
 ### 6.8 Errors and versions
 
 - **`hello.protocol` is a whole number.** The page is deployed with the server it was built
-  against (§12), so a mismatch can happen only across a deploy. The server answers `error {code: "version"}` and the page reloads itself
-  once.
+  against (§12), so a mismatch can happen only across a deploy. The server answers
+  `error {code: "version"}` and the page reloads itself once.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
   `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`. Several `badMessage` errors
   close the connection.
@@ -956,9 +958,12 @@ The contract fixtures of [§6.9](#69-keeping-the-two-sides-in-step).
 
 The page's comparisons with the desktop client are in
 [its plan's §13.3](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#133-the-look).
-Their fixtures come from a tool in this repository, `tools/`, built in phase 6. It plays the
-desktop client's `tests/ScreenshotTool.cpp` games, with the same seeds and players, to the same
-moments, and writes each viewer's snapshot as a fixture.
+The table's fixtures come from a tool in this repository, in `tools/`, built in phase 6. It plays
+the desktop client's `tests/ScreenshotTool.cpp` games, with the same seeds and players, to the same
+moments, and writes each viewer's snapshot into `protocol/look/`. The snapshots are committed, and
+the page reads them through its submodule. They are snapshots rather than whole messages, so the
+decoding tests of §6.9 read `protocol/fixtures/` only. The sheets' fixtures are built by hand, in
+the page's repository.
 
 ### 10.6 Load (phase 9)
 
@@ -1009,8 +1014,10 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 
 - **A small Linux server:** 2 vCPUs and 2–4 GB, Debian or Ubuntu LTS. The server runs as a release
   build, with the page's built `dist/` as Drogon's document root, and one configuration file. The
-  page is built from the `romanian_whist_web` commit whose submodule points at the server being
-  deployed, so the two always speak the same protocol.
+  page is built from the latest `romanian_whist_web` commit whose submodule points at the server
+  being deployed. A server change that no such commit points at gets a submodule update in
+  `romanian_whist_web` before it is deployed. So the two speak the same protocol, except in a page
+  left open across a deploy (§6.8).
 - **Caddy in front** gives HTTPS automatically. `reverse_proxy localhost:8080` passes WebSockets
   through as they are. Drogon listens on localhost only.
 - **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
@@ -1074,7 +1081,7 @@ M, L.
    branches while a reviewer reads, so a reviewer never sees the implementer's account.
 
 After phase 3, the page (phases 6–8, in its own plan) can be built against fixtures while phases 4
-and 5 go on in the server.
+and 5 go on in the server. Phase 6 starts in the server, with the fixture tool (§10.5).
 
 ### Phase 0: engine groundwork (the engine repository) — M ✅ COMPLETE
 
@@ -1291,7 +1298,9 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 ### Phase 6: the table page — L
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-6-the-table-page--l).
-In this repository it builds the fixture tool (§10.5), on the parent branch.
+In this repository it first builds the fixture tool (§10.5), on a phase branch of its own off this
+repository's parent branch. That branch is reviewed like any phase's, and merged with a merge
+commit before the page needs the fixtures. The page's submodule then moves to that merge.
 
 ### Phase 7: sheets and menus — L
 
@@ -1305,12 +1314,12 @@ In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/bl
 
 - **Work:**
   - the limits and rate limits, the Content-Security-Policy;
-  - the drain, `/health`, `/version` and the source link;
+  - the drain, `/health`, and `/version`, which the page's source links read;
   - the load test;
   - the server, Caddy, systemd, a domain;
   - the page's share, in `romanian_whist_web`: the footer's source links and the About page
-    ([the page's plan, §12](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#12-security)), and the page built from the commit whose
-    submodule points at the deployed server.
+    ([the page's plan, §12](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#12-security)),
+    and the page built and deployed as §12 says.
 - **Done when:**
   - it is deployed;
   - the load test has set the running-game cap;
@@ -1319,8 +1328,9 @@ In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/bl
 ### Phase 10 (optional): offline solo — M to L
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-10-optional-offline-solo--m-to-l).
-In this repository it compiles `server/core` with Emscripten, behind its two seams (§4.1), on the
-parent branch.
+In this repository it compiles `server/core` with Emscripten, behind its two seams (§4.1). That
+work goes on a phase branch of its own off this repository's parent branch, as phase 6's does, and
+is merged before the page's part needs it.
 
 ### Phase 11 (optional): game records and recovery — M
 
