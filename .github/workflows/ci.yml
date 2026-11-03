@@ -39,4 +39,3 @@ jobs:
       # --no-tests=error, so that a build with its tests switched off cannot pass.
       - name: Test the server
         run: ctest --preset release --output-on-failure --no-tests=error
-
