@@ -1,0 +1,12 @@
+{
+  "deadline" : null,
+  "first" : true,
+  "forbidden" : null,
+  "handSize" : 1,
+  "id" : 106,
+  "kind" : "bet",
+  "max" : 1,
+  "roundType" : "forehead",
+  "seq" : 1100,
+  "type" : "prompt"
+}

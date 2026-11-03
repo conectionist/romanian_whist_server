@@ -5,9 +5,15 @@ The game server for Romanian Whist's online tables, built on the
 [Drogon](https://github.com/drogonframework/drogon). Its clients are the browser page, in
 [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and the Android app.
 
-**Status:** a skeleton. The server serves a static page and answers on a WebSocket echo at `/ws`.
+**Status:** the server's core is built: tables, seats, games and the JSON protocol, tested without
+a socket. The running server still serves a static page and a WebSocket echo at `/ws`.
 [`docs/server-plan.md`](docs/server-plan.md) is the plan for the rest. The page's part of
 it is in `romanian_whist_web`.
+
+## The protocol
+
+[`protocol/PROTOCOL.md`](protocol/PROTOCOL.md) describes every message, and
+[`protocol/fixtures/`](protocol/fixtures/) holds a real sample of each, for clients' tests.
 
 ## Getting the code
 
@@ -45,6 +51,13 @@ set `document_root` to its built `dist/` folder.
 
 ```
 nice -n 19 ctest --preset default -j 1
+```
+
+The fixtures are checked by the core's tests. After changing a message, rewrite them and commit
+the difference:
+
+```
+WHIST_WRITE_FIXTURES=1 nice -n 19 ./build/server/tests/core_tests "[fixtures]"
 ```
 
 The browser tests of the page against this server are in `romanian_whist_web`.

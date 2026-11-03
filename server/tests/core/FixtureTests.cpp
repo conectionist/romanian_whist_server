@@ -1,0 +1,177 @@
+#include "core/Codec.h"
+#include "core/GameRun.h"
+#include "core/Registry.h"
+
+#include "support/Fixtures.h"
+#include "support/Games.h"
+#include "support/Recorder.h"
+#include "support/ScriptedHuman.h"
+#include "support/ServerMessages.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <map>
+#include <random>
+
+using namespace whist;
+using std::chrono::milliseconds;
+
+namespace
+{
+
+const milliseconds patience(60000 * test::slowdown);
+
+// One sample of each kind of message, named as its fixture file is. Each was sent either by a game
+// thread or while its game was waiting on the human, so its seq is the same on every run.
+using Samples = std::map<std::string, Json::Value>;
+
+std::string sampleName(const Json::Value& message)
+{
+    const std::string type = message["type"].asString();
+    if(type == "game")
+        return "game." + message["event"]["kind"].asString();
+    if(type == "prompt")
+        return "prompt." + message["kind"].asString() + (message.isMember("hand") ? "" : "-blind");
+    if(type == "promptClosed")
+        return "promptClosed." + message["by"].asString();
+    return type;
+}
+
+void keepFirsts(const std::vector<Json::Value>& messages, Samples& samples)
+{
+    for(const Json::Value& message : messages)
+        samples.try_emplace(sampleName(message), message);
+}
+
+// A seeded solo game: one human, who reloads once and sends one illegal answer.
+void soloGame(Samples& samples)
+{
+    test::Recorder recorder;
+    Outbox outbox;
+
+    RegistryOptions options;
+    options.table.instantFloor = milliseconds(0);
+    options.table.threadNiceness = 0;
+    options.random = [random = std::mt19937_64(2026)]() mutable { return random(); };
+    Registry registry(outbox, options);
+
+    const Registry::NewMember ana = registry.newMember();
+    outbox.attach(ana.id, recorder.connect(ana.id));
+
+    Settings settings = test::tableSettings(3, {0}, Level::Cyborg);
+    settings.seed = 7;
+
+    std::shared_ptr<Table> table;
+    int prompts = 0;
+    const auto onPrompt = [&](const Json::Value& prompt)
+    {
+        prompts++;
+        if(prompts == 30)
+            table->sync(ana.id);
+        if(prompts == 12)
+        {
+            table->answer(ana.id, Answer{PromptKind::Bet, prompt["id"].asUInt64(), 99});
+            return true;
+        }
+        return false;
+    };
+
+    table = registry.createSolo(ana.id, settings).table;
+    REQUIRE(table);
+    test::ScriptedHuman human(recorder, ana.id, [&](const Answer& answer) { table->answer(ana.id, answer); },
+                              test::Behaviour::Good, onPrompt);
+    REQUIRE(human.waitUntilOver(patience));
+    CHECK(human.problems().empty());
+    keepFirsts(recorder.messagesTo(ana.id), samples);
+}
+
+// Online, with a turn timer the human never beats.
+void timedOutGame(Samples& samples)
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    outbox.attach(1, recorder.connect(1));
+
+    Settings settings = test::tableSettings(2, {0});
+    settings.replacement = Level::ReckonerBeta;
+    settings.turnTimer = milliseconds(1);
+    GameRunSetup setup = test::quickGame(settings, {1});
+
+    GameRun run(std::move(setup), outbox);
+    run.start();
+    REQUIRE(recorder.waitFor(1, [](const Json::Value& m) { return m["type"] == "promptClosed"; }, patience));
+    run.close();
+    keepFirsts(recorder.messagesTo(1), samples);
+}
+
+// A game of computer players, watched, and stopped partway through its second round.
+void stoppedGame(Samples& samples)
+{
+    struct Stopper : romanian_whist::IGameObserver
+    {
+        GameRun* run = nullptr;
+
+        void onTrickWon(const romanian_whist::GameEngine& engine, romanian_whist::Seat, unsigned int trick) override
+        {
+            if(engine.getCurrentRoundIndex() == 1 && trick == 1)
+                run->close();
+        }
+    };
+
+    test::Recorder recorder;
+    Outbox outbox;
+    outbox.attach(5, recorder.connect(5));
+
+    Stopper stopper;
+    GameRunSetup setup = test::quickGame(test::tableSettings(3, {}), {});
+    setup.watchers = {5};
+    setup.firstObservers = {&stopper};
+    GameRun run(std::move(setup), outbox);
+    stopper.run = &run;
+    run.start();
+    REQUIRE(recorder.waitFor(5, [](const Json::Value& m) { return m["event"]["kind"] == "gameStopped"; }, patience));
+
+    for(const Json::Value& message : recorder.messagesTo(5))
+    {
+        if(message["event"]["kind"] == "gameStopped")
+            samples.try_emplace("game.gameStopped", message);
+    }
+}
+
+} // namespace
+
+TEST_CASE("Every message the server sends has a fixture, and it is up to date", "[fixtures]")
+{
+    Samples samples;
+    soloGame(samples);
+    timedOutGame(samples);
+    stoppedGame(samples);
+
+    // Not yet sent by any game: a welcome answers hello, and a hold is an online round's end.
+    Json::Value welcome = welcomeMessage("q2Jd8m0FzR3kXw7LbY1vTg", 1, "0.1.0", "0123abc");
+    welcome["seq"] = 1;
+    samples["welcome"] = welcome;
+
+    Json::Value held = heldMessage(HoldView{7, {0, 2}, milliseconds(30000)});
+    held["seq"] = 812;
+    samples["held"] = held;
+
+    const std::vector<std::string> expected{
+        "welcome", "tableState", "sync", "held", "error",
+        "prompt.bet", "prompt.play", "prompt.bet-blind", "prompt.play-blind",
+        "promptClosed.you", "promptClosed.computer",
+        "game.gameStarted", "game.roundStarted", "game.betRequested", "game.betPlaced", "game.bettingComplete",
+        "game.trickStarted", "game.cardRequested", "game.cardPlayed", "game.trickWon", "game.roundScored",
+        "game.roundComplete", "game.gameOver", "game.gameStopped"};
+
+    for(const std::string& name : expected)
+    {
+        INFO(name);
+        REQUIRE(samples.contains(name));
+        const Json::Value& message = samples.at(name);
+        CHECK(test::shapeError(message).empty());
+        const std::string difference = test::checkFixture(name, message);
+        CHECK(difference.empty());
+    }
+    CHECK(samples.size() == expected.size());
+}
