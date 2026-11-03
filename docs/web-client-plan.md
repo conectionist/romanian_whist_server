@@ -1,7 +1,7 @@
 # Romanian Whist on the web: implementation plan
 
-> **Status: phase 0 is complete (2026-11-02), and engine 5.1.0 carries it. Phases 1 to 11 are not
-> built yet.**
+> **Status: phases 0 and 1 are complete (2026-11-03). Engine 5.1.0 carries phase 0, and this
+> repository's skeleton is phase 1. Phases 2 to 11 are not built yet.**
 >
 > The plan spans two repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Every later
@@ -294,10 +294,16 @@ Why:
 
 - **It is C++ and CMake.** The server links the engine and the session code directly, with no
   bindings and no second language on the server.
-- **One library** covers WebSockets, static files, a JSON configuration file, signal handling and
-  timers. It is MIT-licensed and maintained (1.9.14, 12 October 2026).
+- **One library** covers WebSockets, static files and timers, and brings jsoncpp, which reads the
+  server's own settings file. It is MIT-licensed and maintained (1.9.14, 12 October 2026). The
+  signal handlers are the server's own, not Drogon's ([§12](#12-deployment-and-operations)).
 - **`WebSocketConnection::send()` may be called from any thread.** Drogon's network layer,
   trantor, queues the write onto the connection's own I/O thread, so a game thread sends directly.
+  Phase 1 found two limits:
+  - **Order.** A send made on the connection's own I/O thread goes out at once, ahead of sends
+    other threads have queued, so the `Outbox` queues every send ([§4.4](#44-the-objects)).
+  - **Only `send()`.** Nothing else that reads a connection's state may be called from another
+    thread: `connected()` and `disconnected()` race with the I/O thread that sets them.
 
 What it does not do: Drogon's strength is asynchronous I/O and coroutines, and the engine is
 synchronous. `run()` blocks inside a move provider while a human thinks. So each game runs on a
@@ -347,7 +353,7 @@ reach it without a socket.
 | `SeatDriver` | seat | Asked for moves on the game thread, answered from I/O threads. Owns the seat's computer player and, for a human seat, the link to its human: prompt, deadline, presence |
 | `SeatProvider` | seat | What the engine holds: ten lines that forward to the `SeatDriver` (the desktop client's `SeatProvider`, for the same reason, [§4.5](#45-lifetimes-and-declaration-order)) |
 | `Publisher` | game | The engine observer. Builds a snapshot per viewer, sends events, paces the game, runs the round hold, and caches what a reconnecting viewer needs |
-| `Outbox` | server | `send(member, json)`. Finds the member's live connection and drops the message if there is none. Tests use an in-memory `Outbox` that records everything |
+| `Outbox` | server | `send(member, json)`. Finds the member's live connection and drops the message if there is none. From any thread, the I/O thread included, it stamps `seq` and posts the send to that connection's I/O loop in one step, so messages leave in `seq` order. Whether a member is connected comes from the server's own records, never from asking the connection. Tests use an in-memory `Outbox` that records everything |
 
 ### 4.5 Lifetimes and declaration order
 
@@ -393,6 +399,9 @@ The rules:
    deadline can be ended only by the cancel, so the closing path must cancel unconditionally.
 6. **Game threads run at a lower priority than the I/O threads**, set with `setpriority` when the
    thread starts, so a table of Reckoners never makes the server slow to answer.
+7. **Every game thread is joined before `app().quit()`.** Each I/O loop is destroyed with its
+   thread, and a connection keeps only a plain pointer to its loop. So a send after `quit()`, or
+   the last reference to a connection let go after it, reaches freed memory.
 
 Shutting a game down, when a table closes or the server drains:
 
@@ -527,8 +536,8 @@ Configure a maximum number of running games, rather than relying on the CPU runn
 frames on to its message callback. A connection with no pong for 30 s is closed and counts as away.
 Browsers answer pings below the page's JavaScript, so a tab in the background, whose timers the
 browser slows down, still counts as here. Drogon's own idle timeout cannot do this job: the pings
-are writes, and writes keep a connection active. Phase 1 checks that pongs reach the controller's
-`handleNewMessage` at the pinned version.
+are writes, and writes keep a connection active. At the pinned version, pongs do reach the
+controller's `handleNewMessage`, as phase 1's spike showed.
 
 ### 5.2 Timelines
 
@@ -589,7 +598,8 @@ it is a table with no human here.
 - **Every message has a `type`.** Server messages also carry `seq`, a number that increases per
   connection, for logs and tests.
 - **Limits.** Messages from clients are capped at 4 KiB (`setClientMaxWebSocketMessageSize`) and
-  rate-limited ([§9](#9-security-and-fairness)).
+  rate-limited ([§9](#9-security-and-fairness)). A message over the cap ends the connection with no
+  Close frame, so the page sees close code 1006, as for a network drop.
 - **No sentences on the wire.** The server sends names, numbers and codes, and each page writes
   the text in its viewer's language. Errors are codes.
 - **Words.** The protocol uses the engine's identifiers (`bet`, `betPlaced`); prose and the page
@@ -1036,7 +1046,8 @@ Paths are in the desktop repository.
 **Untrusted input:**
 
 - **Size and rate.** Messages are capped at 4 KiB. Each connection may send about 20 messages a
-  second, with bursts to 40; beyond that it gets an error, then is closed.
+  second, with bursts to 40; beyond that it gets an error, then is closed. HTTP request bodies are
+  capped at 16 KiB, Drogon's in-memory limit, so Drogon never writes one to disk.
 - **Strict decoding.** Unknown types and unknown fields are rejected.
 - **Every answer is checked** by its seat driver ([§4.7](#47-a-seats-driver)).
 
@@ -1192,10 +1203,14 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
   through as they are. Drogon listens on localhost only.
 - **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
   journal.
-- **A drain on SIGTERM** (`app().setTermSignalHandler`):
+- **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only set a
+  flag, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log line
+  inside the signal handler, which can allocate memory, and so hang. A timer on the main loop sees
+  the flag and drains:
   1. refuse new tables;
   2. tell everyone the server is restarting;
-  3. wait for running games to end, or for at most 15 minutes;
+  3. wait for running games to end, or for at most 15 minutes, then abandon and join any still
+     running ([§4.6](#46-threads-and-locks), rule 7);
   4. quit.
 
   Deploys wait for a quiet moment.
@@ -1327,7 +1342,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 - **Left out, by the owner's choice:** E3 (the Emscripten CI job) and the Reckoner refusing a name
   that matches no seat.
 
-### Phase 1: skeleton — S
+### Phase 1: skeleton — S ✅ COMPLETE
 
 - **Work:**
   - this repository's `CLAUDE.md`, both submodules, the presets, Catch2, and a Vite project (the
@@ -1342,6 +1357,81 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
 - **Done when:** it builds and tests under the machine rules, the page loads from the server, the
   echo works, and the four spikes behave as [§4.2](#42-why-drogon-and-what-it-does-not-do) and
   [§5.1](#51-words) assume. Where they do not, this plan is amended.
+
+**Outcome** (branch `web/phase-1-skeleton`, PR #2, commit `8be1a50`):
+
+- **Built.**
+  - **Submodules:** the engine at `v5.1.0` (`ff223ef`), and Drogon at `v1.9.14` (`3aae769`)
+    with trantor (`78e480f`). Both are built with the project. Drogon's ORM, `drogon_ctl`, examples,
+    Brotli, YAML and c-ares are off.
+  - **Presets:** `default`, `release`, `clang`, `asan` (UBSan stops at its first error) and `tsan`.
+  - **`server/core`** (`whist_session`): links the engine and never Drogon. Its test reads the
+    engine's viewer-filtered snapshot through the submodule.
+  - **`server/app`:** `whist_server`, made of three parts:
+    - `ServerOptions`, read from one JSON file, which refuses unknown keys, port 0 and host
+      names;
+    - `configureApp()`, which `main()` and the tests share;
+    - `EchoController`, the echo at `/ws`.
+
+    Drogon serves `web/dist`.
+  - **`server/tests`:** `core_tests` and `app_tests`, 12 tests in all. They cover the page, the
+    echo, the settings, a request body over the cap, and the four spikes.
+  - **`web/`:** an echo page, built with Vite 8.3.4 and TypeScript 7.0.2, with no framework. It
+    has a Vitest 5.0.5 unit test and a Playwright 1.63.0 test that runs the page against the real
+    server.
+  - **CI:** one Linux job. It builds the release preset with warnings as errors, then runs the
+    server tests, the page build and the page's unit tests.
+  - **`CLAUDE.md`** with the machine rules, the comment rule, the branch workflow and the PR note,
+    and a README.
+- **The spikes.**
+  - **A send from a thread that is not Drogon's works.** Two threads of ours sent 500 numbered
+    messages each, at once. Every message arrived whole, and each thread's arrived in order.
+    Sending after the client had gone did no harm. The reviews found three limits, now in §4.2,
+    §4.4 and §4.6 (rule 7):
+    - order is not kept against sends made on the connection's own I/O thread;
+    - nothing but `send()` may be called from another thread, and a `disconnected()` call raced;
+    - a send after `app().quit()` reaches freed memory.
+  - **Pongs reach `handleNewMessage`,** as §5.1 assumed.
+  - **The size cap holds.** A message of 4096 bytes is echoed. One of 4097 bytes ends the TCP
+    connection with no Close frame, so a browser sees close code 1006 (§6.1).
+  - **SIGTERM: Drogon's handler can't be used.** Drogon logs inside the signal handler, then calls
+    the handler set with `setTermSignalHandler()` there too. So the server turns Drogon's handling
+    off and installs its own SIGTERM and SIGINT handlers, which only set a flag. A timer on the main
+    loop then serves for `shutdown_delay_ms` more and quits. The test runs the real server: after
+    SIGTERM the echo still answers, and the process exits 0 (§12).
+- **Where the build departs from the plan, or found what it did not say.**
+  - **The settings** are the server's own JSON file, not Drogon's configuration file, so the tests
+    set up the server exactly as `main()` does.
+  - **Port 0 is refused.** Drogon opens one listening socket per I/O thread, and with port 0 each
+    socket gets a different port. The tests pick a free port.
+  - **"Listening on"** is logged only once every I/O loop has run its `listen()`. Drogon queues
+    `listen()` on each loop just after the beginning advices.
+  - **Host names are refused,** because Drogon aborts on one.
+  - **The upload folder.** Drogon makes one at start, with 256 folders inside it, and writes there
+    any request body over its in-memory limit. So the server caps request bodies at 16 KiB, which is
+    also that limit, and puts the folder, one per user, in the temporary directory (§9).
+  - **Drogon's WebSocket client** reconnects by itself a second after a drop, and calls its connect
+    callback again. Only the tests use it, and they allow for that.
+  - **CMake.** Trantor's old policies needed `CMAKE_POLICY_DEFAULT_CMP0077`, and a cache entry for
+    `TRANTOR_USE_TLS`. `add_subdirectory(... SYSTEM)` needs CMake 3.25.
+  - **npm 10 fails to install these packages,** with an `edgesOut` error, so `package-lock.json` was
+    made with npm 11.
+  - **Left as it is:** a test picks a free port and closes it before the server binds it, so another
+    process could take it first. Drogon would then end the test process. That is unlikely with
+    tests run one at a time.
+- **Reviews.**
+  - **The first cold review**, of the whole branch, found 13 problems, none above severity 3. The
+    owner chose my recommendation: fix 1 and 4 to 13, and record 2 (send order) and 3 (sends after
+    `quit()`) in this plan.
+  - **A second `tsan` run** found a data race that one of those fixes had added, in the
+    send-after-close spike.
+  - **The second cold review**, of the fixes, found 5 problems, none above severity 3, with that
+    race first. The owner chose my recommendation: fix 1 to 4, note 5 here, and skip a third
+    review.
+  - **`tsan`,** three runs, each with the owner's leave: clean at `2e8b420`, one race at
+    `0b5704a`, and clean at `8be1a50`.
+  - **The default and release presets** pass 12 of 12 at `8be1a50`, and the browser test passes.
+    CI is green on runs 1 and 2, at `2e8b420` and `0b5704a`.
 
 ### Phase 2: the server's core — L
 
