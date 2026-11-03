@@ -115,7 +115,7 @@ TEST_CASE("A play prompt names the legal cards by their place in the hand", "[se
 TEST_CASE("A blind prompt carries no hand", "[seat]")
 {
     Seat0 seat;
-    seat.hand.resize(1);
+    seat.hand = {Card{Rank::Ace, Suit::Hearts}};
     auto bid = seat.bid(std::nullopt, true);
 
     const Json::Value prompt = seat.next();
