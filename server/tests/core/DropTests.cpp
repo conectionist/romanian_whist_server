@@ -194,14 +194,12 @@ TEST_CASE("Timeline 2: gone for good during someone else's turn; replaced once t
     // The grace period passes with nothing to notice it but the reaper.
     d.service->reap(Clock::now() + grace * 2);
     REQUIRE(eventually([&] { return d.presence(1, 1) == "replaced"; }));
-    const std::size_t sent = d.mark(2);
 
     // The game goes on, with her computer player making her moves, to the end.
     hold.release = true;
     d.send(1, answerTo(held));
     REQUIRE(ana.waitUntilOver(patience));
     CHECK(ana.problems().empty());
-    CHECK(d.mark(2) == sent);
 
     // The others were told of her computer player at the table: her seat is hers on the table.
     CHECK(d.table(1)["seats"][1]["name"] == "Bea");

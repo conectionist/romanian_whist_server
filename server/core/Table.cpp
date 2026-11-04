@@ -89,7 +89,7 @@ std::size_t Table::scoredRounds() const
 
 TableState Table::stateLocked() const
 {
-    // Nothing on the game thread calls back into the table, so a game's end is read off its run.
+    // A game that has sent gameOver reads as finished at once, though its thread may still be ending.
     if(state_ == TableState::Playing && run_ && run_->over())
         return TableState::Finished;
     return state_;

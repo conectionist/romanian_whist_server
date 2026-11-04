@@ -118,7 +118,8 @@ void GameRun::play(GameSetup setup)
 {
     lowerPriority(threadNiceness_);
 
-    // The outcome is set last on every path, so a game that reads as finished sends nothing more.
+    // The outcome is set after the game's last message on every path, so a game that reads as
+    // finished sends no game message more. A failed one then tells its table.
     try
     {
         for(IGameObserver* observer : firstObservers_)
