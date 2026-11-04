@@ -82,8 +82,9 @@ GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
     : game_(setup.game),
       threadNiceness_(setup.threadNiceness),
       firstObservers_(setup.firstObservers),
+      viewers_(viewersOf(setup)),
       drivers_(makeDrivers(setup, outbox)),
-      publisher_(setup.game, viewersOf(setup), pacingFor(setup.settings.botSpeed, setup.instantFloor),
+      publisher_(setup.game, viewers_, pacingFor(setup.settings.botSpeed, setup.instantFloor),
                  setup.settings.waitAfterRound, drivers_, outbox)
 {
     GameSetup engineSetup;
@@ -197,22 +198,34 @@ unsigned int GameRun::game() const
     return game_;
 }
 
-SeatDriver::Submitted GameRun::submit(unsigned int seat, const Answer& answer)
+std::optional<Viewer> GameRun::viewer(MemberId member) const
 {
-    if(seat >= drivers_.size())
-        return SeatDriver::Submitted::NotYourTurn;
-    return drivers_[seat]->submit(answer);
+    for(const Viewer& viewer : viewers_)
+    {
+        if(viewer.member == member)
+            return viewer;
+    }
+    return std::nullopt;
 }
 
-void GameRun::sendSync(MemberId member, std::optional<unsigned int> seat, TableView table)
+SeatDriver::Submitted GameRun::submit(MemberId member, const Answer& answer)
 {
-    if(!seat || *seat >= drivers_.size())
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
+        return SeatDriver::Submitted::NotYourTurn;
+    return drivers_.at(*seen->seat)->submit(answer);
+}
+
+void GameRun::sendSync(MemberId member, TableView table)
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
     {
         publisher_.sendSync(member, std::move(table), std::nullopt);
         return;
     }
 
-    drivers_[*seat]->withOpenPrompt([&](const std::optional<Prompt>& prompt)
+    drivers_.at(*seen->seat)->withOpenPrompt([&](const std::optional<Prompt>& prompt)
     {
         publisher_.sendSync(member, std::move(table), prompt);
     });

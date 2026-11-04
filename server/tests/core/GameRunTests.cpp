@@ -38,11 +38,11 @@ struct Game
     }
 
     // Answers as Table::answer does from an I/O thread, error replies included.
-    test::ScriptedHuman::Answerer answerer(unsigned int seat, MemberId member)
+    test::ScriptedHuman::Answerer answerer(MemberId member)
     {
-        return [this, seat, member](const Answer& answer)
+        return [this, member](const Answer& answer)
         {
-            const SeatDriver::Submitted submitted = run->submit(seat, answer);
+            const SeatDriver::Submitted submitted = run->submit(member, answer);
             if(submitted == SeatDriver::Submitted::Stale)
                 outbox.send(member, errorMessage(ErrorCode::StalePrompt));
             else if(submitted == SeatDriver::Submitted::NotYourTurn)
@@ -96,7 +96,7 @@ TEST_CASE("A solo game runs to the end with a scripted human", "[game]")
 {
     Settings settings = test::tableSettings(3, {0}, Level::Random);
     Game game(test::quickGame(settings, {ana}));
-    test::ScriptedHuman human(game.recorder, ana, game.answerer(0, ana), test::Behaviour::Good);
+    test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Good);
     game.run->start();
 
     REQUIRE(human.waitUntilOver(patience));
@@ -127,7 +127,7 @@ TEST_CASE("Bad answers are refused and re-prompted, and the game goes on", "[gam
 {
     Settings settings = test::tableSettings(4, {1}, Level::LowRisk);
     Game game(test::quickGame(settings, {std::nullopt, ana}, 21));
-    test::ScriptedHuman human(game.recorder, ana, game.answerer(1, ana), test::Behaviour::Garbage);
+    test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Garbage);
     game.run->start();
 
     REQUIRE(human.waitUntilOver(patience));
@@ -151,7 +151,7 @@ TEST_CASE("Closing a game joins its thread at once", "[game][close]")
     {
         Settings settings = test::tableSettings(3, {0});
         Game game(test::quickGame(settings, {ana}));
-        test::ScriptedHuman human(game.recorder, ana, game.answerer(0, ana), test::Behaviour::Silent);
+        test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
         game.run->start();
         REQUIRE(human.waitForPrompt(patience));
 
@@ -240,8 +240,8 @@ TEST_CASE("Online, a turn that times out is played by the seat's computer player
     REQUIRE_FALSE(checkSettings(settings, Mode::Online));
 
     Game game(test::quickGame(settings, {ana, bogdan}));
-    test::ScriptedHuman silent(game.recorder, ana, game.answerer(0, ana), test::Behaviour::Silent);
-    test::ScriptedHuman good(game.recorder, bogdan, game.answerer(1, bogdan), test::Behaviour::Good);
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+    test::ScriptedHuman good(game.recorder, bogdan, game.answerer(bogdan), test::Behaviour::Good);
     game.run->start();
 
     REQUIRE(silent.waitUntilOver(patience));
@@ -266,8 +266,8 @@ TEST_CASE("Each viewer gets their own snapshot, and a watcher sees no hand", "[g
     GameRunSetup setup = test::quickGame(settings, {ana, std::nullopt, bogdan});
     setup.watchers = {watcher};
     Game game(std::move(setup));
-    test::ScriptedHuman first(game.recorder, ana, game.answerer(0, ana), test::Behaviour::Good);
-    test::ScriptedHuman second(game.recorder, bogdan, game.answerer(2, bogdan), test::Behaviour::Good);
+    test::ScriptedHuman first(game.recorder, ana, game.answerer(ana), test::Behaviour::Good);
+    test::ScriptedHuman second(game.recorder, bogdan, game.answerer(bogdan), test::Behaviour::Good);
     game.run->start();
     REQUIRE(first.waitUntilOver(patience));
     REQUIRE(second.waitUntilOver(patience));

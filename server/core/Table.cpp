@@ -208,9 +208,8 @@ std::optional<ErrorCode> Table::answer(MemberId member, const Answer& answer)
     SeatDriver::Submitted submitted = SeatDriver::Submitted::NotYourTurn;
     {
         std::lock_guard lock(mutex_);
-        const std::optional<unsigned int> seat = seatOfLocked(member);
-        if(run_ && seat && state_ == TableState::Playing)
-            submitted = run_->submit(*seat, answer);
+        if(run_ && state_ == TableState::Playing)
+            submitted = run_->submit(member, answer);
     }
 
     switch(submitted)
@@ -296,14 +295,18 @@ bool Table::sync(MemberId member)
         return false;
 
     TableView view = viewLocked(member);
-    if(!run_)
+
+    // The game's sync only to someone who sees it from the seat they hold now, so its snapshot's
+    // `you` always agrees with the table's.
+    const std::optional<Viewer> seen = run_ ? run_->viewer(member) : std::nullopt;
+    if(!seen || seen->seat != seatOfLocked(member))
     {
         SyncView sync;
         sync.table = std::move(view);
         outbox_.send(member, syncMessage(sync, Clock::now()));
         return true;
     }
-    run_->sendSync(member, seatOfLocked(member), std::move(view));
+    run_->sendSync(member, std::move(view));
     return true;
 }
 

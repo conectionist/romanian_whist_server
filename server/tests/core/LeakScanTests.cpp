@@ -66,19 +66,19 @@ std::vector<test::Entry> play(const LeakGame& spec)
         const MemberId member = seat + 1;
         auto prompts = std::make_shared<std::atomic<int>>(0);
         humans.push_back(std::make_unique<test::ScriptedHuman>(
-            recorder, member, [&run, seat](const Answer& answer) { run->submit(seat, answer); }, test::Behaviour::Good,
-            [&run, member, seat, prompts](const Json::Value&)
+            recorder, member, [&run, member](const Answer& answer) { run->submit(member, answer); }, test::Behaviour::Good,
+            [&run, member, prompts](const Json::Value&)
             {
                 if(++*prompts % 17 == 0)
                 {
-                    run->sendSync(member, seat, TableView{});
-                    run->sendSync(watcher, std::nullopt, TableView{});
+                    run->sendSync(member, TableView{});
+                    run->sendSync(watcher, TableView{});
                 }
                 return false;
             },
-            [&run, member, seat](unsigned int round)
+            [&run, member](unsigned int round)
             {
-                run->sendSync(member, seat, TableView{});
+                run->sendSync(member, TableView{});
                 run->continueRound(round);
             }));
     }
