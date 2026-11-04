@@ -1,6 +1,8 @@
 #ifndef WHIST_CORE_SETTINGS_H
 #define WHIST_CORE_SETTINGS_H
 
+#include "core/Names.h"
+
 #include <romanian_whist/Scoreboard.h>
 
 #include <chrono>
@@ -89,7 +91,6 @@ struct Settings
 
 inline constexpr int slowestSpeed = 0;
 inline constexpr int fastestSpeed = 4;
-inline constexpr std::size_t maxNameLength = 20;
 
 struct SettingsError
 {
@@ -98,13 +99,11 @@ struct SettingsError
 };
 
 // Everything the engine's start() would refuse is refused here, so a game never fails to start on
-// its own thread. A game needs every seat filled.
+// its own thread. A game needs every seat filled, and its names clean: see cleanNames().
 std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode);
 
-// A name of 1 to 20 characters of valid UTF-8, with no control or bidirectional formatting
-// characters, which can make one name display as another.
-bool isValidName(std::string_view name);
-bool isValidUtf8(std::string_view text);
+// Cleans every name in place, as cleanName() does, or names the field at fault.
+std::optional<SettingsError> cleanNames(Settings& settings);
 
 } // namespace whist
 

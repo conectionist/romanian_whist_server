@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ---------------------------------------------------------------------------
 # Submodules
 # ---------------------------------------------------------------------------
-foreach(submodule RomanianWhistEngine drogon)
+foreach(submodule RomanianWhistEngine drogon utf8proc)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/${submodule}/CMakeLists.txt")
         message(FATAL_ERROR
             "The ${submodule} submodule is missing.\n"
@@ -40,6 +40,10 @@ set(USE_SUBMODULE ON)
 # A cache entry, because trantor declares this one as such and would drop a plain variable.
 set(TRANTOR_USE_TLS openssl CACHE STRING "The TLS library trantor uses")
 add_subdirectory(libs/drogon SYSTEM)
+
+# Unicode data for cleaning and comparing players' names.
+set(UTF8PROC_INSTALL OFF)
+add_subdirectory(libs/utf8proc SYSTEM)
 
 # ---------------------------------------------------------------------------
 # Warnings, on our targets only

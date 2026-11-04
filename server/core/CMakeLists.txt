@@ -17,6 +17,8 @@ add_library(whist_session STATIC
     Joiner.cpp
     Log.h
     Log.cpp
+    Names.h
+    Names.cpp
     Outbox.h
     Outbox.cpp
     Pacing.h
@@ -58,4 +60,4 @@ execute_process(
 
 target_compile_definitions(whist_session PRIVATE WHIST_SERVER_VERSION="${PROJECT_VERSION}"
                                                  WHIST_SERVER_COMMIT="${WHIST_SERVER_COMMIT}")
-target_link_libraries(whist_session PUBLIC RomanianWhist::engine jsoncpp_lib)
+target_link_libraries(whist_session PUBLIC RomanianWhist::engine jsoncpp_lib PRIVATE utf8proc)
