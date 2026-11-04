@@ -52,7 +52,7 @@ Json::Value createSolo(unsigned int seats, std::optional<unsigned int> human)
             seat["level"] = "cyborg";
         seat["name"] = names[i];
         seat["gender"] = i % 2 == 0 ? "female" : "male";
-        seat["avatar"] = "test-face";
+        seat["avatar"] = i % 2 == 0 ? "woman-long-red-hair" : "man-dark-hair-beard";
         settings["seats"].append(seat);
     }
     settings["structure"] = "1-8-1";

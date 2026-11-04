@@ -142,16 +142,16 @@ TEST_CASE("SIGTERM stops the server after the shutdown delay, serving until then
     player.send(R"({"type":"hello","protocol":1,"lang":"en"})");
     REQUIRE(player.waitForMessages(2, 5s));
     player.send(R"({"type":"createSolo","settings":{"structure":"1-8-1","seats":[)"
-                R"({"kind":"human","name":"Ana","gender":"female","avatar":"face"},)"
-                R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"face"}]}})");
+                R"({"kind":"human","name":"Ana","gender":"female","avatar":"woman-long-red-hair"},)"
+                R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"man-dark-hair-beard"}]}})");
     REQUIRE(player.waitFor([](const Json::Value& m) { return m["type"] == "prompt"; }, 5s));
 
     TestClient watcher(port, "/ws");
     watcher.send(R"({"type":"hello","protocol":1,"lang":"en"})");
     REQUIRE(watcher.waitForMessages(2, 5s));
     watcher.send(R"({"type":"createSolo","settings":{"structure":"1-8-1","botSpeed":0,"seats":[)"
-                 R"({"kind":"computer","level":"reckoner-gamma","name":"Ana","gender":"female","avatar":"face"},)"
-                 R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"face"}]}})");
+                 R"({"kind":"computer","level":"reckoner-gamma","name":"Ana","gender":"female","avatar":"woman-long-red-hair"},)"
+                 R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"man-dark-hair-beard"}]}})");
     REQUIRE(watcher.waitFor([](const Json::Value& m) { return m["type"] == "game"; }, 5s));
 
     server.signal(SIGTERM);
