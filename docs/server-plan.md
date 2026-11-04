@@ -1,9 +1,9 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 3 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
-> repository's skeleton is phase 1, its core, `server/core`, is phase 2, and solo play end to end,
-> through `/ws` and a debug page, is phase 3. Phase 4, online tables, is built and reviewed, and
-> waits for the owner's approval. Phases 5 to 11 are not built yet.**
+> **Status: phases 0 to 4 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
+> repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
+> through `/ws` and a debug page, is phase 3, and online tables are phase 4. Phases 5 to 11 are not
+> built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1440,7 +1440,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **CI** is green at `ec17cc3` and at `b36a045`.
   - **The owner approved** the phase on 2026-11-04.
 
-### Phase 4: online tables — M
+### Phase 4: online tables — M ✅ COMPLETE
 
 - **Work:** create, join, the lobby, seats, profiles, host controls, start; the round hold;
   `tableState`; names and portraits by the catalogues' rules.
@@ -1530,6 +1530,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
     last fix adds no code that runs on more than one thread.
   - **CI** is green at `87637db`, `411b39a` and `7bbfc74`. The run at `ccdfd14` was cancelled when
     the run at `7bbfc74` started, which has the same code.
+  - **The owner approved** the phase on 2026-11-04.
 
 ### Phase 5: drops and replacement — M
 
