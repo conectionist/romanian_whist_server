@@ -19,7 +19,59 @@ const Connection* Outbox::Link::connection() const
 
 std::shared_ptr<Outbox::Link> Outbox::open(std::shared_ptr<Connection> connection)
 {
-    return std::make_shared<Link>(std::move(connection));
+    auto link = std::make_shared<Link>(std::move(connection));
+    std::lock_guard lock(mutex_);
+    std::erase_if(opened_, [](const std::weak_ptr<Link>& other) { return other.expired(); });
+    opened_.push_back(link);
+    return link;
+}
+
+void Outbox::heard(Link& link, Clock::time_point now)
+{
+    link.heard_.store(now);
+}
+
+std::vector<MemberId> Outbox::closeSilent(Clock::time_point cutoff)
+{
+    std::vector<std::shared_ptr<Link>> silent;
+    {
+        std::lock_guard lock(mutex_);
+        std::erase_if(opened_, [](const std::weak_ptr<Link>& other) { return other.expired(); });
+        for(const std::weak_ptr<Link>& weak : opened_)
+        {
+            if(const std::shared_ptr<Link> link = weak.lock(); link && link->heard_.load() < cutoff)
+                silent.push_back(link);
+        }
+    }
+
+    std::shared_lock gate(gate_);
+    if(stopped_)
+        return {};
+
+    std::vector<MemberId> gone;
+    for(const std::shared_ptr<Link>& link : silent)
+    {
+        {
+            std::lock_guard linkLock(link->mutex_);
+            if(link->closed_)
+                continue;
+            link->closed_ = true;
+            link->connection_->abort();
+        }
+
+        // Only if the link is still the member's: a newer tab may have taken them over meanwhile.
+        std::lock_guard lock(mutex_);
+        for(auto it = links_.begin() ; it != links_.end() ; ++it)
+        {
+            if(it->second == link)
+            {
+                gone.push_back(it->first);
+                links_.erase(it);
+                break;
+            }
+        }
+    }
+    return gone;
 }
 
 bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Value first)

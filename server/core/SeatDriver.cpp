@@ -14,13 +14,14 @@ using namespace romanian_whist;
 
 SeatDriver::SeatDriver(Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                        std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
-                       std::shared_ptr<std::atomic<std::uint64_t>> promptIds)
+                       std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed)
     : seat_(seat),
       member_(member),
       computer_(std::move(computer)),
       turnTimer_(turnTimer),
       outbox_(outbox),
-      promptIds_(std::move(promptIds))
+      promptIds_(std::move(promptIds)),
+      onChange_(std::move(changed))
 {
 }
 
@@ -92,6 +93,18 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     if(abandoned_)
         throw GameAbandoned{};
 
+    if(replaced_)
+        return std::nullopt;
+
+    // A member whose grace period ran out before their turn came is replaced without being asked.
+    if(graceEnds_ && Clock::now() >= *graceEnds_)
+    {
+        replaced_ = true;
+        lock.unlock();
+        notifyTable();
+        return std::nullopt;
+    }
+
     // A timer needs someone to make the move when it runs out.
     const bool timed = turnTimer_ && computer_.provider;
 
@@ -101,16 +114,21 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     open_ = prompt;
     answer_.reset();
     lastPrompt_ = prompt.id;
+    const bool openedAway = graceEnds_.has_value();
 
     // Encoded with the lock released; send() takes it again to post, so nothing goes out after
     // abandon().
     lock.unlock();
     send(promptMessage(prompt, Clock::now()));
+    if(openedAway)
+        notifyTable();
     lock.lock();
 
     while(true)
     {
-        waitUntil(changed_, lock, prompt.deadline, [this] { return answer_.has_value() || abandoned_; });
+        const std::uint64_t seen = version_;
+        waitUntil(changed_, lock, deadlineOf(prompt),
+                  [&] { return answer_.has_value() || abandoned_ || replaced_ || version_ != seen; });
 
         if(abandoned_)
         {
@@ -118,22 +136,44 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
             throw GameAbandoned{};
         }
 
+        // Replaced from outside, by the reaper or by the member leaving: the computer takes the turn.
+        if(replaced_)
+        {
+            open_.reset();
+            answer_.reset();
+            lock.unlock();
+            send(promptClosedMessage(prompt.id, false));
+            return std::nullopt;
+        }
+
         // Taken and cleared at once, or the next prompt would return it without waiting.
         const std::optional<Pending> answer = std::exchange(answer_, std::nullopt);
         if(answer && valid(*answer))
         {
+            const bool wasAway = graceEnds_.has_value();
             open_.reset();
+            timedOut_ = 0;
             lock.unlock();
             send(promptClosedMessage(prompt.id, true));
+            if(wasAway)
+                notifyTable();
             return answer->value;
         }
 
         // Checked even when an answer woke the wait, or a stream of invalid ones would hold it off.
-        if(prompt.deadline && Clock::now() >= *prompt.deadline)
+        const std::optional<Clock::time_point> end = deadlineOf(prompt);
+        if(end && Clock::now() >= *end)
         {
+            // An away member is replaced, and so is one whose turns keep running out.
+            const bool away = graceEnds_.has_value();
+            if(away || ++timedOut_ >= timeoutsBeforeReplacement)
+                replaced_ = true;
+            const bool nowReplaced = replaced_;
             open_.reset();
             lock.unlock();
             send(promptClosedMessage(prompt.id, false));
+            if(nowReplaced)
+                notifyTable();
             return std::nullopt;
         }
 
@@ -149,11 +189,21 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     }
 }
 
+std::optional<Clock::time_point> SeatDriver::deadlineOf(const Prompt& prompt) const
+{
+    std::optional<Clock::time_point> end = prompt.deadline;
+    if(graceEnds_ && (!end || *graceEnds_ < *end))
+        end = graceEnds_;
+    return end;
+}
+
 SeatDriver::Submitted SeatDriver::submit(const Answer& answer)
 {
     {
         std::lock_guard lock(mutex_);
-        if(!open_)
+
+        // A replaced seat has no open prompt for its member, whatever is still on record.
+        if(!open_ || replaced_)
             return answer.prompt != 0 && answer.prompt <= lastPrompt_ ? Submitted::Stale : Submitted::NotYourTurn;
         if(answer.prompt != open_->id || answer_)
             return Submitted::Stale;
@@ -173,6 +223,72 @@ void SeatDriver::abandon()
     changed_.notify_all();
 }
 
+void SeatDriver::away(Clock::time_point graceEnds)
+{
+    if(!member_ || !computer_.provider)
+        return;
+    {
+        std::lock_guard lock(mutex_);
+        graceEnds_ = graceEnds;
+        version_++;
+    }
+    changed_.notify_all();
+}
+
+void SeatDriver::here()
+{
+    {
+        std::lock_guard lock(mutex_);
+        if(!graceEnds_)
+            return;
+        graceEnds_.reset();
+        version_++;
+    }
+    changed_.notify_all();
+}
+
+void SeatDriver::replace(bool silent)
+{
+    if(!member_ || !computer_.provider)
+        return;
+    {
+        std::lock_guard lock(mutex_);
+        replaced_ = true;
+        silent_ = silent_ || silent;
+        version_++;
+    }
+    changed_.notify_all();
+}
+
+bool SeatDriver::reclaim()
+{
+    {
+        std::lock_guard lock(mutex_);
+        if(!replaced_)
+            return false;
+        replaced_ = false;
+        silent_ = false;
+        timedOut_ = 0;
+        version_++;
+    }
+    changed_.notify_all();
+    return true;
+}
+
+bool SeatDriver::replaced() const
+{
+    std::lock_guard lock(mutex_);
+    return replaced_;
+}
+
+std::optional<Clock::time_point> SeatDriver::awayDeadline() const
+{
+    std::lock_guard lock(mutex_);
+    if(!open_ || !graceEnds_)
+        return std::nullopt;
+    return deadlineOf(*open_);
+}
+
 void SeatDriver::withOpenPrompt(const std::function<void(const std::optional<Prompt>&)>& use) const
 {
     std::lock_guard lock(mutex_);
@@ -181,7 +297,8 @@ void SeatDriver::withOpenPrompt(const std::function<void(const std::optional<Pro
 
 bool SeatDriver::humanInCharge() const
 {
-    return member_.has_value();
+    std::lock_guard lock(mutex_);
+    return member_ && !replaced_;
 }
 
 std::optional<MemberId> SeatDriver::member() const
@@ -196,10 +313,17 @@ IGameObserver* SeatDriver::observer() const
 
 void SeatDriver::send(Json::Value message)
 {
-    // Checked under the lock abandon() takes, so an abandoned seat sends nothing more.
+    // Checked under the lock abandon() takes, so an abandoned seat sends nothing more, nor one whose
+    // member has left the game.
     std::lock_guard lock(mutex_);
-    if(member_ && !abandoned_)
+    if(member_ && !abandoned_ && !silent_)
         outbox_.send(*member_, std::move(message));
+}
+
+void SeatDriver::notifyTable() const
+{
+    if(onChange_)
+        onChange_();
 }
 
 } // namespace whist

@@ -12,6 +12,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace whist
 {
@@ -36,6 +37,7 @@ public:
         std::mutex mutex_;
         std::uint64_t seq_ = 0;
         bool closed_ = false;
+        std::atomic<Clock::time_point> heard_{Clock::now()};
     };
 
     std::shared_ptr<Link> open(std::shared_ptr<Connection> connection);
@@ -47,6 +49,13 @@ public:
 
     // Opens a link for the connection and attaches it, with no first message.
     void attach(MemberId member, std::shared_ptr<Connection> connection);
+
+    // Notes that the link's peer is alive: any frame from it, a pong included. Any thread.
+    void heard(Link& link, Clock::time_point now = Clock::now());
+
+    // Aborts every link not heard from since `cutoff`, one that no member has yet claimed too, and
+    // detaches the members it was theirs. Returns those members, so their tables can be told.
+    std::vector<MemberId> closeSilent(Clock::time_point cutoff);
 
     // Only if that connection is still the member's, so a late close of an old tab is harmless.
     // True when it was, and is now gone.
@@ -79,6 +88,9 @@ private:
 
     mutable std::mutex mutex_;
     std::unordered_map<MemberId, std::shared_ptr<Link>> links_;
+
+    // Every link opened, held weakly, so a silent one is found whether or not a member holds it.
+    std::vector<std::weak_ptr<Link>> opened_;
 };
 
 } // namespace whist

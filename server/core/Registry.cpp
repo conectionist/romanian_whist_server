@@ -31,6 +31,7 @@ std::function<std::uint64_t()> systemRandom()
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
       tableOptions_(options.table),
+      forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
 }
@@ -309,6 +310,58 @@ void Registry::closeTable(std::string_view code)
     }
     if(table)
         table->close();
+}
+
+void Registry::reap(Clock::time_point now)
+{
+    std::vector<std::shared_ptr<Table>> tables;
+    {
+        std::lock_guard lock(mutex_);
+        if(closing_)
+            return;
+        for(const auto& [code, table] : tables_)
+            tables.push_back(table);
+    }
+
+    // Each table is reaped under its own lock only. One that has been idle too long is closed as a
+    // closed table is anywhere: off the books under this lock, closed without it.
+    for(const std::shared_ptr<Table>& table : tables)
+    {
+        if(!table->reap(now))
+            continue;
+
+        std::shared_ptr<Table> closing;
+        {
+            std::lock_guard lock(mutex_);
+            const auto found = tables_.find(table->code());
+            if(found != tables_.end() && found->second == table)
+                closing = removeLocked(table->code());
+        }
+        if(closing)
+            closing->close();
+    }
+
+    std::lock_guard lock(mutex_);
+    for(auto it = members_.begin() ; it != members_.end() ; )
+    {
+        MemberRecord& record = it->second;
+        if(!record.table.empty() || outbox_.isConnected(it->first))
+        {
+            record.unseenSince.reset();
+            ++it;
+            continue;
+        }
+
+        if(!record.unseenSince)
+            record.unseenSince = now;
+        if(now - *record.unseenSince >= forgetMember_)
+        {
+            tokens_.erase(record.token);
+            it = members_.erase(it);
+        }
+        else
+            ++it;
+    }
 }
 
 void Registry::shutdown()

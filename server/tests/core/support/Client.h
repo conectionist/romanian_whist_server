@@ -38,6 +38,9 @@ public:
     // The connection closes, as when a tab is reloaded.
     void drop();
 
+    // The peer has sent something, a pong perhaps.
+    void heard();
+
     MemberId label() const;
     std::optional<MemberId> member();
 

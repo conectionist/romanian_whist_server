@@ -35,10 +35,11 @@ class Publisher : public romanian_whist::IGameObserver
 public:
     // With a hold limit, a game is online: its hold after a round waits only for the humans connected
     // when it starts, and for no longer than the limit. Without one, as in solo, it waits for as long
-    // as it takes.
+    // as it takes. `changed` is called on the game thread, with no lock held, once the game is over.
     Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
               std::optional<std::chrono::milliseconds> holdLimit,
-              const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox);
+              const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox,
+              std::function<void()> changed = {});
 
     void onGameStarted(const romanian_whist::GameEngine& engine) override;
     void onRoundStarted(const romanian_whist::GameEngine& engine) override;
@@ -72,6 +73,13 @@ public:
 
     // Any thread. Online: the seat's human has gone, so the hold no longer waits for them.
     void excuse(unsigned int seat);
+
+    // Any thread. While nobody who sees the game is connected, it holds at its next rest, as for a
+    // pause, and goes on once someone is.
+    void setNobodyHere(bool nobodyHere);
+
+    // Any thread. A muted member is sent nothing of the game; once this returns nothing more is.
+    void setMuted(MemberId member, bool muted);
 
     // Any thread. A new speed applies to the rest under way. The wait applies from the next scored
     // round, so a hold already on stays on.
@@ -128,6 +136,7 @@ private:
     Outbox& outbox_;
     const bool anyHuman_;
     const std::optional<std::chrono::milliseconds> holdLimit_;
+    const std::function<void()> changed_;
 
     // Guards everything below. The game's messages are posted under it too (Outbox::send only
     // queues), which is what keeps a sync in order with them.
@@ -137,6 +146,7 @@ private:
     std::optional<LastTrick> lastTrick_;
     std::optional<HoldView> hold_;
     bool silenced_ = false;
+    std::vector<MemberId> muted_;
 
     bool gameOverSent_ = false;
 
@@ -148,6 +158,7 @@ private:
     std::uint64_t pacingVersion_ = 0;
     bool waitAfterRound_;
     bool paused_ = false;
+    bool nobodyHere_ = false;
     bool cancelled_ = false;
 
     // The hold after a scored round. It is set up before the round's result goes out, so a Continue

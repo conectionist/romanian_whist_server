@@ -130,3 +130,60 @@ TEST_CASE("Messages sent from many threads leave in seq order", "[outbox]")
     for(std::size_t i = 0 ; i < messages.size() ; i++)
         CHECK(messages[i]["seq"].asUInt64() == i + 1);
 }
+
+TEST_CASE("A link nothing is heard from is aborted, and its member is no longer connected", "[outbox][silent]")
+{
+    using std::chrono::seconds;
+    test::Recorder recorder;
+    Outbox outbox;
+
+    const auto quiet = outbox.open(recorder.connect(1));
+    const auto lively = outbox.open(recorder.connect(2));
+    const auto stray = outbox.open(recorder.connect(3));
+    outbox.attach(1, quiet, Json::Value(Json::nullValue));
+    outbox.attach(2, lively, Json::Value(Json::nullValue));
+
+    // Only the second link has been heard from since the cutoff.
+    outbox.heard(*lively, Clock::now() + seconds(10));
+    const std::vector<MemberId> gone = outbox.closeSilent(Clock::now() + seconds(5));
+
+    CHECK(gone == std::vector<MemberId>{1});
+    CHECK(recorder.closedAfter(1));
+    CHECK_FALSE(recorder.closedAfter(2));
+    CHECK_FALSE(outbox.isConnected(1));
+    CHECK(outbox.isConnected(2));
+
+    // A connection that never said hello is aborted too, though no member loses anything.
+    CHECK(recorder.closedAfter(3));
+
+    // Nothing is aborted twice.
+    CHECK(outbox.closeSilent(Clock::now() + seconds(5)).empty());
+}
+
+TEST_CASE("A silent link a newer tab has replaced does not take the member away", "[outbox][silent]")
+{
+    using std::chrono::seconds;
+    test::Recorder recorder;
+    Outbox outbox;
+
+    const auto older = outbox.open(recorder.connect(1));
+    const auto newer = outbox.open(recorder.connect(2));
+    outbox.attach(1, older, Json::Value(Json::nullValue));
+    outbox.attach(1, newer, Json::Value(Json::nullValue));
+    outbox.heard(*newer, Clock::now() + seconds(10));
+
+    CHECK(outbox.closeSilent(Clock::now() + seconds(5)).empty());
+    CHECK(outbox.isConnected(1));
+    CHECK_FALSE(recorder.closedAfter(2));
+}
+
+TEST_CASE("Once stopped, the Outbox aborts nothing", "[outbox][silent]")
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    const auto link = outbox.open(recorder.connect(1));
+    outbox.attach(1, link, Json::Value(Json::nullValue));
+    outbox.stop();
+    CHECK(outbox.closeSilent(Clock::now() + std::chrono::hours(1)).empty());
+    CHECK_FALSE(recorder.closedAfter(1));
+}

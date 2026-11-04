@@ -52,6 +52,11 @@ void Session::receiveBinary()
         refuseMalformed(ErrorCode::BadMessage, {});
 }
 
+void Session::heard()
+{
+    service_->outbox().heard(*link_);
+}
+
 void Session::closed()
 {
     closing_ = true;
@@ -72,6 +77,14 @@ void Session::handle(const ClientMessage& message)
     Registry& registry = service_->registry();
     const MemberId member = member_.value_or(0);
     const auto table = [&] { return registry.tableOf(member); };
+
+    // Whatever else a member sends shows they are here, so it takes back a seat a computer player
+    // took over. Leaving does not, and the explicit `back` is just that and nothing more.
+    if(member_ && !std::holds_alternative<Hello>(message) && !std::holds_alternative<LeaveTable>(message))
+    {
+        if(const auto at = table())
+            at->back(member);
+    }
 
     std::visit([&]([[maybe_unused]] const auto& m)
     {

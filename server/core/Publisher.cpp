@@ -28,13 +28,15 @@ std::vector<StandingRow> rows(const std::vector<Standing>& standings)
 
 Publisher::Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
                      std::optional<std::chrono::milliseconds> holdLimit,
-                     const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox)
+                     const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox,
+                     std::function<void()> changed)
     : game_(game),
       viewers_(std::move(viewers)),
       drivers_(drivers),
       outbox_(outbox),
-      anyHuman_(std::ranges::any_of(drivers, [](const auto& driver) { return driver->humanInCharge(); })),
+      anyHuman_(std::ranges::any_of(drivers, [](const auto& driver) { return driver->member().has_value(); })),
       holdLimit_(holdLimit),
+      changed_(std::move(changed)),
       latest_(drivers.size() + 1),
       pacing_(pacing),
       waitAfterRound_(waitAfterRound)
@@ -84,7 +86,10 @@ void Publisher::broadcastLocked(const std::function<Json::Value(const Viewer&)>&
     if(silenced_)
         return;
     for(const Viewer& viewer : viewers_)
-        outbox_.send(viewer.member, message(viewer));
+    {
+        if(std::ranges::find(muted_, viewer.member) == muted_.end())
+            outbox_.send(viewer.member, message(viewer));
+    }
 }
 
 bool Publisher::computerMoves(Seat seat) const
@@ -100,12 +105,12 @@ std::chrono::milliseconds Publisher::lengthOf(Rest kind) const
 }
 
 // The desktop's pace(): a pause or a hold waits out the rest under way, then holds, and a rest that
-// begins paused or held is the hold alone. A pause has no deadline, nor has a solo hold: the
-// closing path cancels. An online hold ends at its deadline.
+// begins paused or held is the hold alone. A pause has no deadline, nor has a solo hold, nor has a
+// game nobody is here to watch: the closing path cancels. An online hold ends at its deadline.
 void Publisher::rest(Rest kind)
 {
     std::unique_lock lock(restMutex_);
-    if(!paused_ && !heldRound_)
+    if(!paused_ && !heldRound_ && !nobodyHere_)
     {
         const Clock::time_point started = Clock::now();
         while(!cancelled_)
@@ -122,7 +127,7 @@ void Publisher::rest(Rest kind)
         }
     }
 
-    const auto free = [this] { return cancelled_ || (!paused_ && !heldRound_); };
+    const auto free = [this] { return cancelled_ || (!paused_ && !heldRound_ && !nobodyHere_); };
     while(!waitUntil(restChanged_, lock, heldRound_ ? holdDeadline_ : std::nullopt, free))
     {
         // Only a held wait has a deadline, and its time is up.
@@ -152,6 +157,23 @@ void Publisher::setPaused(bool paused)
         paused_ = paused;
     }
     restChanged_.notify_all();
+}
+
+void Publisher::setNobodyHere(bool nobodyHere)
+{
+    {
+        std::lock_guard lock(restMutex_);
+        nobodyHere_ = nobodyHere;
+    }
+    restChanged_.notify_all();
+}
+
+void Publisher::setMuted(MemberId member, bool muted)
+{
+    std::lock_guard lock(cacheMutex_);
+    std::erase(muted_, member);
+    if(muted)
+        muted_.push_back(member);
 }
 
 void Publisher::continueRound(unsigned int round, std::optional<unsigned int> seat)
@@ -224,7 +246,7 @@ void Publisher::sendHoldLocked(unsigned int round, bool first)
     {
         for(unsigned int i = 0 ; i < drivers_.size() ; i++)
         {
-            if(drivers_[i]->humanInCharge())
+            if(drivers_[i]->member())
                 view.waitingFor.push_back(i);
         }
     }
@@ -367,7 +389,7 @@ void Publisher::onRoundScored(const GameEngine& engine)
             for(unsigned int seat = 0 ; seat < drivers_.size() ; seat++)
             {
                 const std::optional<MemberId> member = drivers_[seat]->member();
-                if(member && outbox_.isConnected(*member))
+                if(member && outbox_.isConnected(*member) && !drivers_[seat]->replaced())
                     awaited_.push_back(seat);
             }
             hold = !awaited_.empty();
@@ -404,6 +426,9 @@ void Publisher::onGameOver(const GameEngine& engine)
     event.standings = rows(engine.getStandings());
     event.winners = rows(engine.getWinners());
     publish(engine, event);
+
+    if(changed_)
+        changed_();
 }
 
 void Publisher::onGameStopped(const GameEngine& engine)

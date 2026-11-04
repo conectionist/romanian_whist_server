@@ -350,6 +350,8 @@ ClientMessage decodeObject(const Json::Value& root)
         return finish(Resume{});
     if(type == "leaveTable")
         return finish(LeaveTable{});
+    if(type == "back")
+        return finish(Back{});
 
     throw BadField{"type"};
 }

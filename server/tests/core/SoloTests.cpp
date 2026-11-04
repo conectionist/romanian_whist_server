@@ -454,3 +454,54 @@ TEST_CASE("Leaving a solo game closes it, and nothing of it follows into the nex
     CHECK(all[closed.size() + 1]["state"] == "playing");
     checkShapes(all);
 }
+
+TEST_CASE("A watched game holds while its watcher is away, and goes on when they come back", "[solo][away]")
+{
+    // A short beat each move, so the game is still far from its end when the tab goes.
+    Solo solo(milliseconds(10));
+    solo.create(test::tableSettings(3, {}));
+    const auto table = solo.service->registry().tableOf(*solo.client->member());
+    REQUIRE(table);
+
+    const auto end = Clock::now() + patience;
+    while(table->scoredRounds() < 1 && Clock::now() < end)
+        std::this_thread::sleep_for(milliseconds(2));
+    REQUIRE(table->scoredRounds() >= 1);
+
+    solo.client->drop();
+    std::this_thread::sleep_for(quiet);
+    const std::size_t rounds = table->scoredRounds();
+    std::this_thread::sleep_for(milliseconds(500 * test::slowdown));
+    CHECK(table->scoredRounds() == rounds);
+    CHECK(table->outcome() == RunOutcome::Running);
+
+    // In a new tab the same game goes on to its end.
+    const Json::Value sync = solo.reload();
+    CHECK(sync["history"].size() >= rounds);
+    CHECK(solo.waitFor(gameEvent("gameOver")));
+}
+
+TEST_CASE("A solo table nobody returns to closes after half an hour, and its game's thread is joined", "[solo][away]")
+{
+    Solo solo(milliseconds(10));
+    solo.create(test::tableSettings(3, {}));
+    REQUIRE(solo.waitFor(gameEvent("gameStarted")));
+    solo.client->drop();
+
+    Registry& registry = solo.service->registry();
+    const std::size_t joined = registry.joiner().joined();
+    solo.service->reap(Clock::now() + std::chrono::minutes(29));
+    CHECK(registry.tableCount() == 1);
+    solo.service->reap(Clock::now() + std::chrono::minutes(31));
+    CHECK(registry.tableCount() == 0);
+
+    const auto end = Clock::now() + milliseconds(1000 * test::slowdown);
+    while(registry.joiner().joined() == joined && Clock::now() < end)
+        std::this_thread::sleep_for(milliseconds(2));
+    CHECK(registry.joiner().joined() > joined);
+
+    // The player is free to start another game.
+    solo.reload();
+    solo.create(test::tableSettings(2, {0}));
+    CHECK(solo.waitFor(ofType("tableState")));
+}

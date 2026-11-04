@@ -1543,6 +1543,111 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - every timeline of [§5.2](#52-timelines) passes as a core test;
   - the chaos test, run for an hour of games, finishes every game with no table stalled.
 
+**Outcome** (branch `web/phase-5-drops`, PR #8, commit `17aa6b0`):
+
+- **The owner's choices** (2026-11-04):
+  - the branch name;
+  - a seat replaced while its player is connected is taken back by a new `back` message, any other
+    message from them, or a reload;
+  - a player who drops on their turn is waited for until the earlier of the end of the grace
+    period and their turn timer, so no turn outlasts its timer;
+  - the chaos test is one Node script with no packages;
+  - after the cold review: fix 3, 5, 6 and 7, leave 1 and 4, no second cold review; the chaos runs,
+    one `tsan` run, and the PR.
+- **Built.**
+  - **Silent connections are closed.** The `Outbox` keeps every link it opens and when it was last
+    heard from; any frame counts, a pong included. `Service::reap` runs on a timer on Drogon's main
+    loop. It aborts links silent past the pong timeout (30 s), whether or not a member holds them,
+    and their tables are told. `Connection::abort` is Drogon's `forceClose()`.
+  - **Away, replaced, reclaimed.**
+    - The seat driver holds the grace end, whether it is replaced, and how many turns in a row ran
+      out. A turn waits until the earlier of the grace end and the turn timer.
+    - A turn that comes after the grace period, or runs out while its player is away, is the
+      computer player's, and the seat is replaced; so is a connected player's after three turns
+      in a row run out.
+    - A reload, `back`, or any other message but `leaveTable` takes the seat back from the next
+      decision.
+    - `tableState` gives `presence` `replaced`, and `waitingFor` while an away player's turn is
+      waited for.
+  - **Leaving a game under way.** The seat is replaced at once, the member is muted and sent
+    nothing more of the game, and the registry frees them. Joining again by the code while the game
+    runs gives the seat back, whatever profile they bring. Once the game is over the seat opens.
+    Those who left are kept in `Seating` apart from its members, so no table message can reach
+    them at another table.
+  - **The hold for nobody:** while nobody at the table is connected, solo included, the game holds
+    at its next rest, cancel-safe.
+  - **The reaper,** each second:
+    - it replaces members away past the grace period and hands a host away past it over to whoever
+      has been there longest and is connected;
+    - it opens the seats of those who left a finished game;
+    - it closes tables nobody has been connected to for 10 minutes online and 30 solo;
+    - it forgets members at no table and unseen for an hour.
+  - **Settings:** `pong_timeout_ms`, `reap_interval_ms`, `grace_period_ms`, `online_idle_ms`,
+    `solo_idle_ms`, `forget_member_ms`.
+  - **`PROTOCOL.md`** describes all of it, with two new fixtures, `tableState.waiting` and
+    `tableState.replaced`. The debug page shows who is waited for and has an "I'm back" button.
+  - **The chaos test,** `tools/chaos/chaos.mjs`: four tables of three people and three computer
+    players. The people answer, wrongly or late at times, close their tabs, freeze them, leave and
+    come back. It fails on a table with no progress for two minutes, a table that finishes no
+    game after the last disruption, a frozen tab the server does not close, a hand its viewer may
+    not see, or an error no person could have caused.
+- **Tests:** 35 new core tests, 132 in all, and 2 new app tests, 19 in all. CTest runs 152.
+  - **Core:** every timeline of §5.2, and beside them:
+    - the host's hand-over, the hold for nobody, idle closing joining the game's thread, and the
+      pong timeout;
+    - an answer against the grace deadline, many times;
+    - three timeouts in a row, and an answer starting the count over;
+    - replacing, reclaiming and leaving silently;
+    - a replaced seat not awaited by the hold;
+    - solo holds and closes, and members forgotten;
+    - a game with people coming and going at random.
+    - The leak scan gains two online games with people going away and coming back all through them.
+    - The online test harness moved to `support/Online.h`.
+  - **Mutation checks:** no grace deadline, no mute, no reaper replacement and no reap timer each
+    fail a test. The first try at the mute's test could not fail, and was split so it can.
+  - **App:** a raw socket that never answers a ping is closed and seen away; a tab that closes and
+    comes back with its token is back in its seat. `ServerProcess` moved to a header of its own.
+- **Where the build departs from the plan, or found what it did not say:**
+  - **A game calls back to its table** (phase 2 had none): when a prompt for an away member
+    opens or closes, when it replaces a seat itself, and once it is over. The callback holds the
+    table weakly and runs with no lock held.
+  - **`back`** is new in §6.3.
+  - **The reaper hands a host over in any state,** not only in the lobby.
+  - **A connection's presence is read from the `Outbox`** whenever a table hears of it, so a late
+    word about a tab that a newer one replaced changes nothing.
+  - **`turnTimerOverride`** in `TableOptions` lets tests use timers the settings refuse.
+- **Left out:**
+  - **Handing a finished game's thread to the joiner** (§4.9). A finished table keeps its exited
+    thread and its caches until the next game or until it closes, which idle closing bounds. The
+    reaper cannot simply join it under the table lock: a failed game calls back into its table
+    after setting its outcome. The cold review rated this severity 2.
+  - **Phase 9:** the limits. **The server must not be public before them.**
+- **Reviews.**
+  - **The cold review,** of the whole branch, found 5 problems, none above severity 2, and no
+    crash, deadlock, race or leaked card. My own re-check added one more: a comment in
+    `GameRun::play()` made untrue by the failure path. The owner chose my recommendation:
+    - fix 5 to 7, the untrue comments and a check that could not fail (`b63aecf`);
+    - fix 3, adding frozen tabs to the chaos test (`95b2ba2`);
+    - leave 1, which is the owner's own rule for an away player's turn, and 4, recorded above.
+  - **The owner chose to skip a second cold review** of the fixes.
+  - **The review ran on the branch with `git diff`,** before the PR was opened, where earlier phases
+    opened the PR first.
+- **Builds, chaos and CI.**
+  - **`default` and `release`** (warnings as errors) pass 152 of 152 at `95b2ba2`; `17aa6b0` changes
+    only the chaos script.
+  - **`tsan`,** one run with the owner's leave, passes 152 of 152 at `17aa6b0`, with no report.
+  - **The chaos test,** each run with the owner's leave:
+    - two 3-minute runs and a first hour found no stall and no leak, but four bugs in the script
+      itself: the host never started a second game after `gameOver`; the end check wanted tables
+      idle; games on a table made again went uncounted; and skipped Continues made games too slow.
+    - **The hour at `17aa6b0` passes:**
+      - 83 games finished (28, 19, 18 and 18 a table);
+      - 2,292 tabs closed and 477 frozen, every frozen one closed by the server;
+      - 893 people left and came back, and 917 seats were taken back;
+      - 1,149 turns were left to the timer, and 8 tables were made again;
+      - no table stalled, and no hand was seen where it should not be.
+  - **CI** is green at `77a6abf` and `95b2ba2` (runs 24 and 25, started by hand).
+
 ### Phase 6: the table page — L
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-6-the-table-page--l).
