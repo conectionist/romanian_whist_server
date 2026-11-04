@@ -1,8 +1,8 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0, 1 and 2 are complete (2026-11-03). Engine 5.1.0 carries phase 0. This
-> repository's skeleton is phase 1, and its core, `server/core`, is phase 2. Phase 3, solo end to
-> end, is built and awaits the owner's approval. Phases 4 to 11 are not built yet.**
+> **Status: phases 0 to 3 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
+> repository's skeleton is phase 1, its core, `server/core`, is phase 2, and solo play end to end,
+> through `/ws` and a debug page, is phase 3. Phases 4 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1341,7 +1341,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
     cancelled when run 12 started, and run 12 has the same code.
   - **The owner approved** the phase on 2026-11-03.
 
-### Phase 3: solo, end to end — M
+### Phase 3: solo, end to end — M ✅ COMPLETE
 
 - **Work:**
   - the Drogon controller over the core: `hello`, tokens, `createSolo`, prompts, answers, `sync`;
@@ -1437,6 +1437,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **`tsan`,** one run with the owner's leave, passes 76 of 76 at `b36a045`. A race report would
     have failed its test, the server spawned by the SIGTERM test included.
   - **CI** is green at `ec17cc3` and at `b36a045`.
+  - **The owner approved** the phase on 2026-11-04.
 
 ### Phase 4: online tables — M
 
