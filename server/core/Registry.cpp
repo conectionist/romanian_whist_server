@@ -106,8 +106,10 @@ std::optional<MemberId> Registry::findMember(std::string_view token) const
     return found->second;
 }
 
-Registry::Created Registry::createSolo(MemberId member, const Settings& settings)
+Registry::Created Registry::createSolo(MemberId member, Settings settings)
 {
+    if(const std::optional<SettingsError> error = cleanNames(settings))
+        return {nullptr, ErrorCode::BadMessage, error->field};
     if(const std::optional<SettingsError> error = checkSettings(settings, Mode::Solo))
         return {nullptr, ErrorCode::BadMessage, error->field};
 
@@ -135,19 +137,144 @@ Registry::Created Registry::createSolo(MemberId member, const Settings& settings
             code = newCode();
         while(tables_.contains(code));
 
-        table = std::make_shared<Table>(code, Mode::Solo, settings, std::vector<TableMember>{{member, seat}}, member,
-                                        tableOptions_, outbox_, joiner_);
+        table = std::make_shared<Table>(code, Mode::Solo, Seating(std::move(settings), {{member, seat}}, member),
+                                        tableOptions_, outbox_, joiner_, random_());
         tables_[code] = table;
         record->second.table = code;
 
-        if(const std::optional<ErrorCode> error = table->startGame(member))
+        if(const std::optional<Refusal> refused = table->startGame(member))
         {
             tables_.erase(code);
             record->second.table.clear();
-            return {nullptr, error, {}};
+            return {nullptr, refused->code, refused->detail};
         }
     }
     return {table, std::nullopt, {}};
+}
+
+Registry::Created Registry::createTable(MemberId member, Settings settings, Profile profile)
+{
+    completeOnline(settings);
+    if(const std::optional<SettingsError> error = cleanNames(settings))
+        return {nullptr, ErrorCode::BadMessage, error->field};
+    if(const std::optional<SettingsError> error = checkNewTableSettings(settings))
+        return {nullptr, ErrorCode::BadMessage, error->field};
+    if(const std::optional<SettingsError> error = preparePersonProfile(profile))
+        return {nullptr, ErrorCode::BadMessage, error->field};
+
+    // The maker chose their computer players' names, so a clash with their own is theirs to fix.
+    for(const SeatSetting& seat : settings.seats)
+    {
+        if(seat.kind == SeatKind::Computer && nameKey(seat.profile.name) == nameKey(profile.name))
+            return {nullptr, ErrorCode::BadMessage, "name"};
+    }
+
+    std::shared_ptr<Table> table;
+    {
+        std::lock_guard lock(mutex_);
+        if(closing_)
+            return {nullptr, ErrorCode::Draining, {}};
+
+        const auto record = members_.find(member);
+        if(record == members_.end())
+            return {nullptr, ErrorCode::NotFound, {}};
+        if(!record->second.table.empty())
+            return {nullptr, ErrorCode::Illegal, {}};
+
+        std::string code;
+        do
+            code = newCode();
+        while(tables_.contains(code));
+
+        Seating seating(std::move(settings), {}, member);
+        seating.join(member, std::move(profile));
+        table = std::make_shared<Table>(code, Mode::Online, std::move(seating), tableOptions_, outbox_, joiner_,
+                                        random_());
+        tables_[code] = table;
+        record->second.table = code;
+
+        // Sent under this lock, so nothing the table sends can come before it.
+        table->sync(member);
+    }
+    return {table, std::nullopt, {}};
+}
+
+std::optional<Refusal> Registry::joinTable(MemberId member, std::string_view code, Profile profile)
+{
+    if(const std::optional<SettingsError> error = preparePersonProfile(profile))
+        return Refusal(ErrorCode::BadMessage, error->field);
+
+    std::lock_guard lock(mutex_);
+    if(closing_)
+        return ErrorCode::Draining;
+
+    const auto record = members_.find(member);
+    if(record == members_.end())
+        return ErrorCode::NotFound;
+    if(!record->second.table.empty())
+        return ErrorCode::Illegal;
+
+    // A solo table's code is no way in: it is not found.
+    const auto found = tables_.find(code);
+    if(found == tables_.end() || found->second->mode() != Mode::Online)
+        return ErrorCode::NotFound;
+
+    if(std::optional<Refusal> refused = found->second->join(member, std::move(profile)))
+        return refused;
+    record->second.table = found->first;
+    return std::nullopt;
+}
+
+std::optional<Refusal> Registry::leaveTable(MemberId member)
+{
+    std::shared_ptr<Table> closing;
+    {
+        std::lock_guard lock(mutex_);
+        const auto record = members_.find(member);
+        if(record == members_.end() || record->second.table.empty())
+            return ErrorCode::Illegal;
+
+        const auto found = tables_.find(record->second.table);
+        if(found == tables_.end())
+            return ErrorCode::Illegal;
+        const std::shared_ptr<Table> table = found->second;
+
+        if(table->mode() == Mode::Solo)
+        {
+            // The member was the solo table's only person, so leaving it closes it.
+            closing = removeLocked(table->code());
+        }
+        else
+        {
+            const Table::Left left = table->leave(member);
+            if(left.refused)
+                return left.refused;
+            record->second.table.clear();
+            if(left.empty)
+                closing = removeLocked(table->code());
+        }
+    }
+
+    if(closing)
+        closing->close();
+    return std::nullopt;
+}
+
+std::shared_ptr<Table> Registry::removeLocked(std::string_view code)
+{
+    const auto found = tables_.find(code);
+    if(found == tables_.end())
+        return nullptr;
+    std::shared_ptr<Table> table = found->second;
+    tables_.erase(found);
+
+    for(MemberId member : table->members())
+    {
+        const auto record = members_.find(member);
+        if(record != members_.end() && record->second.table == table->code())
+            record->second.table.clear();
+    }
+    return table;
 }
 
 std::shared_ptr<Table> Registry::findTable(std::string_view code) const
@@ -178,20 +305,10 @@ void Registry::closeTable(std::string_view code)
     std::shared_ptr<Table> table;
     {
         std::lock_guard lock(mutex_);
-        const auto found = tables_.find(code);
-        if(found == tables_.end())
-            return;
-        table = found->second;
-        tables_.erase(found);
-
-        for(MemberId member : table->members())
-        {
-            const auto record = members_.find(member);
-            if(record != members_.end() && record->second.table == table->code())
-                record->second.table.clear();
-        }
+        table = removeLocked(code);
     }
-    table->close();
+    if(table)
+        table->close();
 }
 
 void Registry::shutdown()

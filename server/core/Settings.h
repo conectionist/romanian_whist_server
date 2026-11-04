@@ -1,6 +1,8 @@
 #ifndef WHIST_CORE_SETTINGS_H
 #define WHIST_CORE_SETTINGS_H
 
+#include "core/Names.h"
+
 #include <romanian_whist/Scoreboard.h>
 
 #include <chrono>
@@ -89,7 +91,10 @@ struct Settings
 
 inline constexpr int slowestSpeed = 0;
 inline constexpr int fastestSpeed = 4;
-inline constexpr std::size_t maxNameLength = 20;
+
+// Online turn timers. A timer of 0 is none.
+inline constexpr std::chrono::milliseconds defaultTurnTimer{60000};
+inline constexpr std::chrono::milliseconds minTurnTimer{10000};
 
 struct SettingsError
 {
@@ -98,13 +103,35 @@ struct SettingsError
 };
 
 // Everything the engine's start() would refuse is refused here, so a game never fails to start on
-// its own thread. A game needs every seat filled.
+// its own thread. A game needs every seat filled, its names already cleaned, and every portrait
+// one the catalogue gives that seat.
 std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode);
 
-// A name of 1 to 20 characters of valid UTF-8, with no control or bidirectional formatting
-// characters, which can make one name display as another.
-bool isValidName(std::string_view name);
-bool isValidUtf8(std::string_view text);
+// The form of a catalogue id: lower-case letters, digits and '-', at most 40 characters.
+bool isValidAvatarId(std::string_view avatar);
+
+// An online table's settings when it is made: open and computer seats only, at least one open for
+// its maker. Everything about the game is checked as for a game.
+std::optional<SettingsError> checkNewTableSettings(const Settings& settings);
+
+// An online table's settings apart from its seats: speed, structure, replacement, timer, no seed.
+std::optional<SettingsError> checkOnlineRules(const Settings& settings);
+
+// Online, no replacement means Reckoner Beta, the strongest of the affordable ones, and no turn
+// timer means 60 s.
+void completeOnline(Settings& settings);
+
+// A person's profile: a clean name that a Reckoner would not take for a computer player's, and a
+// portrait for their gender that is kept for no level.
+std::optional<SettingsError> checkPersonProfile(const Profile& profile);
+std::optional<SettingsError> checkComputerProfile(const Profile& profile, Level level);
+
+// Cleans every name in place, as cleanName() does, or names the field at fault.
+std::optional<SettingsError> cleanNames(Settings& settings);
+std::optional<SettingsError> cleanProfile(Profile& profile);
+
+// Cleans a person's profile, then checks it.
+std::optional<SettingsError> preparePersonProfile(Profile& profile);
 
 } // namespace whist
 

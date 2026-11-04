@@ -26,13 +26,18 @@ add_executable(core_tests
     core/support/ServerMessages.h
     core/support/ServerMessages.cpp
     core/CardsTests.cpp
+    core/CatalogueTests.cpp
     core/CodecTests.cpp
     core/EngineTests.cpp
     core/FixtureTests.cpp
     core/GameRunTests.cpp
+    core/HoldTests.cpp
     core/LeakScanTests.cpp
+    core/OnlineTests.cpp
+    core/NamesTests.cpp
     core/OutboxTests.cpp
     core/SeatDriverTests.cpp
+    core/SeatingTests.cpp
     core/SessionTests.cpp
     core/SettingsTests.cpp
     core/SoloTests.cpp
@@ -55,6 +60,7 @@ add_executable(app_tests
     app/SpikeController.h
     app/SpikeController.cpp
     app/GameTests.cpp
+    app/OnlineTests.cpp
     app/OptionsTests.cpp
     app/ServerTests.cpp
     app/SpikeTests.cpp

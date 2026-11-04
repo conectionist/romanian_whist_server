@@ -58,12 +58,14 @@ void Outbox::attach(MemberId member, std::shared_ptr<Connection> connection)
     attach(member, open(std::move(connection)), Json::Value(Json::nullValue));
 }
 
-void Outbox::detach(MemberId member, const Connection* connection)
+bool Outbox::detach(MemberId member, const Connection* connection)
 {
     std::lock_guard lock(mutex_);
     const auto found = links_.find(member);
-    if(found != links_.end() && found->second->connection() == connection)
-        links_.erase(found);
+    if(found == links_.end() || found->second->connection() != connection)
+        return false;
+    links_.erase(found);
+    return true;
 }
 
 bool Outbox::isConnected(MemberId member) const

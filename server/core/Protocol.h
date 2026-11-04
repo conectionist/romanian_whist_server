@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -41,6 +42,18 @@ enum class ErrorCode
 };
 
 std::string_view errorName(ErrorCode code);
+
+// Why a request was refused: the error, and the field at fault when there is one.
+struct Refusal
+{
+    // Implicit, so a refusal can be returned as its bare code.
+    Refusal(ErrorCode error, std::string field = {}) : code(error), detail(std::move(field)) {}
+
+    bool operator==(ErrorCode other) const { return code == other; }
+
+    ErrorCode code;
+    std::string detail;
+};
 
 // ---- client to server ----
 
@@ -295,8 +308,8 @@ struct HoldView
     // The seats whose Continue is awaited. Empty in a watched solo game, which its watcher continues.
     std::vector<unsigned int> waitingFor;
 
-    // None in solo, which waits for as long as it takes.
-    std::optional<std::chrono::milliseconds> deadline;
+    // When it ends at the latest. None in solo, which waits for as long as it takes.
+    std::optional<Clock::time_point> deadline;
 };
 
 } // namespace whist

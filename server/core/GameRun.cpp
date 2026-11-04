@@ -28,6 +28,9 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
         throw std::invalid_argument("a member slot is needed for every seat");
 
     std::vector<std::unique_ptr<SeatDriver>> drivers;
+    std::optional<std::chrono::milliseconds> turnTimer = setup.settings.turnTimer;
+    if(turnTimer && turnTimer->count() == 0)
+        turnTimer.reset();
     for(unsigned int i = 0 ; i < setup.settings.seats.size() ; i++)
     {
         const SeatSetting& seat = setup.settings.seats[i];
@@ -48,7 +51,7 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
             throw std::invalid_argument("a human seat needs its member");
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
-                                                       setup.settings.turnTimer, outbox, setup.promptIds));
+                                                       turnTimer, outbox, setup.promptIds));
     }
     return drivers;
 }
@@ -82,9 +85,10 @@ GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
     : game_(setup.game),
       threadNiceness_(setup.threadNiceness),
       firstObservers_(setup.firstObservers),
+      viewers_(viewersOf(setup)),
       drivers_(makeDrivers(setup, outbox)),
-      publisher_(setup.game, viewersOf(setup), pacingFor(setup.settings.botSpeed, setup.instantFloor),
-                 setup.settings.waitAfterRound, drivers_, outbox)
+      publisher_(setup.game, viewers_, pacingFor(setup.settings.botSpeed, setup.instantFloor),
+                 setup.settings.waitAfterRound, setup.roundHold, drivers_, outbox)
 {
     GameSetup engineSetup;
     for(unsigned int i = 0 ; i < drivers_.size() ; i++)
@@ -177,9 +181,16 @@ void GameRun::setPaused(bool paused)
     publisher_.setPaused(paused);
 }
 
-void GameRun::continueRound(unsigned int round)
+void GameRun::continueRound(MemberId member, unsigned int round)
 {
-    publisher_.continueRound(round);
+    if(const std::optional<Viewer> seen = viewer(member))
+        publisher_.continueRound(round, seen->seat);
+}
+
+void GameRun::excuse(MemberId member)
+{
+    if(const std::optional<Viewer> seen = viewer(member); seen && seen->seat)
+        publisher_.excuse(*seen->seat);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)
@@ -197,22 +208,34 @@ unsigned int GameRun::game() const
     return game_;
 }
 
-SeatDriver::Submitted GameRun::submit(unsigned int seat, const Answer& answer)
+std::optional<Viewer> GameRun::viewer(MemberId member) const
 {
-    if(seat >= drivers_.size())
-        return SeatDriver::Submitted::NotYourTurn;
-    return drivers_[seat]->submit(answer);
+    for(const Viewer& viewer : viewers_)
+    {
+        if(viewer.member == member)
+            return viewer;
+    }
+    return std::nullopt;
 }
 
-void GameRun::sendSync(MemberId member, std::optional<unsigned int> seat, TableView table)
+SeatDriver::Submitted GameRun::submit(MemberId member, const Answer& answer)
 {
-    if(!seat || *seat >= drivers_.size())
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
+        return SeatDriver::Submitted::NotYourTurn;
+    return drivers_.at(*seen->seat)->submit(answer);
+}
+
+void GameRun::sendSync(MemberId member, TableView table)
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
     {
         publisher_.sendSync(member, std::move(table), std::nullopt);
         return;
     }
 
-    drivers_[*seat]->withOpenPrompt([&](const std::optional<Prompt>& prompt)
+    drivers_.at(*seen->seat)->withOpenPrompt([&](const std::optional<Prompt>& prompt)
     {
         publisher_.sendSync(member, std::move(table), prompt);
     });

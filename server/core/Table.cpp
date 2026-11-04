@@ -12,16 +12,15 @@
 namespace whist
 {
 
-Table::Table(std::string code, Mode mode, Settings settings, std::vector<TableMember> members, MemberId host,
-             TableOptions options, Outbox& outbox, std::shared_ptr<Joiner> joiner)
+Table::Table(std::string code, Mode mode, Seating seating, TableOptions options, Outbox& outbox,
+             std::shared_ptr<Joiner> joiner, std::uint64_t seed)
     : code_(std::move(code)),
       mode_(mode),
       options_(options),
       outbox_(outbox),
       joiner_(std::move(joiner)),
-      settings_(std::move(settings)),
-      members_(std::move(members)),
-      host_(host)
+      seating_(std::move(seating)),
+      random_(seed)
 {
 }
 
@@ -57,7 +56,7 @@ std::vector<MemberId> Table::members() const
 {
     std::lock_guard lock(mutex_);
     std::vector<MemberId> ids;
-    for(const TableMember& member : members_)
+    for(const TableMember& member : seating_.members())
         ids.push_back(member.id);
     return ids;
 }
@@ -65,7 +64,13 @@ std::vector<MemberId> Table::members() const
 bool Table::hasMember(MemberId member) const
 {
     std::lock_guard lock(mutex_);
-    return std::ranges::any_of(members_, [member](const TableMember& m) { return m.id == member; });
+    return seating_.hasMember(member);
+}
+
+Settings Table::settings() const
+{
+    std::lock_guard lock(mutex_);
+    return seating_.settings();
 }
 
 std::optional<RunOutcome> Table::outcome() const
@@ -84,29 +89,21 @@ TableState Table::stateLocked() const
     return state_;
 }
 
-std::optional<unsigned int> Table::seatOfLocked(MemberId member) const
-{
-    for(const TableMember& m : members_)
-    {
-        if(m.id == member)
-            return m.seat;
-    }
-    return std::nullopt;
-}
-
 TableView Table::viewLocked(MemberId member) const
 {
+    const Settings& settings = seating_.settings();
+
     TableView view;
     view.code = code_;
     view.mode = mode_;
     view.state = stateLocked();
-    view.host = seatOfLocked(host_);
-    view.settings = settings_;
+    view.host = seating_.seatOf(seating_.host());
+    view.settings = settings;
     view.paused = paused_ && view.state == TableState::Playing;
 
-    for(unsigned int i = 0 ; i < settings_.seats.size() ; i++)
+    for(unsigned int i = 0 ; i < settings.seats.size() ; i++)
     {
-        const SeatSetting& seat = settings_.seats[i];
+        const SeatSetting& seat = settings.seats[i];
         TableSeatView seatView;
         seatView.kind = seat.kind;
         seatView.level = seat.level;
@@ -114,11 +111,10 @@ TableView Table::viewLocked(MemberId member) const
 
         if(seat.kind == SeatKind::Human)
         {
-            const auto holder = std::ranges::find_if(members_, [i](const TableMember& m) { return m.seat == i; });
-            if(holder != members_.end())
+            if(const std::optional<MemberId> holder = seating_.memberAt(i))
             {
-                seatView.presence = outbox_.isConnected(holder->id) ? Presence::Here : Presence::Away;
-                seatView.you = holder->id == member;
+                seatView.presence = outbox_.isConnected(*holder) ? Presence::Here : Presence::Away;
+                seatView.you = *holder == member;
             }
         }
         view.seats.push_back(std::move(seatView));
@@ -132,41 +128,51 @@ TableView Table::viewFor(MemberId member) const
     return viewLocked(member);
 }
 
-void Table::broadcastLocked() const
+void Table::broadcastLocked(std::optional<MemberId> except) const
 {
-    for(const TableMember& member : members_)
-        outbox_.send(member.id, tableStateMessage(viewLocked(member.id)));
+    for(const TableMember& member : seating_.members())
+    {
+        if(member.id != except)
+            outbox_.send(member.id, tableStateMessage(viewLocked(member.id)));
+    }
 }
 
-std::optional<ErrorCode> Table::startGame(MemberId by)
+std::optional<Refusal> Table::startGame(MemberId by)
 {
     std::unique_ptr<GameRun> previous;
     {
         std::lock_guard lock(mutex_);
         if(state_ == TableState::Closed)
             return ErrorCode::NotFound;
-        if(by != host_)
+        if(by != seating_.host())
             return ErrorCode::NotHost;
         if(stateLocked() == TableState::Playing)
             return ErrorCode::Illegal;
-        if(checkSettings(settings_, mode_))
-            return ErrorCode::BadMessage;
 
+        // Not badMessage: the message was sound, and the table is not ready yet.
+        if(seating_.hasOpenSeat())
+            return Refusal(ErrorCode::Illegal, "seats");
+        if(const std::optional<SettingsError> error = checkSettings(seating_.settings(), mode_))
+            return Refusal(ErrorCode::Illegal, error->field);
+
+        const Settings& settings = seating_.settings();
         GameRunSetup setup;
         setup.game = game_ + 1;
-        setup.settings = settings_;
-        setup.seatMembers.resize(settings_.seats.size());
-        for(const TableMember& member : members_)
+        setup.settings = settings;
+        setup.seatMembers.resize(settings.seats.size());
+        for(const TableMember& member : seating_.members())
         {
             if(member.seat)
                 setup.seatMembers.at(*member.seat) = member.id;
             else
                 setup.watchers.push_back(member.id);
         }
-        setup.shuffleSeed = settings_.seed;
+        setup.shuffleSeed = settings.seed;
         setup.instantFloor = options_.instantFloor;
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
+        if(mode_ == Mode::Online)
+            setup.roundHold = options_.roundHold;
 
         auto run = std::make_unique<GameRun>(std::move(setup), outbox_);
         const TableState before = state_;
@@ -203,14 +209,13 @@ std::optional<ErrorCode> Table::startGame(MemberId by)
     return std::nullopt;
 }
 
-std::optional<ErrorCode> Table::answer(MemberId member, const Answer& answer)
+std::optional<Refusal> Table::answer(MemberId member, const Answer& answer)
 {
     SeatDriver::Submitted submitted = SeatDriver::Submitted::NotYourTurn;
     {
         std::lock_guard lock(mutex_);
-        const std::optional<unsigned int> seat = seatOfLocked(member);
-        if(run_ && seat && state_ == TableState::Playing)
-            submitted = run_->submit(*seat, answer);
+        if(run_ && state_ == TableState::Playing)
+            submitted = run_->submit(member, answer);
     }
 
     switch(submitted)
@@ -222,21 +227,21 @@ std::optional<ErrorCode> Table::answer(MemberId member, const Answer& answer)
     return ErrorCode::NotYourTurn;
 }
 
-std::optional<ErrorCode> Table::checkSoloPlayingLocked(MemberId by) const
+std::optional<Refusal> Table::checkSoloPlayingLocked(MemberId by) const
 {
     if(state_ == TableState::Closed)
         return ErrorCode::NotFound;
-    if(by != host_)
+    if(by != seating_.host())
         return ErrorCode::NotHost;
     if(mode_ != Mode::Solo || stateLocked() != TableState::Playing || !run_)
         return ErrorCode::Illegal;
     return std::nullopt;
 }
 
-std::optional<ErrorCode> Table::setPaused(MemberId by, bool paused)
+std::optional<Refusal> Table::setPaused(MemberId by, bool paused)
 {
     std::lock_guard lock(mutex_);
-    if(const std::optional<ErrorCode> refused = checkSoloPlayingLocked(by))
+    if(std::optional<Refusal> refused = checkSoloPlayingLocked(by))
         return refused;
     if(paused_ == paused)
         return std::nullopt;
@@ -247,63 +252,93 @@ std::optional<ErrorCode> Table::setPaused(MemberId by, bool paused)
     return std::nullopt;
 }
 
-std::optional<ErrorCode> Table::updateSettings(MemberId by, const Settings& settings)
+std::optional<Refusal> Table::updateSettings(MemberId by, const Settings& settings)
 {
-    if(checkSettings(settings, mode_))
-        return ErrorCode::BadMessage;
+    if(mode_ == Mode::Online)
+    {
+        std::lock_guard lock(mutex_);
+        if(std::optional<Refusal> refused = checkBetweenGamesLocked(by))
+            return refused;
+        if(std::optional<Refusal> refused = seating_.updateSettings(by, settings))
+            return refused;
+        broadcastLocked();
+        return std::nullopt;
+    }
+
+    if(const std::optional<SettingsError> error = checkSettings(settings, mode_))
+        return Refusal(ErrorCode::BadMessage, error->field);
 
     std::lock_guard lock(mutex_);
     if(state_ == TableState::Closed)
         return ErrorCode::NotFound;
-    if(by != host_)
+    if(by != seating_.host())
         return ErrorCode::NotHost;
-    if(mode_ != Mode::Solo)
-        return ErrorCode::Illegal;
 
     Settings unchanged = settings;
-    unchanged.botSpeed = settings_.botSpeed;
-    unchanged.waitAfterRound = settings_.waitAfterRound;
-    if(unchanged != settings_)
+    unchanged.botSpeed = seating_.settings().botSpeed;
+    unchanged.waitAfterRound = seating_.settings().waitAfterRound;
+    if(unchanged != seating_.settings())
         return ErrorCode::Illegal;
 
-    settings_.botSpeed = settings.botSpeed;
-    settings_.waitAfterRound = settings.waitAfterRound;
+    seating_.setPacing(settings.botSpeed, settings.waitAfterRound);
     if(run_)
-        run_->setPacing(pacingFor(settings_.botSpeed, options_.instantFloor), settings_.waitAfterRound);
+        run_->setPacing(pacingFor(settings.botSpeed, options_.instantFloor), settings.waitAfterRound);
     broadcastLocked();
     return std::nullopt;
 }
 
-std::optional<ErrorCode> Table::continueRound(MemberId by, unsigned int round)
+std::optional<Refusal> Table::continueRound(MemberId by, unsigned int round)
 {
     std::lock_guard lock(mutex_);
-    if(const std::optional<ErrorCode> refused = checkSoloPlayingLocked(by))
+    if(mode_ == Mode::Online)
     {
+        if(state_ == TableState::Closed)
+            return ErrorCode::NotFound;
+        if(!seating_.hasMember(by))
+            return ErrorCode::Illegal;
+
         // A Continue that arrives just after the game ended is not worth an error.
+        if(run_ && stateLocked() == TableState::Playing)
+            run_->continueRound(by, round);
+        return std::nullopt;
+    }
+
+    if(std::optional<Refusal> refused = checkSoloPlayingLocked(by))
+    {
         if(refused == ErrorCode::Illegal)
             return std::nullopt;
         return refused;
     }
-    run_->continueRound(round);
+    run_->continueRound(by, round);
     return std::nullopt;
+}
+
+void Table::syncLocked(MemberId member) const
+{
+    TableView view = viewLocked(member);
+
+    // The game's sync only to someone who sees it from the seat they hold now, so its snapshot's
+    // `you` always agrees with the table's.
+    const std::optional<Viewer> seen = run_ ? run_->viewer(member) : std::nullopt;
+    if(!seen || seen->seat != seating_.seatOf(member))
+    {
+        SyncView sync;
+        sync.table = std::move(view);
+        outbox_.send(member, syncMessage(sync, Clock::now()));
+        return;
+    }
+    run_->sendSync(member, std::move(view));
 }
 
 bool Table::sync(MemberId member)
 {
     std::lock_guard lock(mutex_);
-    if(state_ == TableState::Closed ||
-       !std::ranges::any_of(members_, [member](const TableMember& m) { return m.id == member; }))
+    if(state_ == TableState::Closed || !seating_.hasMember(member))
         return false;
 
-    TableView view = viewLocked(member);
-    if(!run_)
-    {
-        SyncView sync;
-        sync.table = std::move(view);
-        outbox_.send(member, syncMessage(sync, Clock::now()));
-        return true;
-    }
-    run_->sendSync(member, seatOfLocked(member), std::move(view));
+    syncLocked(member);
+    if(mode_ == Mode::Online)
+        broadcastLocked(member);
     return true;
 }
 

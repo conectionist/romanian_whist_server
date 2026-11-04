@@ -37,6 +37,10 @@ struct GameRunSetup
 
     std::chrono::milliseconds instantFloor{30};
 
+    // Online only: the hold after a round waits for the humans connected then, at most this long.
+    // None in solo, whose hold waits for as long as it takes.
+    std::optional<std::chrono::milliseconds> roundHold;
+
     // Game threads run below the I/O threads, so a table of Reckoners never slows the server.
     int threadNiceness = 10;
 
@@ -88,16 +92,25 @@ public:
     RunOutcome outcome() const;
     unsigned int game() const;
 
-    // Any thread.
-    SeatDriver::Submitted submit(unsigned int seat, const Answer& answer);
+    // Any thread. The member's answer, to the seat they play in this game, whatever seat the table
+    // gives them now.
+    SeatDriver::Submitted submit(MemberId member, const Answer& answer);
 
-    // Any thread. Pause or resume, end the hold on a round, or change the speed and the wait.
+    // Any thread. Pause or resume, or change the speed and the wait.
     void setPaused(bool paused);
-    void continueRound(unsigned int round);
     void setPacing(Pacing pacing, bool waitAfterRound);
 
-    // Any thread. The member's sync, with their seat's open prompt when they have a seat.
-    void sendSync(MemberId member, std::optional<unsigned int> seat, TableView table);
+    // Any thread. The member's Continue for a held round, from the seat they play in this game.
+    void continueRound(MemberId member, unsigned int round);
+
+    // Any thread. Online: the member has gone, so the hold no longer waits for them.
+    void excuse(MemberId member);
+
+    // Any thread. The member's sync, with the open prompt of the seat they play in this game.
+    void sendSync(MemberId member, TableView table);
+
+    // Whether the member sees this game, and from which seat; a seat of none is a watcher's.
+    std::optional<Viewer> viewer(MemberId member) const;
 
     const Publisher& publisher() const;
 
@@ -107,6 +120,7 @@ private:
     const unsigned int game_;
     const int threadNiceness_;
     const std::vector<romanian_whist::IGameObserver*> firstObservers_;
+    const std::vector<Viewer> viewers_;
     std::optional<romanian_whist::GameSetup> engineSetup_;
 
     // The order is the design: destruction runs in reverse, so the thread is joined first, and the

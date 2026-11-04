@@ -27,12 +27,14 @@ std::vector<StandingRow> rows(const std::vector<Standing>& standings)
 } // namespace
 
 Publisher::Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
+                     std::optional<std::chrono::milliseconds> holdLimit,
                      const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox)
     : game_(game),
       viewers_(std::move(viewers)),
       drivers_(drivers),
       outbox_(outbox),
       anyHuman_(std::ranges::any_of(drivers, [](const auto& driver) { return driver->humanInCharge(); })),
+      holdLimit_(holdLimit),
       latest_(drivers.size() + 1),
       pacing_(pacing),
       waitAfterRound_(waitAfterRound)
@@ -98,7 +100,8 @@ std::chrono::milliseconds Publisher::lengthOf(Rest kind) const
 }
 
 // The desktop's pace(): a pause or a hold waits out the rest under way, then holds, and a rest that
-// begins paused or held is the hold alone. Neither has a deadline: the closing path cancels.
+// begins paused or held is the hold alone. A pause has no deadline, nor has a solo hold: the
+// closing path cancels. An online hold ends at its deadline.
 void Publisher::rest(Rest kind)
 {
     std::unique_lock lock(restMutex_);
@@ -118,7 +121,13 @@ void Publisher::rest(Rest kind)
             waitUntil(restChanged_, lock, end, [&] { return cancelled_ || pacingVersion_ != seen; });
         }
     }
-    waitUntil(restChanged_, lock, std::nullopt, [this] { return cancelled_ || (!paused_ && !heldRound_); });
+
+    const auto free = [this] { return cancelled_ || (!paused_ && !heldRound_); };
+    while(!waitUntil(restChanged_, lock, heldRound_ ? holdDeadline_ : std::nullopt, free))
+    {
+        // Only a held wait has a deadline, and its time is up.
+        endHoldLocked();
+    }
 }
 
 void Publisher::cancel()
@@ -145,20 +154,85 @@ void Publisher::setPaused(bool paused)
     restChanged_.notify_all();
 }
 
-void Publisher::continueRound(unsigned int round)
+void Publisher::continueRound(unsigned int round, std::optional<unsigned int> seat)
 {
-    {
-        std::lock_guard lock(restMutex_);
-        if(heldRound_ != round)
-            return;
-        heldRound_.reset();
-    }
-    restChanged_.notify_all();
+    std::unique_lock lock(restMutex_);
+    if(heldRound_ != round)
+        return;
 
-    // Cleared here too, so a sync taken while the game is still paused shows no hold to continue.
-    std::lock_guard lock(cacheMutex_);
-    if(hold_ && hold_->round == round)
-        hold_.reset();
+    bool ended = false;
+    if(holdLimit_)
+        ended = seat && releaseLocked(*seat);
+    else
+    {
+        endHoldLocked();
+        ended = true;
+    }
+    lock.unlock();
+    if(ended)
+        restChanged_.notify_all();
+}
+
+void Publisher::excuse(unsigned int seat)
+{
+    std::unique_lock lock(restMutex_);
+    if(!holdLimit_ || !heldRound_ || !releaseLocked(seat))
+        return;
+    lock.unlock();
+    restChanged_.notify_all();
+}
+
+bool Publisher::releaseLocked(unsigned int seat)
+{
+    const auto found = std::ranges::find(awaited_, seat);
+    if(found == awaited_.end())
+        return false;
+    awaited_.erase(found);
+    if(awaited_.empty())
+    {
+        endHoldLocked();
+        return true;
+    }
+    sendHoldLocked(*heldRound_, false);
+    return false;
+}
+
+// Cleared from the cache too, so a sync taken before the game thread wakes shows no hold.
+void Publisher::endHoldLocked()
+{
+    heldRound_.reset();
+    holdAnnounced_ = false;
+    awaited_.clear();
+    holdDeadline_.reset();
+
+    std::lock_guard cache(cacheMutex_);
+    hold_.reset();
+}
+
+void Publisher::sendHoldLocked(unsigned int round, bool first)
+{
+    if(heldRound_ != round || (!first && !holdAnnounced_))
+        return;
+    holdAnnounced_ = true;
+
+    HoldView view;
+    view.round = round;
+    view.deadline = holdDeadline_;
+    if(holdLimit_)
+        view.waitingFor = awaited_;
+    else
+    {
+        for(unsigned int i = 0 ; i < drivers_.size() ; i++)
+        {
+            if(drivers_[i]->humanInCharge())
+                view.waitingFor.push_back(i);
+        }
+    }
+
+    std::lock_guard cache(cacheMutex_);
+    hold_ = view;
+    const Clock::time_point now = Clock::now();
+    broadcastLocked([&](const Viewer&) { return heldMessage(view, now); });
 }
 
 void Publisher::setPacing(Pacing pacing, bool waitAfterRound)
@@ -280,38 +354,43 @@ void Publisher::onRoundScored(const GameEngine& engine)
     const unsigned int round = result.index;
     GameEvent event{EventKind::RoundScored};
     event.result = std::move(result);
-    publish(engine, event);
 
     // Read once, as the desktop does: changing the setting later leaves this round's hold alone.
     bool hold = false;
     {
         std::lock_guard lock(restMutex_);
         hold = waitAfterRound_ && !cancelled_;
+        if(hold && holdLimit_)
+        {
+            // Online, nobody waits for a human who is not there.
+            awaited_.clear();
+            for(unsigned int seat = 0 ; seat < drivers_.size() ; seat++)
+            {
+                const std::optional<MemberId> member = drivers_[seat]->member();
+                if(member && outbox_.isConnected(*member))
+                    awaited_.push_back(seat);
+            }
+            hold = !awaited_.empty();
+            if(hold)
+                holdDeadline_ = Clock::now() + *holdLimit_;
+        }
         if(hold)
             heldRound_ = round;
     }
+
+    publish(engine, event);
     if(hold)
     {
-        HoldView view;
-        view.round = round;
-        for(unsigned int seat = 0 ; seat < drivers_.size() ; seat++)
-        {
-            if(drivers_[seat]->humanInCharge())
-                view.waitingFor.push_back(seat);
-        }
-
-        std::lock_guard lock(cacheMutex_);
-        hold_ = view;
-        broadcastLocked([&](const Viewer&) { return heldMessage(view); });
+        std::lock_guard lock(restMutex_);
+        sendHoldLocked(round, true);
     }
 
     rest(Rest::Dwell);
 
-    if(hold)
-    {
-        std::lock_guard lock(cacheMutex_);
-        hold_.reset();
-    }
+    // A hold cut short by closing ends here, so nothing of it follows roundComplete.
+    std::lock_guard lock(restMutex_);
+    if(heldRound_ == round)
+        endHoldLocked();
 }
 
 void Publisher::onRoundComplete(const GameEngine& engine)

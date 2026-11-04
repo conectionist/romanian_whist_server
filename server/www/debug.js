@@ -7,11 +7,14 @@ const reloadedKey = "whist.debug.reloaded";
 
 const $ = (id) => document.getElementById(id);
 
+// Portraits are catalogue ids (protocol/catalogues/avatars.json), and a person's must suit them.
 const names = ["Ana", "Bogdan", "Cora", "Dan", "Ema", "Filip"];
-const you = { kind: "human", name: "You", gender: "female", avatar: "debug-player" };
+const you = { kind: "human", name: "You", gender: "female", avatar: "woman-long-red-hair" };
 
 function computer(level, i) {
-  return { kind: "computer", level, name: names[i], gender: i % 2 === 0 ? "female" : "male", avatar: "debug-face" };
+  const female = i % 2 === 0;
+  return { kind: "computer", level, name: names[i], gender: female ? "female" : "male",
+           avatar: female ? "woman-long-brown-hair" : "man-hat-mustache" };
 }
 
 const presets = {
@@ -42,6 +45,35 @@ const presets = {
     structure: "1-8-1", botSpeed: 4, waitAfterRound: false,
   },
 };
+
+// A person's portraits: those in protocol/catalogues/avatars.json kept for no level, by gender.
+const portraits = {
+  female: ["woman-long-red-hair", "woman-long-brown-hair", "woman-long-dark-hair", "woman-shoulder-hair",
+           "woman-wavy-black-hair"],
+  male: ["man-dark-hair-beard", "man-hat-mustache", "man-white-hair-hat", "man-black-hair-beard", "man-stubble",
+         "man-short-hair", "man-black-tee"],
+};
+
+const open = { kind: "open" };
+
+// People join an online table's open seats; the table's maker takes the first.
+const onlinePresets = {
+  "6 seats: 3 people, 3 computer players, waiting after each round": {
+    seats: [open, open, open, computer("reckoner-beta", 3), computer("cyborg", 4), computer("first-card", 5)],
+    structure: "1-8-1", botSpeed: 3, waitAfterRound: true, replacement: "reckoner-beta", turnTimer: 60000,
+  },
+  "4 seats, all open, 8-1-8": {
+    seats: [open, open, open, open],
+    structure: "8-1-8", botSpeed: 2, waitAfterRound: true,
+  },
+  "3 seats: 2 people and a Cyborg, Instant, no hold": {
+    seats: [open, open, computer("cyborg", 2)],
+    structure: "1-8-1", botSpeed: 4, waitAfterRound: false,
+  },
+};
+
+// The code in a table's link, /t/K7QM4P.
+const linkCode = location.pathname.match(/^\/t\/([A-Z0-9]{6})$/)?.[1] ?? "";
 
 const state = {
   socket: null,
@@ -395,10 +427,85 @@ function renderPrompt(paused) {
   }
 }
 
+function profile() {
+  return { name: $("name").value, gender: $("gender").value, avatar: $("avatar").value };
+}
+
+function fillPortraits() {
+  const select = $("avatar");
+  const chosen = select.value;
+  select.replaceChildren(...portraits[$("gender").value].map((id) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    return option;
+  }));
+  if (portraits[$("gender").value].includes(chosen)) {
+    select.value = chosen;
+  }
+}
+
+function seatText(seat, i, table) {
+  const host = table.host === i ? ", host" : "";
+  switch (seat.kind) {
+    case "open": return "open";
+    case "computer": return `${seat.name} (computer: ${seat.level}, ${seat.gender}, ${seat.avatar})`;
+    default:
+      return `${seat.name} (${seat.presence}, ${seat.gender}, ${seat.avatar}${host})${seat.you ? " — you" : ""}`;
+  }
+}
+
+function renderLobby(table, yours) {
+  const online = table.mode === "online";
+  $("lobby").hidden = !online;
+  if (!online) {
+    return;
+  }
+
+  const link = `${location.origin}/t/${table.code}`;
+  $("link").href = link;
+  $("link").textContent = link;
+
+  const betweenGames = table.state === "lobby" || table.state === "finished";
+  const hosting = yours !== null && table.host === yours;
+  $("seats").replaceChildren(...table.seats.map((seat, i) => {
+    const item = document.createElement("li");
+    item.append(seatText(seat, i, table), " ");
+    if (betweenGames && seat.kind === "open") {
+      item.append(button("Take this seat", true, () => send({ type: "takeSeat", seat: i })));
+    }
+    if (betweenGames && hosting && seat.kind !== "human") {
+      const level = document.createElement("select");
+      for (const name of ["random", "first-card", "low-risk", "ducking", "cyborg", "reckoner-alpha",
+                          "reckoner-beta", "reckoner-gamma", "reckoner-delta"]) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        level.append(option);
+      }
+      level.value = seat.level ?? "reckoner-beta";
+      item.append(level, " ",
+                  button("Computer", true, () => send({ type: "setSeat", seat: i, kind: "computer", level: level.value })),
+                  " ", button("Open", seat.kind !== "open", () => send({ type: "setSeat", seat: i, kind: "open" })));
+    }
+    return item;
+  }));
+
+  $("hostControls").hidden = !hosting;
+  $("update").disabled = !betweenGames;
+  $("startOnline").disabled = !betweenGames;
+  $("profile").disabled = !betweenGames;
+  if (document.activeElement !== $("tableSettings")) {
+    $("tableSettings").value = JSON.stringify(table.settings, null, 2);
+  }
+}
+
 function render() {
   const table = state.table;
   const atTable = table !== null && !state.waitingForSync;
+  $("you").hidden = state.waitingForSync || (table !== null && table.mode !== "online");
   $("setup").hidden = state.waitingForSync || table !== null;
+  $("online").hidden = state.waitingForSync || table !== null;
   $("table").hidden = !atTable;
   if (!atTable) {
     return;
@@ -407,19 +514,28 @@ function render() {
   const playing = table.state === "playing";
   const over = state.snapshot?.phase === "gameOver" || state.snapshot?.status === "stopped" ||
                state.stopped || table.state === "finished";
+  const yours = table.seats.findIndex((seat) => seat.you);
+  const seat = yours < 0 ? null : yours;
   $("code").textContent = table.code;
   $("summary").textContent = `${table.mode} · ${table.state}${table.paused ? " · paused" : ""} · game ${state.game ?? "-"}` +
-                             ` · ${table.host === null ? "watching" : `you are seat ${table.host}`}`;
+                             ` · ${seat === null ? "watching" : `you are seat ${seat}`}`;
 
+  const solo = table.mode === "solo";
+  $("soloControls").hidden = !solo;
   $("pause").textContent = table.paused ? "Resume" : "Pause";
   $("pause").disabled = !playing || over;
   $("speed").value = String(table.settings.botSpeed);
   $("wait").checked = table.settings.waitAfterRound;
-  $("again").hidden = !over;
+  $("again").hidden = !over || !solo;
+  renderLobby(table, seat);
 
   $("held").hidden = !state.held;
   if (state.held) {
-    $("heldText").textContent = `Round ${state.held.round + 1} is over.`;
+    const waiting = state.held.waitingFor.map(seatName).join(", ");
+    const deadline = state.held.deadline === null ? "" : `, at most ${Math.round(state.held.deadline / 1000)} s`;
+    $("heldText").textContent = `Round ${state.held.round + 1} is over.` +
+                                (waiting ? ` Waiting for ${waiting}${deadline}.` : "");
+    $("continue").disabled = seat !== null && !state.held.waitingFor.includes(seat);
   }
 
   renderPrompt(table.paused);
@@ -466,6 +582,49 @@ function setUp() {
     }
     send({ type: "createSolo", settings });
   });
+
+  const onlineSelect = $("onlinePreset");
+  for (const name of Object.keys(onlinePresets)) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    onlineSelect.append(option);
+  }
+  const showOnlinePreset = () => {
+    $("onlineSettings").value = JSON.stringify(onlinePresets[onlineSelect.value], null, 2);
+  };
+  onlineSelect.addEventListener("change", showOnlinePreset);
+  showOnlinePreset();
+
+  $("gender").addEventListener("change", fillPortraits);
+  fillPortraits();
+  $("joinCode").value = linkCode;
+
+  $("create").addEventListener("click", () => {
+    let settings;
+    try {
+      settings = JSON.parse($("onlineSettings").value);
+    } catch (error) {
+      addError(`the settings are not JSON: ${error.message}`);
+      return;
+    }
+    send({ type: "createTable", settings, profile: profile() });
+  });
+  $("join").addEventListener("click", () => {
+    send({ type: "joinTable", code: $("joinCode").value.trim().toUpperCase(), profile: profile() });
+  });
+  $("update").addEventListener("click", () => {
+    let settings;
+    try {
+      settings = JSON.parse($("tableSettings").value);
+    } catch (error) {
+      addError(`the settings are not JSON: ${error.message}`);
+      return;
+    }
+    send({ type: "updateSettings", settings });
+  });
+  $("startOnline").addEventListener("click", () => send({ type: "startGame" }));
+  $("profile").addEventListener("click", () => send({ type: "updateProfile", ...profile() }));
 
   $("pause").addEventListener("click", () => send({ type: state.table?.paused ? "resume" : "pause" }));
   $("speed").addEventListener("change", () => changeSettings({ botSpeed: Number($("speed").value) }));

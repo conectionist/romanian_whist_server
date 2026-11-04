@@ -61,7 +61,17 @@ public:
 
     // A private table with the member at its one human seat, or watching when there is none. The
     // game starts at once.
-    Created createSolo(MemberId member, const Settings& settings);
+    Created createSolo(MemberId member, Settings settings);
+
+    // An online table in its lobby, with the member as its host in the first open seat.
+    Created createTable(MemberId member, Settings settings, Profile profile);
+
+    // The member takes the first open seat at the online table with that code.
+    std::optional<Refusal> joinTable(MemberId member, std::string_view code, Profile profile);
+
+    // Solo, the table closes. Online, between games, the member's seat opens, and the last one out
+    // closes the table.
+    std::optional<Refusal> leaveTable(MemberId member);
 
     std::shared_ptr<Table> findTable(std::string_view code) const;
     std::shared_ptr<Table> tableOf(MemberId member) const;
@@ -84,6 +94,9 @@ private:
 
     std::string newToken();
     std::string newCode();
+
+    // Takes the table off the books; the caller closes it, without this lock.
+    std::shared_ptr<Table> removeLocked(std::string_view code);
 
     Outbox& outbox_;
     const TableOptions tableOptions_;

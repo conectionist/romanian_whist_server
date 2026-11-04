@@ -38,7 +38,8 @@ public:
 
     std::optional<MemberId> member() const;
 
-    // The fifth badMessage on a connection closes it.
+    // The fifth message that does not decode closes the connection. A sound message the rules refuse
+    // never does.
     static constexpr int badMessageLimit = 5;
 
 private:
@@ -49,8 +50,13 @@ private:
     // Errors go back on this connection, never to whichever connection the member has now.
     void reply(Json::Value message);
     void refuse(ErrorCode code, std::string_view detail = {});
-    void refuse(const std::optional<ErrorCode>& code);
+    void refuse(const Refusal& refusal);
+    void refuse(const std::optional<Refusal>& refusal);
+    void refuseMalformed(ErrorCode code, std::string_view detail);
     void closeConnection();
+
+    // Gives the member's connection up, and tells their table when it was still theirs.
+    void detach();
 
     // False once a newer connection has taken this member over.
     bool current() const;

@@ -1,8 +1,9 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 3 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
-> repository's skeleton is phase 1, its core, `server/core`, is phase 2, and solo play end to end,
-> through `/ws` and a debug page, is phase 3. Phases 4 to 11 are not built yet.**
+> **Status: phases 0 to 4 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
+> repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
+> through `/ws` and a debug page, is phase 3, and online tables are phase 4. Phases 5 to 11 are not
+> built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1439,11 +1440,97 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **CI** is green at `ec17cc3` and at `b36a045`.
   - **The owner approved** the phase on 2026-11-04.
 
-### Phase 4: online tables — M
+### Phase 4: online tables — M ✅ COMPLETE
 
 - **Work:** create, join, the lobby, seats, profiles, host controls, start; the round hold;
   `tableState`; names and portraits by the catalogues' rules.
 - **Done when:** three browsers and three computer players finish a game together.
+
+**Outcome** (branch `web/phase-4-online-tables`, PR #7, commit `ccdfd14`):
+
+- **The owner's choices** (2026-11-04):
+  - the branch name;
+  - utf8proc for the Unicode data names need;
+  - a finished table is a lobby again: seats, settings, profiles, joining and leaving all work
+    until the next game, and its `state` stays `finished`;
+  - leaving the lobby and a finished table is built now; leaving mid-game stays in phase 5;
+  - after the first cold review: fix 1, 2 and 4 to 9, record 3; after the second: fix 2 to 5,
+    document 1; one `tsan` run; no third review.
+- **Built.**
+  - **Names** (`core/Names`), on utf8proc v2.12.0, a submodule built with the project. A name is
+    composed (NFC), its spaces made plain, collapsed and trimmed, and its invisible characters
+    dropped, except the joiners and variation selectors emoji need. It is refused for control,
+    bidi or other formatting characters, for nothing visible (U+2800 and the Hangul fillers count as
+    nothing), and past 20 code points. Names clash by a key that ignores case, width and invisible
+    characters and counts Ş/Ţ as Ș/Ț. "LowRisk" and "Ducking" stay out of every name but a
+    `low-risk` or `ducking` computer player's.
+  - **The catalogues,** copied from the desktop at `cfeae4c` into `protocol/catalogues/` and
+    compiled into the core (`core/Catalogue`). A person's portrait is kept for no level and is for
+    their gender; a computer player's may be its level's own. A computer player the host sets gets
+    a name and portrait by the desktop's rules, in the host's language.
+  - **`Seating`,** the lobby's rules as plain data: join, leave and the host's hand-over, take a
+    seat, set a seat, profiles and the host's settings. `Table` keeps it under its lock, with its
+    lobby methods in `TableLobby.cpp`. The Registry makes, joins and leaves online tables.
+  - **The round hold online:** after each scored round, until every person connected then
+    continues, at most 30 s. Its state has one owner, the publisher's rest lock, and is set up before
+    the result goes out, so a Continue sent on seeing it counts. `held` and `sync` carry the time
+    left, and the hold is sent again as people continue.
+  - **`tableState` on every change,** presence included, and **`/t/<code>`**, which serves the page.
+  - **The debug page** makes, joins and runs online tables.
+  - **`PROTOCOL.md`** describes all of it, with two new fixtures, `tableState.online` and
+    `held.online`.
+- **Tests:** 37 new core tests, 97 in all, and 2 new app tests, 17 in all. CTest runs 115.
+  - **Core:** names, the catalogues and their draws, every seating rule, making, joining, leaving and
+    the host's hand-over, a finished table as a lobby, presence, the turn timer's default, floor and
+    off, every lobby message refused mid-game, and three people with three computer players to the
+    end. The hold: on everyone's Continue, at its deadline, a Continue on `roundScored`, a late one,
+    a disconnected person, a tab that closes during it, a sync, and closing. The leak scan gains an
+    online game.
+  - **Mutation checks:** a Continue for the wrong round, and a timer of 0 passed on, each fail.
+  - **App:** the same game over three WebSocket clients, and `/t/<code>`.
+  - **The browser,** by hand: three separate headless Chromium browsers made, joined (two by the
+    link) and played a 6-seat 1-8-1 game through the debug page, 32 rounds with a hold after each,
+    with no page errors.
+- **Where the build departs from the plan, or found what it did not say:**
+  - **The host cannot move or remove someone** (§7.2): §6.3 has no message for it. People move
+    themselves.
+  - **Online `updateSettings` reads `seats` for their number only.** What a seat holds changes
+    through `setSeat`, `takeSeat` and `updateProfile`, so a host's change never fails on someone
+    else's rename. Seats off the end must hold nobody.
+  - **A clash on joining gets a number;** `updateProfile` to a taken name is `nameTaken`; a maker
+    whose name clashes with their own computer players' is refused.
+  - **Making and joining a table are answered with a `sync`.**
+  - **The last one out closes the table at once;** §4.9's 10 minutes are for people who go away.
+  - **Only messages that do not decode count toward the five that close a connection.**
+  - **Online defaults:** Reckoner Beta stands in (D10), and the turn timer is 60 s (§7.2), at least
+    10 s, with 0 for none.
+  - **The game finds a member's seat itself,** and a sync carries a game only to someone in the
+    seat they had in it.
+  - **Lock order:** the publisher's rest lock may be held while its cache lock is taken, to send the
+    hold; never the other way round.
+  - **`/t/<code>`** is served by the server, and the debug page loads its files by absolute paths.
+- **Left for later phases:**
+  - **Phase 5:** until the grace period, an away person's turn is waited for as anyone's is, up to
+    the turn timer each move, and for as long as it takes with no timer; nobody can leave a game
+    under way, and a lobby whose host has gone cannot start. `waitingFor` and `replaced` come then.
+  - **Phases 5 and 9:** still no reaper and no limits. **The server must not be public before
+    them.**
+  - **The page:** `sync.json` and `tableState.json` changed with the catalogue portraits.
+- **Reviews.**
+  - **The first cold review,** of the whole branch, found 9 problems, none above severity 3, and no
+    race, deadlock or leaked card. The worst was the turn timer off by default, so one closed tab
+    could stall a game nobody could leave. The owner chose my recommendation: fix 1, 2 and 4 to 9
+    (`411b39a`), and record 3, the host moving people, as left out.
+  - **The second cold review,** of that fix, found 5 problems, none above severity 3. The worst:
+    with the timer off, an away person still holds the table. The owner chose my recommendation:
+    fix 2 to 5 and document 1 (`ccdfd14`), with no third review.
+- **Builds and CI.**
+  - **`default` and `release`** (warnings as errors) pass 115 of 115 at `ccdfd14`.
+  - **`tsan`,** one run with the owner's leave, passes 115 of 115 at `411b39a`, with no report. The
+    last fix adds no code that runs on more than one thread.
+  - **CI** is green at `87637db`, `411b39a` and `7bbfc74`. The run at `ccdfd14` was cancelled when
+    the run at `7bbfc74` started, which has the same code.
+  - **The owner approved** the phase on 2026-11-04.
 
 ### Phase 5: drops and replacement — M
 

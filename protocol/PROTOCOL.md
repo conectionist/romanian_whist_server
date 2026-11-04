@@ -3,6 +3,7 @@
 Version **1**. This is the reference every client follows. The server's code is in
 `server/core/Codec.cpp`. A real sample of every server message is in [`fixtures/`](fixtures/),
 written by the server's tests (`core_tests "[fixtures]"`). A client's tests should decode each one.
+The names and portraits players may have are in [`catalogues/`](catalogues/).
 
 ## Transport
 
@@ -16,7 +17,9 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
   member over: the older connection gets `error {code: "openElsewhere"}` and is closed. A page
   that gets it should not reconnect by itself, or the two tabs would take the member from each
   other for ever.
-- **The fifth `badMessage` on a connection closes it.**
+- **The fifth message that does not decode closes the connection:** not JSON, an unknown type or
+  field, a value of the wrong kind, anything before `hello`, a second `hello`, or a binary frame. A
+  sound message the rules refuse never closes it, whatever its error.
 - **No sentences on the wire.** Names, numbers and codes only; each client writes its own text.
 - **Words.** The protocol says `bet`, as the engine does. Players see "bid".
 
@@ -39,11 +42,20 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 { "name": "Ana", "gender": "female", "avatar": "woman-long-red-hair" }
 ```
 
-- `name`: 1 to 20 characters, no control or bidirectional formatting characters. A human's name
-  may not contain "LowRisk" or "Ducking", in any case: the Reckoner takes any seat so named for a
-  computer player of that kind.
+- `name`: **cleaned** by the server, then 1 to 20 characters. Cleaning composes it (NFC), makes every
+  space a plain one, collapses runs of them and trims both ends, and drops invisible characters
+  except the joiners and variation selectors emoji are made of. A name is refused when it holds a
+  control or bidirectional formatting character, or any other formatting character, or when
+  nothing in it is visible. The table shows the cleaned name.
+- **Two names clash** when they match ignoring case, width (`Ａｎａ` is `Ana`) and invisible
+  characters, with Romanian's cedilla letters counted as its comma-below ones (`Ştefan` is
+  `Ștefan`). Names at a table may not clash.
+- A name may not contain "LowRisk" or "Ducking", in any case or width, unless it is a `low-risk`
+  or `ducking` computer player's: the Reckoner takes any seat so named for a deterministic player.
 - `gender`: `female` or `male`.
-- `avatar`: a catalogue id: lower-case letters, digits and `-`, at most 40 characters.
+- `avatar`: an `id` from [`catalogues/avatars.json`](catalogues/avatars.json) that suits the seat. A
+  person's must be kept for no level (no `strategy`) and be for their gender, or for `any`. A
+  computer player's may also be one kept for its own level.
 
 ### Settings
 
@@ -51,7 +63,7 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 {
   "seats": [
     { "kind": "human", "name": "Ana", "gender": "female", "avatar": "woman-long-red-hair" },
-    { "kind": "computer", "level": "cyborg", "name": "T-800", "gender": "male", "avatar": "cyborg-man-eye" },
+    { "kind": "computer", "level": "cyborg", "name": "Cyborg", "gender": "male", "avatar": "cyborg-man-eye" },
     { "kind": "open" }
   ],
   "structure": "1-8-1",
@@ -72,12 +84,13 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 | `foreheadAndHidden` | `true` | End with one Forehead and one Hidden round |
 | `allOneCardForehead` | `false` | Every one-card round is Forehead |
 | `botSpeed` | `2` | 0 (slow) to 4 (instant) |
-| `waitAfterRound` | `false` | |
+| `waitAfterRound` | `false` | Online, the round hold |
 | `seed` | none | Solo only: a fixed deal. Online it is refused, since a seed is the whole deal |
-| `replacement` | none | Online only: the computer player that stands in for a human |
-| `turnTimer` | none (off) | Online only, and only with a `replacement` |
+| `replacement` | Online: `reckoner-beta` | Online only: the computer player that stands in for a human |
+| `turnTimer` | Online: `60000` | Online only: how long a person's turn may take, 10000 to 3600000, or `0` for no timer |
 
-`null` counts as absent. Names must differ from each other, ignoring case.
+`null` counts as absent. Names may not clash (see [Profile](#profile)), and each seat's portrait
+must suit it.
 
 ## Client to server
 
@@ -93,19 +106,17 @@ connection at that moment, which may be a newer tab.
 | `createSolo` | `settings` | Not at a table |
 | `createTable` | `settings`, `profile` | Not at a table |
 | `joinTable` | `code` (6 characters, `A`–`Z` and `0`–`9`), `profile` | Not at a table |
-| `updateProfile` | `name`, `gender`, `avatar` | Lobby |
-| `takeSeat` | `seat` | Lobby, an open seat |
-| `setSeat` | `seat`, `kind` (`open` or `computer`), `level` (with `computer`) | Host, lobby |
-| `updateSettings` | `settings`, whole | Host, lobby. Solo: speed and the wait at any time |
+| `updateProfile` | `name`, `gender`, `avatar` | Online, between games |
+| `takeSeat` | `seat` | Online, between games, an open seat |
+| `setSeat` | `seat`, `kind` (`open` or `computer`), `level` (with `computer`) | Host, online, between games |
+| `updateSettings` | `settings`, whole | Host. Online, between games. Solo: speed and the wait at any time |
 | `startGame` | – | Host, in the lobby or after a game |
 | `bet` | `prompt`, `value` | Your own open prompt |
 | `play` | `prompt`, `index` | Your own open prompt |
-| `continue` | `round` | During the round hold |
+| `continue` | `round` | Once the round is scored: see [The round hold](#the-round-hold) |
 | `pause`, `resume` | – | Solo, while a game is on |
-| `leaveTable` | – | At a table. Solo: closes the table |
+| `leaveTable` | – | At a table. Solo: closes the table. Online: between games |
 
-`createTable`, `joinTable`, `updateProfile`, `takeSeat` and `setSeat` are answered `illegal` until
-the server has online tables.
 
 ### hello
 
@@ -125,11 +136,60 @@ the server has online tables.
 - **`updateSettings`** takes the whole settings, of which only `botSpeed` and `waitAfterRound` may
   differ from the table's (`illegal` otherwise). A new speed applies at once, even to the rest under
   way. The wait applies from the next scored round. Answered with a `tableState`.
-- **The wait after each round.** With `waitAfterRound` on, every scored round, the last included,
-  is followed by a `held` and the game waits for your `continue` with that round. A `continue` for
-  a round that is not held is ignored.
+- **The wait after each round:** see [The round hold](#the-round-hold).
 - **`startGame`**, once a game is over, starts another with the same settings, at once.
 - **`leaveTable`** closes the table, game and all. You can then `createSolo` again.
+
+### Online tables
+
+A table's link is `/t/<code>`, which serves the page; the page reads the code from its address.
+
+- **`createTable`** makes a table in its lobby, with you as its host in its first open seat.
+  `settings.seats` holds `open` and `computer` seats only, at least one open; `seed` is refused.
+  Your name may not clash with your own computer players' (`badMessage`, `name`). Answered with a
+  `sync` of the table.
+- **`joinTable`** seats you in the first open seat. A name already taken there gets a number: "Ana"
+  joins as "Ana 2". Answered with a `sync`; everyone else gets a `tableState`.
+  - `notFound`: no table has that code, or it is a solo table's.
+  - `tableFull`: no seat is open, as while a game is on.
+  - `illegal`: you are at a table already.
+  - The profile is checked first, so a bad one is `badMessage` whatever the code.
+- **Between games** means in the lobby, or once a game is over: a finished table is a lobby again,
+  and its `state` stays `finished` until the next game starts. Then:
+  - `takeSeat` moves you to an open seat (`illegal` for one that is not open, `badMessage` past
+    the end).
+  - `updateProfile` changes your name, gender and portrait; `nameTaken` when someone at the table
+    has that name.
+  - Nobody may move or remove someone else; people move themselves.
+  - The host's `setSeat` makes a seat open, or a computer player of that level. The server gives a
+    computer player its name and portrait from the catalogues, by the desktop client's rules: a
+    name kept for its level first, else anyone's, in the host's `hello.lang`, else "Bot N"; its
+    level's own portrait first, else anyone's, among those worn least at the table. A computer
+    player whose level changes keeps its gender. A seat a person holds is `illegal`.
+  - The host's `updateSettings` changes everything but what the seats hold. Of `settings.seats`
+    only the number is read: seats added are open, and seats taken off the end must hold nobody
+    (`illegal`, `seats`). Send the table's settings back with your changes.
+  - The host's `startGame` needs every seat filled: `illegal`, `seats`, otherwise.
+  - `leaveTable` opens your seat and answers with a `sync` with `table: null`. A host who leaves
+    hands over to whoever has been there longest, and the last one out closes the table.
+- **During a game** none of these are allowed (`illegal`), and nobody can join. Leaving during a
+  game comes later.
+- **Presence:** everyone is sent a `tableState` when someone's connection comes back or goes, with
+  their seat's `presence` `here` or `away`. A connection that a newer tab replaced says nothing.
+
+### The round hold
+
+With `waitAfterRound` on, every scored round, the last included, is followed by a `held`, and the
+game waits for `continue {round}`.
+
+- **Solo:** it waits for as long as it takes, for your Continue (or the watcher's).
+- **Online:** it waits for the people connected when the round was scored, for at most 30 s. Each
+  Continue takes its seat off the hold, and the `held` is sent again with the seats still awaited;
+  the hold ends when nobody is left on it, or at its deadline. Someone whose connection goes is no
+  longer awaited. Nobody connected means no hold.
+- A `continue` may be sent as soon as the round's `roundScored` arrives, before its `held`, and
+  still counts. A `continue` for a round that is not held, or from a seat it does not wait for, is
+  ignored.
 
 ## Server to client
 
@@ -141,7 +201,7 @@ the server has online tables.
 | `prompt` | see [Prompts](#prompts) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor` (seats), `deadline` | Everyone, during the round hold |
-| `sync` | see [Sync](#sync) | After every `welcome`, and on joining |
+| `sync` | see [Sync](#sync) | After every `welcome`, and on making, joining or leaving an online table |
 | `error` | `code`, sometimes `detail` | The connection |
 
 ### tableState
@@ -154,13 +214,17 @@ the server has online tables.
 ```json
 { "kind": "human", "name": "Ana", "gender": "female", "avatar": "woman-long-red-hair",
   "presence": "away", "you": false }
-{ "kind": "computer", "level": "cyborg", "name": "T-800", "gender": "male", "avatar": "cyborg-man-eye" }
+{ "kind": "computer", "level": "cyborg", "name": "Cyborg", "gender": "male", "avatar": "cyborg-man-eye" }
 { "kind": "open" }
 ```
 
-- `presence`: `here`, `away` or `replaced`.
+- `presence`: `here` or `away`, whether the person's connection is open, sent again whenever it
+  changes. `replaced` comes with the grace period, which is not built yet.
 - `paused`: whether a solo game is paused. Always `false` online, and when no game is on.
 - `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the table waits for an away player's turn.
+  Not sent yet: it comes with the grace period. Until then the table waits for an away player's
+  turn as for anyone's, up to the turn timer on each of their moves, and for as long as it takes
+  with `turnTimer: 0`; nobody can leave a table while its game is on.
 - `state` turns to `finished` only in the next `tableState`; a game's end is its `gameOver` event.
 - **A closed table's `tableState` is the last message from it.** Nothing of its game follows.
 
@@ -277,8 +341,9 @@ The order, for one move: the `game` event asking for it (`betRequested` or `card
 
 - `round`: the round that was scored, 0-based like a round result's `index`.
 - `waitingFor`: the seats whose `continue` is awaited. Empty in a watched solo game, which its
-  watcher continues.
-- `deadline`: the milliseconds left, or `null` when there is no limit, as in solo.
+  watcher continues. Online it shrinks as people continue, and the `held` is sent again.
+- `deadline`: the milliseconds left when it was sent, or `null` when there is no limit, as in
+  solo. Count down from when you received it.
 - **A hold ends with the game's next message** (`roundComplete`), or, when you `continue` while
   paused, with your `continue`: a `sync` then shows no hold.
 
@@ -306,7 +371,7 @@ you do not hold can be ignored.
 
 | Code | |
 |---|---|
-| `badMessage` | Not valid JSON, an unknown type or field, or a value out of range |
+| `badMessage` | Not valid JSON, an unknown type or field, a value out of range, or a name, gender or portrait the rules refuse |
 | `version` | `hello.protocol` is not this version. Reload the page |
 | `notFound` | No such table, or no such member |
 | `tableFull` | Every seat is taken |
@@ -314,7 +379,18 @@ you do not hold can be ignored.
 | `notHost` | Only the host may do that |
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
-| `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, not in an online game, and so on |
+| `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
 | `rateLimited` | Too many messages |
 | `draining` | The server is restarting, or cannot start a game just now, and takes no new games |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |
+
+## Catalogues
+
+[`catalogues/player_names.json`](catalogues/player_names.json) and
+[`catalogues/avatars.json`](catalogues/avatars.json) are the desktop client's, copied from
+`romanian_whist_desktop` at `cfeae4c`. The server is built with them.
+
+- **A name** has `name`, `gender` and `language` (`en`, `ro` or `any`), and a `strategy` when it is
+  kept for computer players of that level.
+- **A portrait** has `id`, `gender` (`female`, `male` or `any`), `file`, and a `strategy` when it is
+  kept for that level. `id` is what `avatar` holds; the picture is the client's to draw.

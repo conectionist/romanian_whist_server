@@ -26,6 +26,9 @@ struct LeakGame
     romanian_whist::GameStructure structure;
     bool allOneCardForehead;
     std::uint32_t seed;
+
+    // Online: no watcher, and the hold after each round waits for every human's Continue.
+    bool online = false;
 };
 
 // Plays one game with scripted humans at `humans` and a watcher, and returns the whole log. Every
@@ -39,7 +42,9 @@ std::vector<test::Entry> play(const LeakGame& spec)
     Settings settings = test::tableSettings(spec.seats, spec.humans, Level::Random);
     settings.structure = spec.structure;
     settings.allOneCardForehead = spec.allOneCardForehead;
-    settings.waitAfterRound = spec.seed % 2 == 0;
+    settings.waitAfterRound = spec.online || spec.seed % 2 == 0;
+    if(spec.online)
+        settings.replacement = Level::ReckonerBeta;
 
     std::vector<std::optional<MemberId>> seatMembers(spec.seats);
     std::vector<Viewer> viewers;
@@ -48,11 +53,15 @@ std::vector<test::Entry> play(const LeakGame& spec)
         seatMembers[seat] = seat + 1;
         viewers.push_back({seat + 1, seat});
     }
-    viewers.push_back({watcher, std::nullopt});
+    if(!spec.online)
+        viewers.push_back({watcher, std::nullopt});
 
     test::Oracle oracle(recorder, viewers);
     GameRunSetup setup = test::quickGame(settings, seatMembers, spec.seed);
-    setup.watchers = {watcher};
+    if(spec.online)
+        setup.roundHold = patience;
+    else
+        setup.watchers = {watcher};
     setup.firstObservers = {&oracle};
 
     for(const Viewer& viewer : viewers)
@@ -66,20 +75,20 @@ std::vector<test::Entry> play(const LeakGame& spec)
         const MemberId member = seat + 1;
         auto prompts = std::make_shared<std::atomic<int>>(0);
         humans.push_back(std::make_unique<test::ScriptedHuman>(
-            recorder, member, [&run, seat](const Answer& answer) { run->submit(seat, answer); }, test::Behaviour::Good,
-            [&run, member, seat, prompts](const Json::Value&)
+            recorder, member, [&run, member](const Answer& answer) { run->submit(member, answer); }, test::Behaviour::Good,
+            [&run, member, prompts](const Json::Value&)
             {
                 if(++*prompts % 17 == 0)
                 {
-                    run->sendSync(member, seat, TableView{});
-                    run->sendSync(watcher, std::nullopt, TableView{});
+                    run->sendSync(member, TableView{});
+                    run->sendSync(watcher, TableView{});
                 }
                 return false;
             },
-            [&run, member, seat](unsigned int round)
+            [&run, member](unsigned int round)
             {
-                run->sendSync(member, seat, TableView{});
-                run->continueRound(round);
+                run->sendSync(member, TableView{});
+                run->continueRound(member, round);
             }));
     }
 
@@ -126,6 +135,9 @@ TEST_CASE("No message carries a card its member may not see", "[leak]")
             }
         }
     }
+
+    // Three people and three computer players online, each continuing every hold.
+    games.push_back({6, {0, 2, 4}, GameStructure::S_181, false, seed++, true});
 
     std::size_t messages = 0;
     for(const LeakGame& game : games)

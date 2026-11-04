@@ -4,3 +4,6 @@
 [submodule "libs/drogon"]
 	path = libs/drogon
 	url = https://github.com/drogonframework/drogon.git
+[submodule "libs/utf8proc"]
+	path = libs/utf8proc
+	url = https://github.com/JuliaStrings/utf8proc.git

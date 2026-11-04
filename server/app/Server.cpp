@@ -6,6 +6,7 @@
 
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <filesystem>
@@ -105,6 +106,25 @@ void whenListening(std::function<void()> done)
     });
 }
 
+// A table's link, /t/K7QM4P, is the page itself, which reads the code from its address.
+void serveTableLinks(const std::string& documentRoot)
+{
+    const std::string index = (std::filesystem::path(documentRoot) / "index.html").string();
+    drogon::app().registerHandler(
+        "/t/{code}",
+        [index](const drogon::HttpRequestPtr&, std::function<void(const drogon::HttpResponsePtr&)>&& respond,
+                const std::string& code)
+        {
+            const bool wellFormed = code.size() == 6 && std::ranges::all_of(code, [](char c)
+            {
+                return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+            });
+            respond(wellFormed ? drogon::HttpResponse::newFileResponse(index)
+                               : drogon::HttpResponse::newNotFoundResponse());
+        },
+        {drogon::Get});
+}
+
 } // namespace
 
 void configureApp(const ServerOptions& options, std::function<void()> onListening)
@@ -143,6 +163,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
             });
         });
 
+    serveTableLinks(options.documentRoot);
     installStopHandlers();
 }
 

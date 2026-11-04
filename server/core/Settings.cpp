@@ -1,8 +1,9 @@
 #include "core/Settings.h"
 
+#include "core/Catalogue.h"
+
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <set>
 #include <utility>
 
@@ -24,73 +25,11 @@ constexpr std::array<std::pair<Level, std::string_view>, 9> levelNames{{
     {Level::ReckonerDelta, "reckoner-delta"},
 }};
 
-// Decodes one code point, or returns false for malformed, overlong or surrogate sequences.
-bool nextCodePoint(std::string_view text, std::size_t& at, char32_t& codePoint)
+// The Reckoner models any seat so named as a deterministic player, whoever sits there.
+bool isReservedName(std::string_view name)
 {
-    const auto byte = [&](std::size_t i) { return static_cast<unsigned char>(text[i]); };
-    const unsigned char lead = byte(at);
-
-    std::size_t length = 0;
-    char32_t minimum = 0;
-    if(lead < 0x80)
-    {
-        codePoint = lead;
-        at += 1;
-        return true;
-    }
-    if((lead & 0xE0) == 0xC0)
-    {
-        length = 2;
-        minimum = 0x80;
-        codePoint = lead & 0x1F;
-    }
-    else if((lead & 0xF0) == 0xE0)
-    {
-        length = 3;
-        minimum = 0x800;
-        codePoint = lead & 0x0F;
-    }
-    else if((lead & 0xF8) == 0xF0)
-    {
-        length = 4;
-        minimum = 0x10000;
-        codePoint = lead & 0x07;
-    }
-    else
-        return false;
-
-    if(at + length > text.size())
-        return false;
-
-    for(std::size_t i = 1 ; i < length ; i++)
-    {
-        if((byte(at + i) & 0xC0) != 0x80)
-            return false;
-        codePoint = (codePoint << 6) | (byte(at + i) & 0x3F);
-    }
-
-    if(codePoint < minimum || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF))
-        return false;
-
-    at += length;
-    return true;
-}
-
-bool isControlOrBidi(char32_t c)
-{
-    if(c < 0x20 || (c >= 0x7F && c <= 0x9F))
-        return true;
-
-    return c == 0x061C || c == 0x200E || c == 0x200F || (c >= 0x202A && c <= 0x202E) ||
-           (c >= 0x2066 && c <= 0x2069);
-}
-
-std::string asciiLower(std::string_view text)
-{
-    std::string lower(text);
-    for(char& c : lower)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return lower;
+    const std::string key = nameKey(name);
+    return key.find("lowrisk") != std::string::npos || key.find("ducking") != std::string::npos;
 }
 
 bool isValidGender(std::string_view gender)
@@ -98,7 +37,9 @@ bool isValidGender(std::string_view gender)
     return gender == "female" || gender == "male";
 }
 
-bool isValidAvatar(std::string_view avatar)
+} // namespace
+
+bool isValidAvatarId(std::string_view avatar)
 {
     if(avatar.empty() || avatar.size() > 40)
         return false;
@@ -108,8 +49,6 @@ bool isValidAvatar(std::string_view avatar)
         return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
     });
 }
-
-} // namespace
 
 std::string_view levelName(Level level)
 {
@@ -131,38 +70,10 @@ std::optional<Level> parseLevel(std::string_view name)
     return std::nullopt;
 }
 
-bool isValidUtf8(std::string_view text)
+namespace
 {
-    std::size_t at = 0;
-    char32_t codePoint = 0;
-    while(at < text.size())
-    {
-        if(!nextCodePoint(text, at, codePoint))
-            return false;
-    }
-    return true;
-}
 
-bool isValidName(std::string_view name)
-{
-    std::size_t at = 0;
-    std::size_t length = 0;
-    bool visible = false;
-    char32_t codePoint = 0;
-
-    while(at < name.size())
-    {
-        if(!nextCodePoint(name, at, codePoint) || isControlOrBidi(codePoint))
-            return false;
-        if(codePoint != U' ')
-            visible = true;
-        length++;
-    }
-
-    return visible && length <= maxNameLength;
-}
-
-std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
+std::optional<SettingsError> checkPacingAndRules(const Settings& settings, Mode mode)
 {
     if(settings.seats.size() < 2 || settings.seats.size() > 6)
         return SettingsError{"seats"};
@@ -176,49 +87,141 @@ std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
     if(mode == Mode::Online && settings.seed)
         return SettingsError{"seed"};
 
-    // A turn that times out is played by the seat's computer player, so a timer needs one.
-    if(settings.turnTimer && (!settings.replacement || settings.turnTimer->count() <= 0))
+    // A turn that times out is played by the seat's computer player, so a timer needs one. A short
+    // one would let the computer player make every move.
+    if(settings.turnTimer && settings.turnTimer->count() != 0 &&
+       (!settings.replacement || *settings.turnTimer < minTurnTimer))
         return SettingsError{"turnTimer"};
 
-    std::size_t humans = 0;
-    std::set<std::string> names;
+    return std::nullopt;
+}
 
+// Every seat that is not open, and their names against each other.
+std::optional<SettingsError> checkSeats(const Settings& settings)
+{
+    std::set<std::string> names;
     for(const SeatSetting& seat : settings.seats)
     {
         if(seat.kind == SeatKind::Open)
-            return SettingsError{"seats"};
+            continue;
 
         if(seat.kind == SeatKind::Computer && !seat.level)
             return SettingsError{"level"};
         if(seat.kind == SeatKind::Human && seat.level)
             return SettingsError{"level"};
 
-        const Profile& profile = seat.profile;
-        if(!isValidName(profile.name))
-            return SettingsError{"name"};
-        if(!isValidGender(profile.gender))
-            return SettingsError{"gender"};
-        if(!isValidAvatar(profile.avatar))
-            return SettingsError{"avatar"};
+        const std::optional<SettingsError> profile = seat.kind == SeatKind::Human
+                                                     ? checkPersonProfile(seat.profile)
+                                                     : checkComputerProfile(seat.profile, *seat.level);
+        if(profile)
+            return profile;
 
         // The engine wants names that differ byte for byte; people want them to differ to the eye.
-        if(!names.insert(asciiLower(profile.name)).second)
+        if(!names.insert(nameKey(seat.profile.name)).second)
             return SettingsError{"name"};
-
-        if(seat.kind == SeatKind::Human)
-        {
-            humans++;
-
-            // The Reckoner models any seat so named as a deterministic player, whoever sits there.
-            const std::string lower = asciiLower(profile.name);
-            if(lower.find("lowrisk") != std::string::npos || lower.find("ducking") != std::string::npos)
-                return SettingsError{"name"};
-        }
     }
+    return std::nullopt;
+}
 
+} // namespace
+
+std::optional<SettingsError> checkPersonProfile(const Profile& profile)
+{
+    if(!isCleanName(profile.name) || isReservedName(profile.name))
+        return SettingsError{"name"};
+    if(!isValidGender(profile.gender))
+        return SettingsError{"gender"};
+    if(!Catalogue::get().suitsHuman(profile.avatar, profile.gender))
+        return SettingsError{"avatar"};
+    return std::nullopt;
+}
+
+std::optional<SettingsError> checkComputerProfile(const Profile& profile, Level level)
+{
+    // Only the deterministic players themselves may be named so.
+    if(!isCleanName(profile.name) ||
+       (level != Level::LowRisk && level != Level::Ducking && isReservedName(profile.name)))
+        return SettingsError{"name"};
+    if(!isValidGender(profile.gender))
+        return SettingsError{"gender"};
+    if(!Catalogue::get().suitsComputer(profile.avatar, profile.gender, level))
+        return SettingsError{"avatar"};
+    return std::nullopt;
+}
+
+std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
+{
+    if(const std::optional<SettingsError> error = checkPacingAndRules(settings, mode))
+        return error;
+
+    std::size_t humans = 0;
+    for(const SeatSetting& seat : settings.seats)
+    {
+        if(seat.kind == SeatKind::Open)
+            return SettingsError{"seats"};
+        if(seat.kind == SeatKind::Human)
+            humans++;
+    }
     if(mode == Mode::Solo && humans > 1)
         return SettingsError{"seats"};
 
+    return checkSeats(settings);
+}
+
+std::optional<SettingsError> checkNewTableSettings(const Settings& settings)
+{
+    if(const std::optional<SettingsError> error = checkPacingAndRules(settings, Mode::Online))
+        return error;
+
+    // People take their seats by joining.
+    if(std::ranges::any_of(settings.seats, [](const SeatSetting& seat) { return seat.kind == SeatKind::Human; }))
+        return SettingsError{"seats"};
+    if(std::ranges::none_of(settings.seats, [](const SeatSetting& seat) { return seat.kind == SeatKind::Open; }))
+        return SettingsError{"seats"};
+
+    return checkSeats(settings);
+}
+
+std::optional<SettingsError> checkOnlineRules(const Settings& settings)
+{
+    return checkPacingAndRules(settings, Mode::Online);
+}
+
+void completeOnline(Settings& settings)
+{
+    if(!settings.replacement)
+        settings.replacement = Level::ReckonerBeta;
+    if(!settings.turnTimer)
+        settings.turnTimer = defaultTurnTimer;
+}
+
+std::optional<SettingsError> cleanProfile(Profile& profile)
+{
+    std::optional<std::string> cleaned = cleanName(profile.name);
+    if(!cleaned)
+        return SettingsError{"name"};
+    profile.name = std::move(*cleaned);
+    return std::nullopt;
+}
+
+std::optional<SettingsError> preparePersonProfile(Profile& profile)
+{
+    if(const std::optional<SettingsError> error = cleanProfile(profile))
+        return error;
+    return checkPersonProfile(profile);
+}
+
+std::optional<SettingsError> cleanNames(Settings& settings)
+{
+    for(SeatSetting& seat : settings.seats)
+    {
+        if(seat.kind == SeatKind::Open)
+            continue;
+        std::optional<std::string> cleaned = cleanName(seat.profile.name);
+        if(!cleaned)
+            return SettingsError{"name"};
+        seat.profile.name = std::move(*cleaned);
+    }
     return std::nullopt;
 }
 

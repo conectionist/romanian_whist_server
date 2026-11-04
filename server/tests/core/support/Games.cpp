@@ -15,7 +15,8 @@ Settings tableSettings(unsigned int seats, const std::vector<unsigned int>& huma
         seat.kind = human ? SeatKind::Human : SeatKind::Computer;
         if(!human)
             seat.level = level;
-        seat.profile = {names[i], i % 2 == 0 ? "female" : "male", "test-face"};
+        seat.profile = i % 2 == 0 ? Profile{names[i], "female", "woman-long-red-hair"}
+                                  : Profile{names[i], "male", "man-dark-hair-beard"};
         settings.seats.push_back(seat);
     }
     settings.botSpeed = fastestSpeed;

@@ -29,13 +29,13 @@ void Session::receive(std::string_view text)
     Decoded decoded = decodeClientMessage(text);
     if(!decoded.message)
     {
-        refuse(decoded.error, decoded.detail);
+        refuseMalformed(decoded.error, decoded.detail);
         return;
     }
 
     if(!member_ && !std::holds_alternative<Hello>(*decoded.message))
     {
-        refuse(ErrorCode::BadMessage, "type");
+        refuseMalformed(ErrorCode::BadMessage, "type");
         return;
     }
 
@@ -49,14 +49,22 @@ void Session::receive(std::string_view text)
 void Session::receiveBinary()
 {
     if(!closing_)
-        refuse(ErrorCode::BadMessage);
+        refuseMalformed(ErrorCode::BadMessage, {});
 }
 
 void Session::closed()
 {
     closing_ = true;
-    if(member_)
-        service_->outbox().detach(*member_, connection_.get());
+    detach();
+}
+
+void Session::detach()
+{
+    // A connection a newer one has replaced is no longer the member's, and says nothing.
+    if(!member_ || !service_->outbox().detach(*member_, connection_.get()))
+        return;
+    if(const auto table = service_->registry().tableOf(*member_))
+        table->presenceChanged(*member_);
 }
 
 void Session::handle(const ClientMessage& message)
@@ -76,38 +84,56 @@ void Session::handle(const ClientMessage& message)
             if(created.error)
                 refuse(*created.error, created.detail);
         }
+        else if constexpr(std::is_same_v<M, CreateTable>)
+        {
+            const Registry::Created created = registry.createTable(member, m.settings, m.profile);
+            if(created.error)
+                refuse(*created.error, created.detail);
+        }
+        else if constexpr(std::is_same_v<M, JoinTable>)
+            refuse(registry.joinTable(member, m.code, m.profile));
+        else if constexpr(std::is_same_v<M, UpdateProfile>)
+        {
+            const auto at = table();
+            refuse(at ? at->updateProfile(member, m.profile) : Refusal(ErrorCode::Illegal));
+        }
+        else if constexpr(std::is_same_v<M, TakeSeat>)
+        {
+            const auto at = table();
+            refuse(at ? at->takeSeat(member, m.seat) : Refusal(ErrorCode::Illegal));
+        }
+        else if constexpr(std::is_same_v<M, SetSeat>)
+        {
+            const auto at = table();
+            refuse(at ? at->setSeat(member, m.seat, m.kind, m.level, lang_) : Refusal(ErrorCode::Illegal));
+        }
         else if constexpr(std::is_same_v<M, Answer>)
         {
             const auto at = table();
-            refuse(at ? at->answer(member, m) : ErrorCode::NotYourTurn);
+            refuse(at ? at->answer(member, m) : Refusal(ErrorCode::NotYourTurn));
         }
         else if constexpr(std::is_same_v<M, Pause> || std::is_same_v<M, Resume>)
         {
             const auto at = table();
-            refuse(at ? at->setPaused(member, std::is_same_v<M, Pause>) : ErrorCode::Illegal);
+            refuse(at ? at->setPaused(member, std::is_same_v<M, Pause>) : Refusal(ErrorCode::Illegal));
         }
         else if constexpr(std::is_same_v<M, UpdateSettings>)
         {
             const auto at = table();
-            refuse(at ? at->updateSettings(member, m.settings) : ErrorCode::Illegal);
+            refuse(at ? at->updateSettings(member, m.settings) : Refusal(ErrorCode::Illegal));
         }
         else if constexpr(std::is_same_v<M, Continue>)
         {
             const auto at = table();
-            refuse(at ? at->continueRound(member, m.round) : ErrorCode::Illegal);
+            refuse(at ? at->continueRound(member, m.round) : Refusal(ErrorCode::Illegal));
         }
         else if constexpr(std::is_same_v<M, StartGame>)
         {
             const auto at = table();
-            refuse(at ? at->startGame(member) : ErrorCode::Illegal);
+            refuse(at ? at->startGame(member) : Refusal(ErrorCode::Illegal));
         }
         else if constexpr(std::is_same_v<M, LeaveTable>)
             leave();
-        else
-        {
-            // Online tables: creating, joining, profiles and seats.
-            refuse(ErrorCode::Illegal);
-        }
     }, message);
 }
 
@@ -115,7 +141,7 @@ void Session::hello(const Hello& hello)
 {
     if(member_)
     {
-        refuse(ErrorCode::BadMessage, "type");
+        refuseMalformed(ErrorCode::BadMessage, "type");
         return;
     }
     if(hello.protocol != protocolVersion)
@@ -161,14 +187,22 @@ void Session::leave()
 {
     Registry& registry = service_->registry();
     const auto table = registry.tableOf(*member_);
-    if(!table || table->mode() != Mode::Solo)
+    if(!table)
     {
         refuse(ErrorCode::Illegal);
         return;
     }
 
-    // The member was the solo table's only person, so leaving it closes it.
-    registry.closeTable(table->code());
+    const Mode mode = table->mode();
+    if(const std::optional<Refusal> refused = registry.leaveTable(*member_))
+    {
+        refuse(*refused);
+        return;
+    }
+
+    // A closed solo table says so itself. Someone who leaves an online one is told they are at none.
+    if(mode == Mode::Online)
+        reply(syncMessage(SyncView{}, Clock::now()));
 }
 
 void Session::reply(Json::Value message)
@@ -179,22 +213,31 @@ void Session::reply(Json::Value message)
 void Session::refuse(ErrorCode code, std::string_view detail)
 {
     reply(errorMessage(code, detail));
-    if(code == ErrorCode::BadMessage && ++badMessages_ >= badMessageLimit)
-        closeConnection();
 }
 
-void Session::refuse(const std::optional<ErrorCode>& code)
+void Session::refuse(const Refusal& refusal)
 {
-    if(code)
-        refuse(*code);
+    refuse(refusal.code, refusal.detail);
+}
+
+void Session::refuse(const std::optional<Refusal>& refusal)
+{
+    if(refusal)
+        refuse(*refusal);
+}
+
+void Session::refuseMalformed(ErrorCode code, std::string_view detail)
+{
+    refuse(code, detail);
+    if(++badMessages_ >= badMessageLimit)
+        closeConnection();
 }
 
 void Session::closeConnection()
 {
     closing_ = true;
     service_->outbox().close(*link_);
-    if(member_)
-        service_->outbox().detach(*member_, connection_.get());
+    detach();
 }
 
 bool Session::current() const

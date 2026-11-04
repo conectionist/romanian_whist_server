@@ -5,6 +5,9 @@ add_library(whist_session STATIC
     BuildInfo.cpp
     Cards.h
     Cards.cpp
+    Catalogue.h
+    Catalogue.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp
     Codec.h
     Codec.cpp
     ComputerPlayer.h
@@ -17,6 +20,8 @@ add_library(whist_session STATIC
     Joiner.cpp
     Log.h
     Log.cpp
+    Names.h
+    Names.cpp
     Outbox.h
     Outbox.cpp
     Pacing.h
@@ -29,6 +34,8 @@ add_library(whist_session STATIC
     SeatDriver.h
     SeatDriver.cpp
     SeatProvider.h
+    Seating.h
+    Seating.cpp
     Service.h
     Service.cpp
     Session.h
@@ -37,8 +44,17 @@ add_library(whist_session STATIC
     Settings.cpp
     Table.h
     Table.cpp
+    TableLobby.cpp
     Wait.h
 )
+
+# The catalogues are compiled in, so the server needs no path to them. Editing one reconfigures.
+set(WHIST_CATALOGUES ${PROJECT_SOURCE_DIR}/protocol/catalogues)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${WHIST_CATALOGUES}/player_names.json ${WHIST_CATALOGUES}/avatars.json)
+file(READ ${WHIST_CATALOGUES}/player_names.json WHIST_PLAYER_NAMES)
+file(READ ${WHIST_CATALOGUES}/avatars.json WHIST_AVATARS)
+configure_file(CatalogueData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp @ONLY)
 
 # The same jsoncpp target Drogon links, so the server never carries two copies.
 find_package(jsoncpp CONFIG REQUIRED)
@@ -58,4 +74,4 @@ execute_process(
 
 target_compile_definitions(whist_session PRIVATE WHIST_SERVER_VERSION="${PROJECT_VERSION}"
                                                  WHIST_SERVER_COMMIT="${WHIST_SERVER_COMMIT}")
-target_link_libraries(whist_session PUBLIC RomanianWhist::engine jsoncpp_lib)
+target_link_libraries(whist_session PUBLIC RomanianWhist::engine jsoncpp_lib PRIVATE utf8proc)

@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -93,6 +94,8 @@ private:
     Counts counts_;
     std::vector<std::string> problems_;
     std::uint64_t lastPrompt_ = 0;
+    std::optional<unsigned int> seat_;
+    std::optional<unsigned int> lastHeld_;
     std::size_t attempts_ = 0;
     bool over_ = false;
     std::atomic<bool> stop_{false};
