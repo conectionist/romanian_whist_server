@@ -136,7 +136,7 @@ TEST_CASE("No message carries a card its member may not see", "[leak]")
         }
     }
 
-    // Three people and three computer players online, as the phase's own game is played.
+    // Three people and three computer players online, each continuing every hold.
     games.push_back({6, {0, 2, 4}, GameStructure::S_181, false, seed++, true});
 
     std::size_t messages = 0;
