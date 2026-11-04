@@ -168,15 +168,21 @@ TEST_CASE("Errors go back on the connection that caused them", "[session]")
     join["profile"] = Json::Value(Json::objectValue);
     join["profile"]["name"] = "Ana";
     join["profile"]["gender"] = "female";
+    join["profile"]["avatar"] = "woman-long-red-hair";
+    client.send(join);
+
+    // The profile is checked before the code is looked up.
     join["profile"]["avatar"] = "face";
     client.send(join);
 
     const auto messages = recorder.messagesTo(1);
-    REQUIRE(messages.size() == 6);
+    REQUIRE(messages.size() == 7);
     CHECK(messages[2]["code"] == "notYourTurn");
     CHECK(messages[3]["code"] == "illegal");
     CHECK(messages[4]["code"] == "illegal");
-    CHECK(messages[5]["code"] == "illegal");
+    CHECK(messages[5]["code"] == "notFound");
+    CHECK(messages[6]["code"] == "badMessage");
+    CHECK(messages[6]["detail"] == "avatar");
 }
 
 TEST_CASE("A newer tab takes the member over, and the older is told why and closed", "[session]")

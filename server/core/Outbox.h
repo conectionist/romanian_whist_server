@@ -49,7 +49,8 @@ public:
     void attach(MemberId member, std::shared_ptr<Connection> connection);
 
     // Only if that connection is still the member's, so a late close of an old tab is harmless.
-    void detach(MemberId member, const Connection* connection);
+    // True when it was, and is now gone.
+    bool detach(MemberId member, const Connection* connection);
 
     bool isConnected(MemberId member) const;
     bool isCurrent(MemberId member, const Connection* connection) const;

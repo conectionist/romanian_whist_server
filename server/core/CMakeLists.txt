@@ -44,6 +44,7 @@ add_library(whist_session STATIC
     Settings.cpp
     Table.h
     Table.cpp
+    TableLobby.cpp
     Wait.h
 )
 

@@ -5,6 +5,7 @@
 #include "core/Joiner.h"
 #include "core/Outbox.h"
 #include "core/Protocol.h"
+#include "core/Seating.h"
 #include "core/Settings.h"
 
 #include <atomic>
@@ -13,23 +14,21 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace whist
 {
 
-// A person at a table: in a seat, or watching.
-struct TableMember
-{
-    MemberId id = 0;
-    std::optional<unsigned int> seat;
-};
-
 struct TableOptions
 {
     std::chrono::milliseconds instantFloor{30};
     int threadNiceness = 10;
+
+    // Online: how long the hold after a round waits for the players' Continues at most.
+    std::chrono::milliseconds roundHold{30000};
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's
@@ -37,8 +36,9 @@ struct TableOptions
 class Table
 {
 public:
-    Table(std::string code, Mode mode, Settings settings, std::vector<TableMember> members, MemberId host,
-          TableOptions options, Outbox& outbox, std::shared_ptr<Joiner> joiner);
+    // `seed` draws computer players' names and portraits.
+    Table(std::string code, Mode mode, Seating seating, TableOptions options, Outbox& outbox,
+          std::shared_ptr<Joiner> joiner, std::uint64_t seed);
 
     // A game still here goes to the joiner, never joined on this thread.
     ~Table();
@@ -52,30 +52,31 @@ public:
     unsigned int game() const;
     std::vector<MemberId> members() const;
     bool hasMember(MemberId member) const;
+    Settings settings() const;
 
     // The host starts the first game, or a new one once the last is over. The old game goes to
     // the joiner, and everyone is sent the new tableState. When no thread can be made for the game,
     // the table is left as it was and the answer is Draining.
-    std::optional<ErrorCode> startGame(MemberId by);
+    std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
     // returned, which goes back to the connection it came from; a legal or illegal answer to the
     // open one is the game thread's to handle.
-    std::optional<ErrorCode> answer(MemberId member, const Answer& answer);
+    std::optional<Refusal> answer(MemberId member, const Answer& answer);
 
     // Solo, while a game is on: holds it at its next rest, or lets it go on.
-    std::optional<ErrorCode> setPaused(MemberId by, bool paused);
+    std::optional<Refusal> setPaused(MemberId by, bool paused);
 
     // Solo: only the bot speed and the wait after each round may change once the table exists. A
-    // running game takes them up at once.
-    std::optional<ErrorCode> updateSettings(MemberId by, const Settings& settings);
+    // running game takes them up at once. Online: the host's, between games (Seating::updateSettings).
+    std::optional<Refusal> updateSettings(MemberId by, const Settings& settings);
 
-    // Ends the hold on that round, if it is on. A Continue for any other round, or after the game,
-    // is ignored.
-    std::optional<ErrorCode> continueRound(MemberId by, unsigned int round);
+    // A Continue for a held round. Solo, the host's ends the hold; online, each seated member's
+    // counts. A Continue for any other round, or after the game, is ignored.
+    std::optional<Refusal> continueRound(MemberId by, unsigned int round);
 
-    // Sends the member everything they need to pick the game up where it is. False when they are
-    // not at this table, and nothing was sent.
+    // Sends the member everything they need to pick the game up where it is, and, online, tells the
+    // others they are here. False when they are not at this table, and nothing was sent.
     bool sync(MemberId member);
 
     TableView viewFor(MemberId member) const;
@@ -87,14 +88,47 @@ public:
     // For tests: the outcome of the current game, if there is one.
     std::optional<RunOutcome> outcome() const;
 
+    // ---- Online, between games: in the lobby, or once a game is over (TableLobby.cpp) ----
+
+    // A newcomer takes the first open seat, and is sent a sync; the others a tableState. The profile
+    // is clean and checked.
+    std::optional<Refusal> join(MemberId member, Profile profile);
+
+    struct Left
+    {
+        std::optional<Refusal> refused;
+
+        // Nobody is left, so the table is to close.
+        bool empty = false;
+    };
+
+    // The member's seat opens, and a host hands over to whoever has been there longest. Not while
+    // a game is on.
+    Left leave(MemberId member);
+
+    std::optional<Refusal> takeSeat(MemberId member, unsigned int seat);
+
+    // `language` is the host's, for the names of computer players.
+    std::optional<Refusal> setSeat(MemberId by, unsigned int seat, SeatKind kind, std::optional<Level> level,
+                                   std::string_view language);
+
+    std::optional<Refusal> updateProfile(MemberId member, Profile profile);
+
+    // Online: the member's connection has gone, or a newer one replaced it. Everyone is told, and a
+    // hold after a round stops waiting for them.
+    void presenceChanged(MemberId member);
+
 private:
     TableState stateLocked() const;
     TableView viewLocked(MemberId member) const;
-    std::optional<unsigned int> seatOfLocked(MemberId member) const;
-    void broadcastLocked() const;
+    void broadcastLocked(std::optional<MemberId> except = std::nullopt) const;
+    void syncLocked(MemberId member) const;
 
     // Solo, by the host, with a game playing.
-    std::optional<ErrorCode> checkSoloPlayingLocked(MemberId by) const;
+    std::optional<Refusal> checkSoloPlayingLocked(MemberId by) const;
+
+    // Online, by a member, with no game on.
+    std::optional<Refusal> checkBetweenGamesLocked(MemberId by) const;
 
     const std::string code_;
     const Mode mode_;
@@ -107,9 +141,8 @@ private:
     const std::shared_ptr<std::atomic<std::uint64_t>> promptIds_ = std::make_shared<std::atomic<std::uint64_t>>(0);
 
     mutable std::mutex mutex_;
-    Settings settings_;
-    std::vector<TableMember> members_;
-    MemberId host_;
+    Seating seating_;
+    std::mt19937_64 random_;
     TableState state_ = TableState::Lobby;
     bool paused_ = false;
     unsigned int game_ = 0;
