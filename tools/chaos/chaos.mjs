@@ -7,17 +7,18 @@
 //
 // With --server it starts that program with a configuration of its own (short grace, ping and
 // pong timeouts) and stops it at the end. With --url the server is yours, and its grace period
-// should be short too. Node 22 or later, no packages.
+// should be short too, and its pong timeout under 10 s. Node 22 or later, no packages.
 //
 // It passes when, after the last disruption, every table finishes a game, and:
 //   - no table went without progress for longer than any wait of the server's allows;
+//   - every tab that went silent without closing was closed by the server;
 //   - no snapshot held a hand its viewer may not see, and no blind prompt held one;
 //   - every message parsed, and the server sent no error a person could not have caused.
 // The exit status is 0 on a pass and 1 otherwise.
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -85,6 +86,16 @@ function generator(seed) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// One masked text frame, as a browser sends it.
+export function textFrame(text) {
+  const payload = Buffer.from(text, "utf8");
+  const mask = Buffer.from([0x12, 0x34, 0x56, 0x78]);
+  const header = payload.length < 126 ? Buffer.from([0x81, 0x80 | payload.length])
+                                      : Buffer.from([0x81, 0x80 | 126, payload.length >> 8, payload.length & 0xff]);
+  const masked = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
+  return Buffer.concat([header, mask, masked]);
+}
 
 // ---- the world ----
 
@@ -458,6 +469,54 @@ class Person {
     this.send({ type: "createTable", settings: tableSettings(this.world.random), profile: this.profile() });
   }
 
+  // A tab that goes silent without closing, as when a laptop's lid shuts. A socket of its own takes
+  // the member over and then never answers a ping, so the server must notice the silence and close
+  // it. Node's WebSocket answers pings by itself, so it cannot play this part.
+  async freeze() {
+    const { world } = this;
+    if (!this.token) {
+      return;
+    }
+    world.count("tabs frozen");
+    const url = new URL(world.url);
+    const socket = connect(Number(url.port), url.hostname);
+    let closedByServer = false;
+    let upgraded = false;
+    let received = "";
+    socket.on("error", () => {});
+    socket.on("close", () => { closedByServer = true; });
+    socket.on("data", (chunk) => {
+      if (upgraded) {
+        return;
+      }
+      received += chunk.toString("latin1");
+      if (received.includes("\r\n\r\n")) {
+        upgraded = true;
+        socket.write(textFrame(JSON.stringify({ type: "hello", protocol: 1, lang: "en", token: this.token })));
+      }
+    });
+    socket.on("connect", () => {
+      socket.write(`GET ${url.pathname} HTTP/1.1\r\nHost: ${url.host}\r\nUpgrade: websocket\r\n` +
+                   "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                   "Sec-WebSocket-Version: 13\r\n\r\n");
+    });
+
+    // The server's pong timeout, with room for its reaper's interval.
+    const deadline = Date.now() + 15000;
+    while (!closedByServer && Date.now() < deadline) {
+      await sleep(250);
+    }
+    if (closedByServer) {
+      world.count("frozen tabs closed by the server");
+    } else if (upgraded) {
+      world.fail(`${this.name}'s frozen tab was still open 15 s after it went silent`);
+    }
+    socket.destroy();
+    if (!world.stopped) {
+      this.open();
+    }
+  }
+
   // Closes the tab, or leaves, or takes the seat back, now and then, for as long as the test lasts.
   async disrupt() {
     const { world } = this;
@@ -467,7 +526,9 @@ class Person {
         continue;
       }
       const roll = world.random();
-      if (roll < 0.6) {
+      if (roll < 0.1) {
+        await this.freeze();
+      } else if (roll < 0.6) {
         // Back within the grace period, or well after it.
         world.count("tabs closed");
         this.close();
