@@ -152,7 +152,8 @@ class Group {
     this.code = null;
     this.state = "none";
     this.games = 0;
-    this.counted = 0;
+    this.latest = 0;
+    this.finished = new Set();
     this.progress = Date.now();
     this.people = [];
     this.last = "-";
@@ -188,7 +189,7 @@ class Group {
       const where = person.table ? `${person.table.state}${seat === null ? "" : `/seat ${seat}`}` : "no table";
       return `${person.name} ${person.connected ? "on" : "off"} ${where}`;
     });
-    return `table ${this.index} ${this.code ?? "-"}: ${this.state}, game ${this.counted}, round ${this.round}, ` +
+    return `table ${this.index} ${this.code ?? "-"}: ${this.state}, ${this.games} games finished, game ${this.latest}, round ${this.round}, ` +
            `last event ${this.last} ${Math.round((Date.now() - this.progress) / 1000)} s ago [${people.join("; ")}]`;
   }
 }
@@ -298,8 +299,11 @@ class Person {
           if (this.table) {
             this.table.state = "finished";
           }
-          if (message.game > group.counted) {
-            group.counted = message.game;
+          // A table made again numbers its games from 1, so a game is known by its table's code too.
+          const key = `${this.table?.code ?? group.code}#${message.game}`;
+          if (!group.finished.has(key)) {
+            group.finished.add(key);
+            group.latest = message.game;
             group.games++;
             group.state = "finished";
             world.count("games finished");
@@ -686,8 +690,8 @@ async function main() {
   // Everyone comes back and stays. Tables go on with game after game, so each one must finish a game
   // from here: the one that is on, or one its host starts.
   world.disrupting = false;
-  const finishedAtStop = groups.map((group) => group.counted);
-  const unfinished = () => groups.filter((group, index) => group.counted <= finishedAtStop[index]);
+  const finishedAtStop = groups.map((group) => group.games);
+  const unfinished = () => groups.filter((group, index) => group.games <= finishedAtStop[index]);
   const settleBy = Date.now() + 300000;
   while (Date.now() < settleBy && unfinished().length > 0) {
     for (const person of people) {
