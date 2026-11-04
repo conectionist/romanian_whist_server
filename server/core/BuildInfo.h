@@ -9,6 +9,9 @@ namespace whist
 std::string_view serverVersion();
 std::string_view engineVersion();
 
+// The commit this build was configured from, or empty when git could not say.
+std::string_view serverCommit();
+
 } // namespace whist
 
 #endif

@@ -50,7 +50,8 @@ public:
     // the answer is legal is the game thread's call.
     Submitted submit(const Answer& answer);
 
-    // Any thread, at any time. A waiting seat throws GameAbandoned; a later one throws at once.
+    // Any thread, at any time. A waiting seat throws GameAbandoned; a later one throws at once. Once
+    // it returns, the seat sends nothing more.
     void abandon();
 
     // Calls `use` with the open prompt, under this seat's lock, so the prompt cannot close while a
@@ -72,6 +73,7 @@ private:
     // Asks the member and returns their valid answer, or nothing when the deadline passed first.
     std::optional<std::uint64_t> ask(Prompt prompt, const std::function<bool(const Pending&)>& valid);
 
+    // Called without the lock, which it takes.
     void send(Json::Value message);
 
     const romanian_whist::Seat seat_;

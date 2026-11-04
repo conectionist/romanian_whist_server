@@ -60,7 +60,8 @@ Json::Value errorMessage(ErrorCode code, std::string_view detail = {});
 // What a viewer needs to pick a game up where it is, without the engine.
 struct SyncView
 {
-    TableView table;
+    // None for a member at no table.
+    std::optional<TableView> table;
     std::optional<unsigned int> game;
     std::optional<Json::Value> snapshot;
     std::vector<RoundResult> history;

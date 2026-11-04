@@ -44,14 +44,3 @@ TEST_CASE("A request body over the cap is refused", "[static]")
     REQUIRE(response);
     CHECK(response->statusCode() == drogon::k413RequestEntityTooLarge);
 }
-
-TEST_CASE("/ws sends each text message back", "[echo]")
-{
-    TestClient client(testServer().port, "/ws");
-
-    client.send("hello");
-    client.send("ș and ț");
-
-    REQUIRE(client.waitForMessages(2, 5s));
-    CHECK(client.messages() == std::vector<std::string>{"hello", "ș and ț"});
-}

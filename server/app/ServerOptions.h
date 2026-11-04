@@ -19,6 +19,10 @@ struct ServerOptions
     std::size_t maxMessageBytes = 4096;
     std::chrono::milliseconds pingInterval{10000};
     std::chrono::milliseconds shutdownDelay{0};
+
+    // The shortest beat a computer player's move gets, even at Instant, so a watched game of
+    // computer players does not hold a core for its whole length.
+    std::chrono::milliseconds instantFloor{30};
     std::string logLevel = "info";
 };
 

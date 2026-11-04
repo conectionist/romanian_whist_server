@@ -247,7 +247,8 @@ std::map<std::string, Check> tableFields()
             {"state", oneOf({"lobby", "playing", "finished", "closed"})},
             {"host", nullable(whole())},
             {"settings", settings()},
-            {"seats", list(seat)}};
+            {"seats", list(seat)},
+            {"paused", boolean()}};
 }
 
 std::map<std::string, Check> tableOptional()
@@ -291,7 +292,7 @@ Check prompt(bool withType)
 
 Check hold()
 {
-    return object({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", whole()}});
+    return object({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", nullable(whole())}});
 }
 
 } // namespace
@@ -321,9 +322,9 @@ std::string shapeError(const Json::Value& message)
     if(type == "promptClosed")
         return object(with({{"id", whole()}, {"by", oneOf({"you", "computer"})}}))(message);
     if(type == "held")
-        return object(with({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", whole()}}))(message);
+        return object(with({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", nullable(whole())}}))(message);
     if(type == "sync")
-        return object(with({{"table", object(tableFields(), tableOptional())},
+        return object(with({{"table", nullable(object(tableFields(), tableOptional()))},
                             {"game", nullable(whole())},
                             {"snapshot", nullable(snapshot())},
                             {"history", list(roundResult())},
@@ -332,7 +333,8 @@ std::string shapeError(const Json::Value& message)
                             {"held", nullable(hold())}}))(message);
     if(type == "error")
         return object(with({{"code", oneOf({"badMessage", "version", "notFound", "tableFull", "nameTaken", "notHost",
-                                            "notYourTurn", "stalePrompt", "illegal", "rateLimited", "draining"})}}),
+                                            "notYourTurn", "stalePrompt", "illegal", "rateLimited", "draining",
+                                            "openElsewhere"})}}),
                       {{"detail", text()}})(message);
 
     return "unknown type " + type;

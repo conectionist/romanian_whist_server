@@ -137,16 +137,32 @@ TEST_CASE("SIGTERM stops the server after the shutdown delay, serving until then
     INFO(server.log());
     REQUIRE(listening);
 
-    TestClient client(port, "/ws");
-    client.send("before");
-    REQUIRE(client.waitForMessages(1, 5s));
+    // Two games running when the signal comes: one parked on its human, one of computer players.
+    TestClient player(port, "/ws");
+    player.send(R"({"type":"hello","protocol":1,"lang":"en"})");
+    REQUIRE(player.waitForMessages(2, 5s));
+    player.send(R"({"type":"createSolo","settings":{"structure":"1-8-1","seats":[)"
+                R"({"kind":"human","name":"Ana","gender":"female","avatar":"face"},)"
+                R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"face"}]}})");
+    REQUIRE(player.waitFor([](const Json::Value& m) { return m["type"] == "prompt"; }, 5s));
+
+    TestClient watcher(port, "/ws");
+    watcher.send(R"({"type":"hello","protocol":1,"lang":"en"})");
+    REQUIRE(watcher.waitForMessages(2, 5s));
+    watcher.send(R"({"type":"createSolo","settings":{"structure":"1-8-1","botSpeed":0,"seats":[)"
+                 R"({"kind":"computer","level":"reckoner-gamma","name":"Ana","gender":"female","avatar":"face"},)"
+                 R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"face"}]}})");
+    REQUIRE(watcher.waitFor([](const Json::Value& m) { return m["type"] == "game"; }, 5s));
 
     server.signal(SIGTERM);
     REQUIRE(server.waitForLine("shutting down", 2s));
 
-    client.send("during");
-    CHECK(client.waitForMessages(2, 500ms));
+    // Still answering during the delay.
+    const std::size_t before = player.messages().size();
+    player.send("during");
+    CHECK(player.waitFor([](const Json::Value& m) { return m["code"] == "badMessage"; }, 500ms, before));
 
     CHECK(server.waitForExit(5s) == 0);
-    CHECK(client.waitForClose(5s));
+    CHECK(player.waitForClose(5s));
+    CHECK(watcher.waitForClose(5s));
 }

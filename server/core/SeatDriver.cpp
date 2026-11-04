@@ -102,7 +102,8 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     answer_.reset();
     lastPrompt_ = prompt.id;
 
-    // Sent with the lock released, so an answer is never held up while a prompt is encoded.
+    // Encoded with the lock released; send() takes it again to post, so nothing goes out after
+    // abandon().
     lock.unlock();
     send(promptMessage(prompt, Clock::now()));
     lock.lock();
@@ -195,7 +196,9 @@ IGameObserver* SeatDriver::observer() const
 
 void SeatDriver::send(Json::Value message)
 {
-    if(member_)
+    // Checked under the lock abandon() takes, so an abandoned seat sends nothing more.
+    std::lock_guard lock(mutex_);
+    if(member_ && !abandoned_)
         outbox_.send(*member_, std::move(message));
 }
 

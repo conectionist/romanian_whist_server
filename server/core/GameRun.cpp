@@ -83,8 +83,8 @@ GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
       threadNiceness_(setup.threadNiceness),
       firstObservers_(setup.firstObservers),
       drivers_(makeDrivers(setup, outbox)),
-      publisher_(setup.game, viewersOf(setup), pacingFor(setup.settings.botSpeed, setup.instantFloor), drivers_,
-                 outbox)
+      publisher_(setup.game, viewersOf(setup), pacingFor(setup.settings.botSpeed, setup.instantFloor),
+                 setup.settings.waitAfterRound, drivers_, outbox)
 {
     GameSetup engineSetup;
     for(unsigned int i = 0 ; i < drivers_.size() ; i++)
@@ -112,8 +112,7 @@ void GameRun::play(GameSetup setup)
 {
     lowerPriority(threadNiceness_);
 
-    // The outcome is set last on every path: once it reads as over, the table may start the next
-    // game, whose messages must not be overtaken by this one's.
+    // The outcome is set last on every path, so a game that reads as finished sends nothing more.
     try
     {
         for(IGameObserver* observer : firstObservers_)
@@ -157,9 +156,35 @@ void GameRun::close()
     engine_.requestStop();
 }
 
+void GameRun::silence()
+{
+    publisher_.silence();
+    close();
+}
+
 bool GameRun::finished() const
 {
     return outcome_ != RunOutcome::Running;
+}
+
+bool GameRun::over() const
+{
+    return finished() || publisher_.gameOverSent();
+}
+
+void GameRun::setPaused(bool paused)
+{
+    publisher_.setPaused(paused);
+}
+
+void GameRun::continueRound(unsigned int round)
+{
+    publisher_.continueRound(round);
+}
+
+void GameRun::setPacing(Pacing pacing, bool waitAfterRound)
+{
+    publisher_.setPacing(pacing, waitAfterRound);
 }
 
 RunOutcome GameRun::outcome() const

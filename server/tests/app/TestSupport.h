@@ -2,12 +2,14 @@
 #define WHIST_TESTS_TESTSUPPORT_H
 
 #include <drogon/WebSocketClient.h>
+#include <json/value.h>
 #include <trantor/net/EventLoopThread.h>
 
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -60,6 +62,7 @@ public:
     TestClient& operator=(const TestClient&) = delete;
 
     void send(const std::string& text);
+    void sendJson(const Json::Value& message);
     void close();
 
     // Each waits until its condition holds or the timeout passes, and says which.
@@ -68,6 +71,13 @@ public:
 
     std::vector<std::string> messages();
     bool sawCloseFrame();
+
+    // The messages as JSON; one that does not parse is null.
+    std::vector<Json::Value> json();
+
+    // Waits for the first message at or after `from` that matches, and returns its index.
+    std::optional<std::size_t> waitFor(const std::function<bool(const Json::Value&)>& match,
+                                       std::chrono::milliseconds timeout, std::size_t from = 0);
 
 private:
     // Shared with the client's callbacks, which can outlive the constructor and the client: Drogon's

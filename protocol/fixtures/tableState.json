@@ -2,6 +2,7 @@
   "code" : "6BR92T",
   "host" : 0,
   "mode" : "solo",
+  "paused" : false,
   "seats" : 
   [
     {
@@ -27,7 +28,7 @@
       "name" : "Cora"
     }
   ],
-  "seq" : 1,
+  "seq" : 3,
   "settings" : 
   {
     "allOneCardForehead" : false,
@@ -58,7 +59,7 @@
     ],
     "seed" : 7,
     "structure" : "1-8-1",
-    "waitAfterRound" : false
+    "waitAfterRound" : true
   },
   "state" : "playing",
   "type" : "tableState"

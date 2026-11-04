@@ -8,6 +8,7 @@
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
 #include <drogon/drogon.h>
+#include <json/json.h>
 
 #include <fstream>
 #include <future>
@@ -81,7 +82,7 @@ public:
 
         // The senders go first: a send after quit() would reach an I/O loop that no longer exists.
         spike().joinSenders();
-        drogon::app().quit();
+        stopApp();
         server->thread.join();
         server.reset();
     }
@@ -141,6 +142,7 @@ const TestServer& testServer()
     options.port = freePort();
     options.documentRoot = server->documentRoot.path().string();
     options.logLevel = "warn";
+    options.instantFloor = std::chrono::milliseconds(1);
 
     auto listening = std::make_shared<std::promise<void>>();
     std::future<void> ready = listening->get_future();
@@ -235,6 +237,55 @@ std::vector<std::string> TestClient::messages()
 {
     const std::lock_guard lock(state_->mutex);
     return state_->messages;
+}
+
+void TestClient::sendJson(const Json::Value& message)
+{
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    send(Json::writeString(builder, message));
+}
+
+namespace
+{
+
+Json::Value parseOrNull(const std::string& text)
+{
+    Json::CharReaderBuilder builder;
+    const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    Json::Value value;
+    std::string errors;
+    if(!reader->parse(text.data(), text.data() + text.size(), &value, &errors))
+        return Json::Value(Json::nullValue);
+    return value;
+}
+
+} // namespace
+
+std::vector<Json::Value> TestClient::json()
+{
+    std::vector<Json::Value> parsed;
+    for(const std::string& text : messages())
+        parsed.push_back(parseOrNull(text));
+    return parsed;
+}
+
+std::optional<std::size_t> TestClient::waitFor(const std::function<bool(const Json::Value&)>& match,
+                                               std::chrono::milliseconds timeout, std::size_t from)
+{
+    const auto end = std::chrono::steady_clock::now() + timeout;
+    std::unique_lock lock(state_->mutex);
+    std::size_t next = from;
+    while(true)
+    {
+        for( ; next < state_->messages.size() ; next++)
+        {
+            if(match(parseOrNull(state_->messages[next])))
+                return next;
+        }
+        if(state_->changed.wait_until(lock, end) == std::cv_status::timeout && next >= state_->messages.size())
+            return std::nullopt;
+    }
 }
 
 bool TestClient::sawCloseFrame()

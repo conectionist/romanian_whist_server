@@ -11,6 +11,8 @@ include(Catch)
 
 # The core's tests link no Drogon, as the core itself does not.
 add_executable(core_tests
+    core/support/Client.h
+    core/support/Client.cpp
     core/support/Fixtures.h
     core/support/Fixtures.cpp
     core/support/Games.h
@@ -31,7 +33,9 @@ add_executable(core_tests
     core/LeakScanTests.cpp
     core/OutboxTests.cpp
     core/SeatDriverTests.cpp
+    core/SessionTests.cpp
     core/SettingsTests.cpp
+    core/SoloTests.cpp
     core/TableTests.cpp
 )
 target_include_directories(core_tests PRIVATE core)
@@ -50,6 +54,7 @@ add_executable(app_tests
     app/TestSupport.cpp
     app/SpikeController.h
     app/SpikeController.cpp
+    app/GameTests.cpp
     app/OptionsTests.cpp
     app/ServerTests.cpp
     app/SpikeTests.cpp

@@ -6,12 +6,13 @@ namespace whist::test
 {
 
 ScriptedHuman::ScriptedHuman(Recorder& recorder, MemberId member, Answerer answer, Behaviour behaviour,
-                             OnPrompt onPrompt)
+                             OnPrompt onPrompt, Continuer onHeld)
     : recorder_(recorder),
       member_(member),
       answer_(std::move(answer)),
       behaviour_(behaviour),
       onPrompt_(std::move(onPrompt)),
+      onHeld_(std::move(onHeld)),
       thread_([this] { run(); })
 {
 }
@@ -109,6 +110,17 @@ void ScriptedHuman::handle(const Json::Value& message)
             over_ = true;
             changed_.notify_all();
         }
+    }
+
+    if(type == "held")
+    {
+        {
+            std::lock_guard lock(mutex_);
+            counts_.holds++;
+        }
+        if(onHeld_)
+            onHeld_(message["round"].asUInt());
+        return;
     }
 
     if(type != "prompt")

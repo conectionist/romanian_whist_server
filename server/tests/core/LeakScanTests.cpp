@@ -29,7 +29,8 @@ struct LeakGame
 };
 
 // Plays one game with scripted humans at `humans` and a watcher, and returns the whole log. Every
-// so often a human reloads while the game waits for them.
+// so often a human reloads while the game waits for them. Every other game waits after each round,
+// so the syncs taken then carry the hold.
 std::vector<test::Entry> play(const LeakGame& spec)
 {
     test::Recorder recorder;
@@ -38,6 +39,7 @@ std::vector<test::Entry> play(const LeakGame& spec)
     Settings settings = test::tableSettings(spec.seats, spec.humans, Level::Random);
     settings.structure = spec.structure;
     settings.allOneCardForehead = spec.allOneCardForehead;
+    settings.waitAfterRound = spec.seed % 2 == 0;
 
     std::vector<std::optional<MemberId>> seatMembers(spec.seats);
     std::vector<Viewer> viewers;
@@ -73,6 +75,11 @@ std::vector<test::Entry> play(const LeakGame& spec)
                     run->sendSync(watcher, std::nullopt, TableView{});
                 }
                 return false;
+            },
+            [&run, member, seat](unsigned int round)
+            {
+                run->sendSync(member, seat, TableView{});
+                run->continueRound(round);
             }));
     }
 

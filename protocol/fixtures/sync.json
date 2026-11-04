@@ -288,7 +288,7 @@
       0
     ]
   },
-  "seq" : 314,
+  "seq" : 323,
   "snapshot" : 
   {
     "active" : 0,
@@ -371,6 +371,7 @@
     "code" : "6BR92T",
     "host" : 0,
     "mode" : "solo",
+    "paused" : false,
     "seats" : 
     [
       {
@@ -426,7 +427,7 @@
       ],
       "seed" : 7,
       "structure" : "1-8-1",
-      "waitAfterRound" : false
+      "waitAfterRound" : true
     },
     "state" : "playing"
   },

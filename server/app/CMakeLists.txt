@@ -4,8 +4,8 @@ add_library(whist_app STATIC
     ServerOptions.cpp
     Server.h
     Server.cpp
-    EchoController.h
-    EchoController.cpp
+    GameController.h
+    GameController.cpp
 )
 
 target_include_directories(whist_app PUBLIC ${PROJECT_SOURCE_DIR}/server)

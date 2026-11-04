@@ -12,6 +12,10 @@ namespace whist
 // the main loop once every listener accepts connections.
 void configureApp(const ServerOptions& options, std::function<void()> onListening = {});
 
+// Ends every game and joins its thread, then quits Drogon. Every way out of app().run() goes
+// through here: a game that sent after quit() would reach an I/O loop that no longer exists.
+void stopApp();
+
 } // namespace whist
 
 #endif

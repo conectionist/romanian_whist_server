@@ -42,9 +42,17 @@ struct Entry
 class Recorder
 {
 public:
-    // A connection whose messages go into this log. Posting only records, as a real one only
-    // queues.
+    // A connection whose messages go into this log under `member`, which only names the log: a
+    // session's connection can be logged under any number. Posting only records, as a real one
+    // only queues.
     std::shared_ptr<Connection> connect(MemberId member);
+
+    // How many messages had been logged under `member` when one of its connections was closed, or
+    // nothing if none was.
+    std::optional<std::size_t> closedAfter(MemberId member) const;
+
+    // Waits until a connection logged under `member` is closed.
+    bool waitForClose(MemberId member, std::chrono::milliseconds timeout);
 
     void mark(Mark mark);
 
@@ -60,11 +68,13 @@ public:
 
 private:
     void record(MemberId member, std::string text);
+    void recordClose(MemberId member);
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;
     std::vector<Entry> entries_;
     std::map<MemberId, std::vector<std::size_t>> byMember_;
+    std::map<MemberId, std::size_t> closedAfter_;
 };
 
 // Parses one line of JSON, or fails the test.

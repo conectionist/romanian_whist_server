@@ -121,7 +121,7 @@ Registry::Created Registry::createSolo(MemberId member, const Settings& settings
         if(record == members_.end())
             return {nullptr, ErrorCode::NotFound, {}};
         if(!record->second.table.empty())
-            return {nullptr, ErrorCode::BadMessage, "table"};
+            return {nullptr, ErrorCode::Illegal, {}};
 
         std::optional<unsigned int> seat;
         for(unsigned int i = 0 ; i < settings.seats.size() ; i++)

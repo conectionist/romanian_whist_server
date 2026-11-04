@@ -2,12 +2,77 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Romanian Whist server</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Romanian Whist: debug table</title>
+<link rel="stylesheet" href="debug.css">
+<script type="module" src="debug.js"></script>
 </head>
 <body>
-<h1>Romanian Whist server</h1>
-<p>The server is running. The game's page is built in
-<a href="https://github.com/conectionist/romanian_whist_web">romanian_whist_web</a>: set
-<code>document_root</code> to its <code>dist/</code> folder to serve it here.</p>
+<header>
+  <h1>Romanian Whist: debug table</h1>
+  <p>Status: <output id="status">connecting</output></p>
+  <p class="note">A plain page for trying the server. The game's real page is built in
+  <a href="https://github.com/conectionist/romanian_whist_web">romanian_whist_web</a>: set
+  <code>document_root</code> to its <code>dist/</code> folder to serve it here.</p>
+</header>
+
+<section id="setup" hidden>
+  <h2>New solo game</h2>
+  <p>
+    <label for="preset">Preset</label>
+    <select id="preset"></select>
+  </p>
+  <p>
+    <label for="settings">Settings (the protocol's <code>settings</code>, editable)</label><br>
+    <textarea id="settings" rows="18" cols="80" spellcheck="false"></textarea>
+  </p>
+  <p><button id="start" type="button">Start</button></p>
+</section>
+
+<section id="table" hidden>
+  <h2>Table <span id="code"></span></h2>
+  <p id="summary"></p>
+  <div class="controls">
+    <button id="pause" type="button">Pause</button>
+    <label for="speed">Bot speed</label>
+    <select id="speed">
+      <option value="0">0 (slow)</option>
+      <option value="1">1</option>
+      <option value="2">2 (normal)</option>
+      <option value="3">3</option>
+      <option value="4">4 (instant)</option>
+    </select>
+    <label><input id="wait" type="checkbox"> Wait for me after each round</label>
+    <button id="again" type="button" hidden>Play again</button>
+    <button id="leave" type="button">Leave</button>
+  </div>
+
+  <div id="held" class="box" hidden>
+    <p id="heldText"></p>
+    <button id="continue" type="button">Continue</button>
+  </div>
+
+  <div id="prompt" class="box" hidden>
+    <p id="promptText"></p>
+    <div id="choices"></div>
+  </div>
+
+  <h3>Snapshot</h3>
+  <pre id="snapshot"></pre>
+
+  <h3>Last trick</h3>
+  <pre id="lastTrick"></pre>
+
+  <h3>Rounds</h3>
+  <pre id="history"></pre>
+
+  <h3>Events</h3>
+  <ol id="events" reversed></ol>
+</section>
+
+<section>
+  <h3>Errors</h3>
+  <ol id="errors" reversed></ol>
+</section>
 </body>
 </html>

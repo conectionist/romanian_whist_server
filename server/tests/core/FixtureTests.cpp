@@ -1,7 +1,9 @@
 #include "core/Codec.h"
 #include "core/GameRun.h"
 #include "core/Registry.h"
+#include "core/Service.h"
 
+#include "support/Client.h"
 #include "support/Fixtures.h"
 #include "support/Games.h"
 #include "support/Recorder.h"
@@ -43,46 +45,59 @@ void keepFirsts(const std::vector<Json::Value>& messages, Samples& samples)
         samples.try_emplace(sampleName(message), message);
 }
 
-// A seeded solo game: one human, who reloads once and sends one illegal answer.
+// A seeded solo game, played through a session as a browser plays it: one human, who waits after
+// each round, reloads once and sends one illegal answer.
 void soloGame(Samples& samples)
 {
     test::Recorder recorder;
-    Outbox outbox;
 
-    RegistryOptions options;
-    options.table.instantFloor = milliseconds(0);
-    options.table.threadNiceness = 0;
-    options.random = [random = std::mt19937_64(2026)]() mutable { return random(); };
-    Registry registry(outbox, options);
+    ServiceOptions options;
+    options.registry.table.instantFloor = milliseconds(0);
+    options.registry.table.threadNiceness = 0;
+    options.registry.random = [random = std::mt19937_64(2026)]() mutable { return random(); };
+    options.version = "0.1.0";
+    options.commit = "0123abc";
+    const auto service = std::make_shared<Service>(std::move(options));
 
-    const Registry::NewMember ana = registry.newMember();
-    outbox.attach(ana.id, recorder.connect(ana.id));
+    constexpr MemberId tab = 1;
+    test::Client client(service, recorder, tab);
+    client.hello();
+    const MemberId ana = *client.member();
 
     Settings settings = test::tableSettings(3, {0}, Level::Cyborg);
     settings.seed = 7;
+    settings.waitAfterRound = true;
 
-    std::shared_ptr<Table> table;
     int prompts = 0;
     const auto onPrompt = [&](const Json::Value& prompt)
     {
         prompts++;
         if(prompts == 30)
-            table->sync(ana.id);
+            service->registry().tableOf(ana)->sync(ana);
         if(prompts == 12)
         {
-            table->answer(ana.id, Answer{PromptKind::Bet, prompt["id"].asUInt64(), 99});
+            Json::Value bet = test::typed("bet");
+            bet["prompt"] = prompt["id"];
+            bet["value"] = 99;
+            client.send(bet);
             return true;
         }
         return false;
     };
 
-    table = registry.createSolo(ana.id, settings).table;
-    REQUIRE(table);
-    test::ScriptedHuman human(recorder, ana.id, [&](const Answer& answer) { table->answer(ana.id, answer); },
-                              test::Behaviour::Good, onPrompt);
+    Json::Value create = test::typed("createSolo");
+    create["settings"] = encodeSettings(settings);
+    client.send(create);
+
+    test::ScriptedHuman human(recorder, tab, client.answerer(), test::Behaviour::Good, onPrompt, client.continuer());
     REQUIRE(human.waitUntilOver(patience));
     CHECK(human.problems().empty());
-    keepFirsts(recorder.messagesTo(ana.id), samples);
+
+    // The sync that answers hello is for a member at no table; the one taken mid-game is the sample.
+    const std::vector<Json::Value> messages = recorder.messagesTo(tab);
+    REQUIRE(messages.size() > 2);
+    samples.try_emplace("welcome", messages[0]);
+    keepFirsts(std::vector<Json::Value>(messages.begin() + 2, messages.end()), samples);
 }
 
 // Online, with a turn timer the human never beats.
@@ -146,15 +161,6 @@ TEST_CASE("Every message the server sends has a fixture, and it is up to date", 
     soloGame(samples);
     timedOutGame(samples);
     stoppedGame(samples);
-
-    // Not yet sent by any game: a welcome answers hello, and a hold is an online round's end.
-    Json::Value welcome = welcomeMessage("q2Jd8m0FzR3kXw7LbY1vTg", 1, "0.1.0", "0123abc");
-    welcome["seq"] = 1;
-    samples["welcome"] = welcome;
-
-    Json::Value held = heldMessage(HoldView{7, {0, 2}, milliseconds(30000)});
-    held["seq"] = 812;
-    samples["held"] = held;
 
     const std::vector<std::string> expected{
         "welcome", "tableState", "sync", "held", "error",

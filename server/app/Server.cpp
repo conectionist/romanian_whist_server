@@ -1,7 +1,8 @@
 #include "app/Server.h"
 
-#include "app/EchoController.h"
+#include "app/GameController.h"
 #include "core/BuildInfo.h"
+#include "core/Service.h"
 
 #include <drogon/drogon.h>
 
@@ -19,6 +20,13 @@ namespace whist
 
 namespace
 {
+
+// Made by configureApp(), and shut down by stopApp() before Drogon's loops go.
+std::shared_ptr<Service>& service()
+{
+    static std::shared_ptr<Service> instance;
+    return instance;
+}
 
 // Set from the signal handler, so it must stay lock-free. A timer on the main loop acts on it.
 std::atomic<bool> stopRequested{false};
@@ -64,7 +72,7 @@ void watchForStop(std::chrono::milliseconds delay)
 
         stopping = true;
         LOG_INFO << "shutting down";
-        loop->runAfter(delay, [] { drogon::app().quit(); });
+        loop->runAfter(delay, [] { stopApp(); });
     });
 }
 
@@ -108,6 +116,10 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     const std::filesystem::path uploads = std::filesystem::temp_directory_path()
                                         / ("whist_server-uploads-" + std::to_string(::getuid()));
 
+    ServiceOptions serviceOptions;
+    serviceOptions.registry.table.instantFloor = options.instantFloor;
+    service() = std::make_shared<Service>(std::move(serviceOptions));
+
     drogon::app()
         .setLogLevel(toLogLevel(options.logLevel))
         .addListener(options.address, options.port)
@@ -118,7 +130,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setClientMaxBodySize(maxRequestBody)
         .setThreadNum(options.ioThreads)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
-        .registerController(std::make_shared<EchoController>(options.pingInterval))
+        .registerController(std::make_shared<GameController>(service(), options.pingInterval))
         .disableSigtermHandling()
         .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, onListening = std::move(onListening)]
         {
@@ -132,6 +144,13 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         });
 
     installStopHandlers();
+}
+
+void stopApp()
+{
+    if(service())
+        service()->shutdown();
+    drogon::app().quit();
 }
 
 } // namespace whist

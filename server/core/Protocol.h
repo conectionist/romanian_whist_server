@@ -36,7 +36,8 @@ enum class ErrorCode
     StalePrompt,
     Illegal,
     RateLimited,
-    Draining
+    Draining,
+    OpenElsewhere
 };
 
 std::string_view errorName(ErrorCode code);
@@ -281,13 +282,21 @@ struct TableView
     Settings settings;
     std::vector<TableSeatView> seats;
     std::optional<WaitingFor> waitingFor;
+
+    // Solo only.
+    bool paused = false;
 };
 
 struct HoldView
 {
+    // 0-based, like a round result's index.
     unsigned int round = 0;
+
+    // The seats whose Continue is awaited. Empty in a watched solo game, which its watcher continues.
     std::vector<unsigned int> waitingFor;
-    std::chrono::milliseconds deadline{0};
+
+    // None in solo, which waits for as long as it takes.
+    std::optional<std::chrono::milliseconds> deadline;
 };
 
 } // namespace whist
