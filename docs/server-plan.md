@@ -1,8 +1,8 @@
 # Romanian Whist online: the server's implementation plan
 
 > **Status: phases 0, 1 and 2 are complete (2026-11-03). Engine 5.1.0 carries phase 0. This
-> repository's skeleton is phase 1, and its core, `server/core`, is phase 2. Phases 3 to 11 are
-> not built yet.**
+> repository's skeleton is phase 1, and its core, `server/core`, is phase 2. Phase 3, solo end to
+> end, is built and awaits the owner's approval. Phases 4 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1352,6 +1352,91 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - a whole solo game can be played in a browser;
   - a reload mid-trick resumes it;
   - a watched game of computer players runs to the end.
+
+**Outcome** (branch `web/phase-3-solo`, PR #6, commit `b36a045`):
+
+- **The owner's choices** (2026-11-03 and 04):
+  - the branch name;
+  - the browser check is done by hand, in headless Chromium with screenshots, rather than by a
+    Playwright test in this repository, which has no Node since the page moved out;
+  - after the review: fix 1 and 3 to 7, leave 2 to phases 5 and 9, no second cold review, and one
+    `tsan` run.
+- **Built.**
+  - **In `server/core`, still with no Drogon:**
+    - **A `Session` per connection,** which takes `hello` first and once, finds or makes the member
+      behind a token, and handles `createSolo`, answers, pause and resume, `updateSettings`,
+      `continue`, `startGame` and leaving a solo table.
+    - **A `Service`,** which owns the `Outbox` and the `Registry` and shuts both down: every game
+      joined, then nothing more sent.
+    - **The `Outbox` numbers each connection on its own,** closes connections, and stops for good at
+      shutdown.
+    - **Pause and "wait after each round" share one hold** in the publisher's rest, as in the
+      desktop's `pace()`. A pause lands after a computer's bid, before its card, or on a finished
+      trick or round. A new speed applies to the beat under way.
+  - **In `server/app`:**
+    - **`GameController` at `/ws`** replaces the echo. Its `WsConnection` holds Drogon's connection
+      weakly and always queues its sends on the connection's own loop.
+    - **`stopApp()`** joins every game thread before `app().quit()` (§4.6, rule 7). The SIGTERM
+      timer and the tests both stop through it.
+    - **`instant_floor_ms`** sets the shortest computer beat.
+  - **`server/www/`:** a plain debug page. Presets fill an editable settings box; the page shows
+    the snapshot as text, with a button for each legal bid and card, pause, speed, the round wait,
+    Continue, Play again and Leave.
+  - **`PROTOCOL.md`** covers all of this. The `welcome` and `held` fixtures come from a real game
+    now.
+- **Tests:** 21 new core tests, 60 in all, and 5 new app tests in place of the echo's, 15 in all.
+  CTest runs 76.
+  - **Core:** the session's rules; two tabs racing for one token; fifty reconnects during a game,
+    each starting with its `welcome` and with nothing after its close; a whole solo game through a
+    session, and Play again at once; a reload mid-trick; a watched game, its watcher reloading;
+    pause; the round wait; live speed and settings; leaving mid-game. Closing a game while paused
+    and during a hold joins within a second. The leak scan goes through holds.
+  - **App,** over the real socket: `hello`, a watched game, a solo game, a reload mid-trick, a
+    second tab taking over, and SIGTERM with two games running.
+  - **The browser,** by hand: the debug page played a 3-seat 8-1-8 game to the end, through 23 holds
+    and a pause, with no page errors. A reload mid-trick brought back the same snapshot, prompt and
+    last trick, and a watched game ran to its end.
+- **Where the build departs from the plan, or found what it did not say:**
+  - **`openElsewhere`,** a new error code. A second tab with the same token takes the member over,
+    and the older is told why and closed (§5.5). A page that gets it should not reconnect by
+    itself.
+  - **`seq` counts per connection,** from before `hello`, and the `welcome` is always first.
+  - **A `sync` follows every `welcome`,** with `table: null` at no table, so a page knows to wait.
+  - **`tableState.paused`,** and **`held.deadline: null`** in solo, which waits as long as it
+    takes. In a watched game `held.waitingFor` is empty, and the watcher continues.
+  - **Errors go back on the connection that caused them.** The one exception is the game's
+    `illegal` for an invalid answer, which goes to the member's connection at that moment.
+  - **A table silences a game it lets go of,** so a closed table's `tableState` is its last message,
+    and leaving mid-game then starting again cannot mix two games' messages.
+  - **A table reads as finished once `gameOver` is out,** so Play again right after it is not
+    refused. No `tableState` is sent for the game's end; the `gameOver` event is it.
+  - **The desktop's pause, ported as it is:** answers are taken while paused, and the game holds at
+    its next rest. Turning the wait off leaves a hold already on.
+  - **Solo `leaveTable` is built here,** though §13 puts Leave table in phase 5. Without it, a
+    player could not start a game with other settings.
+  - **The fifth `badMessage` closes a connection** (§6.8's "several"), and **"already at a table"
+    is `illegal`,** not `badMessage`.
+  - **The commit in `welcome`** is recorded when CMake configures, so it can lag behind. Phase 9's
+    `/version` makes it exact.
+- **Left for later phases:**
+  - **Phases 5 and 9: nothing yet removes abandoned solo games or caps them.** A member is never
+    forgotten, a solo game left on a prompt or a pause keeps its thread for good, and there is no
+    limit on connections or running games. The cold review rated this severity 2. **The server
+    must not be public before the reaper and the limits are built.**
+  - **Phase 5:** the hold while a solo player is away, and its 30 minutes.
+  - **Phase 6:** the page's echo test changes when its submodule moves here.
+- **Reviews.**
+  - **The cold review,** of the whole branch, found 7 problems, none above severity 2, and no race,
+    deadlock or leaked card. The worst was that the game-over flag was set just after `gameOver`
+    was sent, so a Play again in that moment could be refused. The owner chose my recommendation:
+    - fix 1 and 3 to 7;
+    - leave 2 (no reaper, no limits) to phases 5 and 9.
+  - **The owner chose to skip a second cold review** of the fixes.
+- **Builds and CI.**
+  - **`default` and `release`** (warnings as errors) pass 76 of 76 at `b36a045`.
+  - **`tsan`,** one run with the owner's leave, passes 76 of 76 at `b36a045`. A race report would
+    have failed its test, the server spawned by the SIGTERM test included.
+  - **CI** is green at `ec17cc3` and at `b36a045`.
 
 ### Phase 4: online tables — M
 
