@@ -50,8 +50,8 @@ The names and portraits players may have are in [`catalogues/`](catalogues/).
 - **Two names clash** when they match ignoring case, width (`Ａｎａ` is `Ana`) and invisible
   characters, with Romanian's cedilla letters counted as its comma-below ones (`Ştefan` is
   `Ștefan`). Names at a table may not clash.
-- A name may not contain "LowRisk" or "Ducking", in any case or width, unless it is a computer
-  player of that kind: the Reckoner takes any seat so named for one.
+- A name may not contain "LowRisk" or "Ducking", in any case or width, unless it is a `low-risk`
+  or `ducking` computer player's: the Reckoner takes any seat so named for a deterministic player.
 - `gender`: `female` or `male`.
 - `avatar`: an `id` from [`catalogues/avatars.json`](catalogues/avatars.json) that suits the seat. A
   person's must be kept for no level (no `strategy`) and be for their gender, or for `any`. A
@@ -87,7 +87,7 @@ The names and portraits players may have are in [`catalogues/`](catalogues/).
 | `waitAfterRound` | `false` | Online, the round hold |
 | `seed` | none | Solo only: a fixed deal. Online it is refused, since a seed is the whole deal |
 | `replacement` | Online: `reckoner-beta` | Online only: the computer player that stands in for a human |
-| `turnTimer` | Online: `60000` | Online only: how long a person's turn may take, at least 10000, or `0` for no timer |
+| `turnTimer` | Online: `60000` | Online only: how long a person's turn may take, 10000 to 3600000, or `0` for no timer |
 
 `null` counts as absent. Names may not clash (see [Profile](#profile)), and each seat's portrait
 must suit it.
@@ -219,9 +219,12 @@ game waits for `continue {round}`.
 ```
 
 - `presence`: `here` or `away`, whether the person's connection is open, sent again whenever it
-  changes. `replaced` comes with replacement, which is not built yet.
+  changes. `replaced` comes with the grace period, which is not built yet.
 - `paused`: whether a solo game is paused. Always `false` online, and when no game is on.
 - `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the table waits for an away player's turn.
+  Not sent yet: it comes with the grace period. Until then the table waits for an away player's
+  turn as for anyone's, up to the turn timer on each of their moves, and for as long as it takes
+  with `turnTimer: 0`; nobody can leave a table while its game is on.
 - `state` turns to `finished` only in the next `tableState`; a game's end is its `gameOver` event.
 - **A closed table's `tableState` is the last message from it.** Nothing of its game follows.
 

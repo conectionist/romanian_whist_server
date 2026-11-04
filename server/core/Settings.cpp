@@ -87,8 +87,8 @@ std::optional<SettingsError> checkPacingAndRules(const Settings& settings, Mode 
     if(mode == Mode::Online && settings.seed)
         return SettingsError{"seed"};
 
-    // A turn that times out is played by the seat's computer player, so a timer needs one. Online,
-    // 0 is no timer; a short one would let the computer player make every move.
+    // A turn that times out is played by the seat's computer player, so a timer needs one. A short
+    // one would let the computer player make every move.
     if(settings.turnTimer && settings.turnTimer->count() != 0 &&
        (!settings.replacement || *settings.turnTimer < minTurnTimer))
         return SettingsError{"turnTimer"};

@@ -447,6 +447,16 @@ TEST_CASE("Online, three people and three computer players play a game to the en
     {
         const auto messages = online.recorder.messagesTo(label);
         checkShapes(messages);
+
+        // The table's default turn timer reaches every person's prompt.
+        for(const Json::Value& message : messages)
+        {
+            if(message["type"] != "prompt")
+                continue;
+            REQUIRE(message["deadline"].isIntegral());
+            CHECK(message["deadline"].asInt64() > 0);
+            CHECK(message["deadline"].asInt64() <= 60000);
+        }
         const auto over = std::ranges::find_if(messages, [](const Json::Value& m)
         {
             return m["type"] == "game" && m["event"]["kind"] == "gameOver";
@@ -523,7 +533,9 @@ TEST_CASE("Online, nothing in the lobby may change while a game is on, and nobod
     settings.turnTimer = std::chrono::milliseconds(0);
     online.create(1, settings, "Ana");
     online.ask(2, online.join("Bea"), ofType("sync"));
-    online.ask(1, test::typed("startGame"), [](const Json::Value& m) { return m["type"] == "prompt"; });
+    const Json::Value waiting =
+        online.ask(1, test::typed("startGame"), [](const Json::Value& m) { return m["type"] == "prompt"; });
+    CHECK(waiting["deadline"].isNull());
 
     Json::Value rename = test::typed("updateProfile");
     rename["name"] = "Anca";
@@ -538,6 +550,10 @@ TEST_CASE("Online, nothing in the lobby may change while a game is on, and nobod
     CHECK(online.refusal(2, test::typed("leaveTable"))["code"] == "illegal");
     CHECK(online.refusal(3, online.join("Cora"))["code"] == "tableFull");
     CHECK(online.table(1)["state"] == "playing");
+
+    // With no timer, nothing closed the prompt in all that time.
+    for(const Json::Value& message : online.recorder.messagesTo(1))
+        CHECK(message["type"] != "promptClosed");
 }
 
 TEST_CASE("Online, a tab that closes during a hold is no longer waited for; a replaced one still is",

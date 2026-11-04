@@ -82,8 +82,7 @@ struct Settings
     // Solo only: a seed is the whole deal.
     std::optional<std::uint32_t> seed;
 
-    // Online only. Who plays a human's seat while they cannot, and how long a turn may take; a turn
-    // timer of 0 is none.
+    // Online only. Who plays a human's seat while they cannot, and how long a turn may take.
     std::optional<Level> replacement;
     std::optional<std::chrono::milliseconds> turnTimer;
 
