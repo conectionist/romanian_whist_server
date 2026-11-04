@@ -26,6 +26,7 @@ add_executable(core_tests
     core/support/ServerMessages.h
     core/support/ServerMessages.cpp
     core/CardsTests.cpp
+    core/CatalogueTests.cpp
     core/CodecTests.cpp
     core/EngineTests.cpp
     core/FixtureTests.cpp

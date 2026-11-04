@@ -6,7 +6,7 @@
   "seats" : 
   [
     {
-      "avatar" : "test-face",
+      "avatar" : "woman-long-red-hair",
       "gender" : "female",
       "kind" : "human",
       "name" : "Ana",
@@ -14,14 +14,14 @@
       "you" : true
     },
     {
-      "avatar" : "test-face",
+      "avatar" : "man-dark-hair-beard",
       "gender" : "male",
       "kind" : "computer",
       "level" : "cyborg",
       "name" : "Bogdan"
     },
     {
-      "avatar" : "test-face",
+      "avatar" : "woman-long-red-hair",
       "gender" : "female",
       "kind" : "computer",
       "level" : "cyborg",
@@ -37,20 +37,20 @@
     "seats" : 
     [
       {
-        "avatar" : "test-face",
+        "avatar" : "woman-long-red-hair",
         "gender" : "female",
         "kind" : "human",
         "name" : "Ana"
       },
       {
-        "avatar" : "test-face",
+        "avatar" : "man-dark-hair-beard",
         "gender" : "male",
         "kind" : "computer",
         "level" : "cyborg",
         "name" : "Bogdan"
       },
       {
-        "avatar" : "test-face",
+        "avatar" : "woman-long-red-hair",
         "gender" : "female",
         "kind" : "computer",
         "level" : "cyborg",

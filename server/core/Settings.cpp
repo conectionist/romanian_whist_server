@@ -1,5 +1,7 @@
 #include "core/Settings.h"
 
+#include "core/Catalogue.h"
+
 #include <algorithm>
 #include <array>
 #include <set>
@@ -35,7 +37,9 @@ bool isValidGender(std::string_view gender)
     return gender == "female" || gender == "male";
 }
 
-bool isValidAvatar(std::string_view avatar)
+} // namespace
+
+bool isValidAvatarId(std::string_view avatar)
 {
     if(avatar.empty() || avatar.size() > 40)
         return false;
@@ -45,8 +49,6 @@ bool isValidAvatar(std::string_view avatar)
         return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
     });
 }
-
-} // namespace
 
 std::string_view levelName(Level level)
 {
@@ -104,7 +106,9 @@ std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
             return SettingsError{"name"};
         if(!isValidGender(profile.gender))
             return SettingsError{"gender"};
-        if(!isValidAvatar(profile.avatar))
+        const Catalogue& catalogue = Catalogue::get();
+        if(seat.kind == SeatKind::Human ? !catalogue.suitsHuman(profile.avatar, profile.gender)
+                                        : !catalogue.suitsComputer(profile.avatar, profile.gender, *seat.level))
             return SettingsError{"avatar"};
 
         // The engine wants names that differ byte for byte; people want them to differ to the eye.

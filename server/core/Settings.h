@@ -99,8 +99,12 @@ struct SettingsError
 };
 
 // Everything the engine's start() would refuse is refused here, so a game never fails to start on
-// its own thread. A game needs every seat filled, and its names clean: see cleanNames().
+// its own thread. A game needs every seat filled, its names clean (see cleanNames()), and every
+// portrait one the catalogue gives that seat.
 std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode);
+
+// The form of a catalogue id: lower-case letters, digits and '-', at most 40 characters.
+bool isValidAvatarId(std::string_view avatar);
 
 // Cleans every name in place, as cleanName() does, or names the field at fault.
 std::optional<SettingsError> cleanNames(Settings& settings);

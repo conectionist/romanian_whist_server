@@ -7,11 +7,14 @@ const reloadedKey = "whist.debug.reloaded";
 
 const $ = (id) => document.getElementById(id);
 
+// Portraits are catalogue ids (protocol/catalogues/avatars.json), and a person's must suit them.
 const names = ["Ana", "Bogdan", "Cora", "Dan", "Ema", "Filip"];
-const you = { kind: "human", name: "You", gender: "female", avatar: "debug-player" };
+const you = { kind: "human", name: "You", gender: "female", avatar: "woman-long-red-hair" };
 
 function computer(level, i) {
-  return { kind: "computer", level, name: names[i], gender: i % 2 === 0 ? "female" : "male", avatar: "debug-face" };
+  const female = i % 2 === 0;
+  return { kind: "computer", level, name: names[i], gender: female ? "female" : "male",
+           avatar: female ? "woman-long-brown-hair" : "man-hat-mustache" };
 }
 
 const presets = {

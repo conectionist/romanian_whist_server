@@ -5,6 +5,9 @@ add_library(whist_session STATIC
     BuildInfo.cpp
     Cards.h
     Cards.cpp
+    Catalogue.h
+    Catalogue.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp
     Codec.h
     Codec.cpp
     ComputerPlayer.h
@@ -41,6 +44,14 @@ add_library(whist_session STATIC
     Table.cpp
     Wait.h
 )
+
+# The catalogues are compiled in, so the server needs no path to them. Editing one reconfigures.
+set(WHIST_CATALOGUES ${PROJECT_SOURCE_DIR}/protocol/catalogues)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${WHIST_CATALOGUES}/player_names.json ${WHIST_CATALOGUES}/avatars.json)
+file(READ ${WHIST_CATALOGUES}/player_names.json WHIST_PLAYER_NAMES)
+file(READ ${WHIST_CATALOGUES}/avatars.json WHIST_AVATARS)
+configure_file(CatalogueData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp @ONLY)
 
 # The same jsoncpp target Drogon links, so the server never carries two copies.
 find_package(jsoncpp CONFIG REQUIRED)
