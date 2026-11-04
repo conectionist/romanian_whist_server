@@ -43,7 +43,8 @@ Json::Value encodeSettings(const Settings& settings);
 Json::Value encodeRoundResult(const RoundResult& result);
 Json::Value encodeLastTrick(const LastTrick& trick);
 Json::Value encodeTableView(const TableView& view);
-Json::Value encodeHold(const HoldView& hold);
+// A hold's deadline goes out as the milliseconds left at `now`, or null without one.
+Json::Value encodeHold(const HoldView& hold, Clock::time_point now);
 
 // A prompt's deadline goes out as the milliseconds left at `now`, or null without one.
 Json::Value encodePrompt(const Prompt& prompt, Clock::time_point now);
@@ -54,7 +55,7 @@ Json::Value tableStateMessage(const TableView& view);
 Json::Value gameMessage(unsigned int game, const GameEvent& event, Json::Value snapshot);
 Json::Value promptMessage(const Prompt& prompt, Clock::time_point now);
 Json::Value promptClosedMessage(std::uint64_t prompt, bool byYou);
-Json::Value heldMessage(const HoldView& hold);
+Json::Value heldMessage(const HoldView& hold, Clock::time_point now);
 Json::Value errorMessage(ErrorCode code, std::string_view detail = {});
 
 // What a viewer needs to pick a game up where it is, without the engine.

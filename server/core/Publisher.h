@@ -33,7 +33,11 @@ struct Viewer
 class Publisher : public romanian_whist::IGameObserver
 {
 public:
+    // With a hold limit, a game is online: its hold after a round waits only for the humans connected
+    // when it starts, and for no longer than the limit. Without one, as in solo, it waits for as long
+    // as it takes.
     Publisher(unsigned int game, std::vector<Viewer> viewers, Pacing pacing, bool waitAfterRound,
+              std::optional<std::chrono::milliseconds> holdLimit,
               const std::vector<std::unique_ptr<SeatDriver>>& drivers, Outbox& outbox);
 
     void onGameStarted(const romanian_whist::GameEngine& engine) override;
@@ -61,8 +65,13 @@ public:
     // Any thread. A pause lands at the game's next rest and holds it there until resumed.
     void setPaused(bool paused);
 
-    // Any thread. Ends the hold on `round`, if that round is held; anything else changes nothing.
-    void continueRound(unsigned int round);
+    // Any thread. A Continue for `round` from a seat, or from a watcher (no seat). Solo, it ends that
+    // round's hold. Online, it takes the seat off the hold, which ends once nobody is left on it.
+    // Anything else changes nothing.
+    void continueRound(unsigned int round, std::optional<unsigned int> seat);
+
+    // Any thread. Online: the seat's human has gone, so the hold no longer waits for them.
+    void excuse(unsigned int seat);
 
     // Any thread. A new speed applies to the rest under way. The wait applies from the next scored
     // round, so a hold already on stays on.
@@ -99,6 +108,15 @@ private:
     void rest(Rest kind);
     bool computerMoves(romanian_whist::Seat seat) const;
 
+    // With restMutex_ held. Sends the hold as it stands, if it is still on and has been announced,
+    // or announces it when `first`.
+    void sendHoldLocked(unsigned int round, bool first);
+
+    // With restMutex_ held: takes the seat off an online hold, and ends the hold once nobody is left.
+    // True when the hold ended.
+    bool releaseLocked(unsigned int seat);
+    void endHoldLocked();
+
     std::chrono::milliseconds lengthOf(Rest kind) const;
 
     // Sends to every viewer. Called with cacheMutex_ held.
@@ -109,6 +127,7 @@ private:
     const std::vector<std::unique_ptr<SeatDriver>>& drivers_;
     Outbox& outbox_;
     const bool anyHuman_;
+    const std::optional<std::chrono::milliseconds> holdLimit_;
 
     // Guards everything below. The game's messages are posted under it too (Outbox::send only
     // queues), which is what keeps a sync in order with them.
@@ -121,15 +140,22 @@ private:
 
     bool gameOverSent_ = false;
 
-    // Guards everything below, and is never held with cacheMutex_.
+    // Guards everything below. It may be held while cacheMutex_ is taken, to send the hold, and
+    // never the other way round.
     std::mutex restMutex_;
     std::condition_variable restChanged_;
     Pacing pacing_;
     std::uint64_t pacingVersion_ = 0;
     bool waitAfterRound_;
     bool paused_ = false;
-    std::optional<unsigned int> heldRound_;
     bool cancelled_ = false;
+
+    // The hold after a scored round. It is set up before the round's result goes out, so a Continue
+    // sent on seeing the result always counts, and announced just after it.
+    std::optional<unsigned int> heldRound_;
+    bool holdAnnounced_ = false;
+    std::vector<unsigned int> awaited_;
+    std::optional<Clock::time_point> holdDeadline_;
 };
 
 } // namespace whist

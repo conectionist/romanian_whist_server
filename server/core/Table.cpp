@@ -283,7 +283,7 @@ std::optional<ErrorCode> Table::continueRound(MemberId by, unsigned int round)
             return std::nullopt;
         return refused;
     }
-    run_->continueRound(round);
+    run_->continueRound(by, round);
     return std::nullopt;
 }
 

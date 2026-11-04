@@ -430,6 +430,16 @@ Json::Value typed(std::string_view type)
     return message;
 }
 
+Json::Value timeLeft(std::optional<Clock::time_point> deadline, Clock::time_point now)
+{
+    if(!deadline)
+        return Json::nullValue;
+
+    // Rounded up, so a deadline sent at once reads as its whole time.
+    const auto left = std::chrono::ceil<std::chrono::milliseconds>(*deadline - now);
+    return milliseconds(std::max(left, std::chrono::milliseconds(0)));
+}
+
 } // namespace
 
 std::string_view errorName(ErrorCode code)
@@ -749,7 +759,7 @@ Json::Value encodeTableView(const TableView& view)
     return value;
 }
 
-Json::Value encodeHold(const HoldView& hold)
+Json::Value encodeHold(const HoldView& hold, Clock::time_point now)
 {
     Json::Value value(Json::objectValue);
     value["round"] = hold.round;
@@ -757,7 +767,7 @@ Json::Value encodeHold(const HoldView& hold)
     for(unsigned int seat : hold.waitingFor)
         waiting.append(seat);
     value["waitingFor"] = waiting;
-    value["deadline"] = hold.deadline ? milliseconds(*hold.deadline) : Json::Value(Json::nullValue);
+    value["deadline"] = timeLeft(hold.deadline, now);
     return value;
 }
 
@@ -767,14 +777,7 @@ Json::Value encodePrompt(const Prompt& prompt, Clock::time_point now)
     value["id"] = static_cast<Json::UInt64>(prompt.id);
     value["kind"] = prompt.kind == PromptKind::Bet ? "bet" : "play";
 
-    if(prompt.deadline)
-    {
-        // Rounded up, so a prompt sent at once reads as its whole timer.
-        const auto left = std::chrono::ceil<std::chrono::milliseconds>(*prompt.deadline - now);
-        value["deadline"] = milliseconds(std::max(left, std::chrono::milliseconds(0)));
-    }
-    else
-        value["deadline"] = Json::nullValue;
+    value["deadline"] = timeLeft(prompt.deadline, now);
 
     if(prompt.blind)
         value["handSize"] = static_cast<Json::UInt64>(prompt.handSize);
@@ -843,9 +846,9 @@ Json::Value promptClosedMessage(std::uint64_t prompt, bool byYou)
     return message;
 }
 
-Json::Value heldMessage(const HoldView& hold)
+Json::Value heldMessage(const HoldView& hold, Clock::time_point now)
 {
-    Json::Value message = encodeHold(hold);
+    Json::Value message = encodeHold(hold, now);
     message["type"] = "held";
     return message;
 }
@@ -873,7 +876,7 @@ Json::Value syncMessage(const SyncView& sync, Clock::time_point now)
 
     message["lastTrick"] = sync.lastTrick ? encodeLastTrick(*sync.lastTrick) : Json::Value(Json::nullValue);
     message["prompt"] = sync.prompt ? encodePrompt(*sync.prompt, now) : Json::Value(Json::nullValue);
-    message["held"] = sync.held ? encodeHold(*sync.held) : Json::Value(Json::nullValue);
+    message["held"] = sync.held ? encodeHold(*sync.held, now) : Json::Value(Json::nullValue);
     return message;
 }
 

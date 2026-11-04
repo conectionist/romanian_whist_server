@@ -295,8 +295,8 @@ struct HoldView
     // The seats whose Continue is awaited. Empty in a watched solo game, which its watcher continues.
     std::vector<unsigned int> waitingFor;
 
-    // None in solo, which waits for as long as it takes.
-    std::optional<std::chrono::milliseconds> deadline;
+    // When it ends at the latest. None in solo, which waits for as long as it takes.
+    std::optional<Clock::time_point> deadline;
 };
 
 } // namespace whist

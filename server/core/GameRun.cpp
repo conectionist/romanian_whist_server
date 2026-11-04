@@ -85,7 +85,7 @@ GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
       viewers_(viewersOf(setup)),
       drivers_(makeDrivers(setup, outbox)),
       publisher_(setup.game, viewers_, pacingFor(setup.settings.botSpeed, setup.instantFloor),
-                 setup.settings.waitAfterRound, drivers_, outbox)
+                 setup.settings.waitAfterRound, setup.roundHold, drivers_, outbox)
 {
     GameSetup engineSetup;
     for(unsigned int i = 0 ; i < drivers_.size() ; i++)
@@ -178,9 +178,16 @@ void GameRun::setPaused(bool paused)
     publisher_.setPaused(paused);
 }
 
-void GameRun::continueRound(unsigned int round)
+void GameRun::continueRound(MemberId member, unsigned int round)
 {
-    publisher_.continueRound(round);
+    if(const std::optional<Viewer> seen = viewer(member))
+        publisher_.continueRound(round, seen->seat);
+}
+
+void GameRun::excuse(MemberId member)
+{
+    if(const std::optional<Viewer> seen = viewer(member); seen && seen->seat)
+        publisher_.excuse(*seen->seat);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

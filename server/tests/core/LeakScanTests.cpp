@@ -79,7 +79,7 @@ std::vector<test::Entry> play(const LeakGame& spec)
             [&run, member](unsigned int round)
             {
                 run->sendSync(member, TableView{});
-                run->continueRound(round);
+                run->continueRound(member, round);
             }));
     }
 

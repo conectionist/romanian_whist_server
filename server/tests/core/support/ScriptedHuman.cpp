@@ -112,14 +112,34 @@ void ScriptedHuman::handle(const Json::Value& message)
         }
     }
 
+    if(type == "game" || type == "sync")
+    {
+        std::lock_guard lock(mutex_);
+        const Json::Value& snapshot = message["snapshot"];
+        if(snapshot.isObject())
+            seat_ = snapshot["you"].isUInt() ? std::optional<unsigned int>(snapshot["you"].asUInt()) : std::nullopt;
+    }
+
     if(type == "held")
     {
+        // A hold is sent again as others continue; it is continued once, and only when this seat is
+        // awaited, or nobody's is, as for a watcher.
+        const unsigned int round = message["round"].asUInt();
+        bool awaited = message["waitingFor"].empty();
+        bool first = false;
         {
             std::lock_guard lock(mutex_);
-            counts_.holds++;
+            for(const Json::Value& seat : message["waitingFor"])
+                awaited = awaited || (seat_ && seat.asUInt() == *seat_);
+            first = !lastHeld_ || *lastHeld_ != round;
+            if(first)
+            {
+                counts_.holds++;
+                lastHeld_ = round;
+            }
         }
-        if(onHeld_)
-            onHeld_(message["round"].asUInt());
+        if(first && awaited && onHeld_)
+            onHeld_(round);
         return;
     }
 

@@ -31,6 +31,7 @@ add_executable(core_tests
     core/EngineTests.cpp
     core/FixtureTests.cpp
     core/GameRunTests.cpp
+    core/HoldTests.cpp
     core/LeakScanTests.cpp
     core/NamesTests.cpp
     core/OutboxTests.cpp

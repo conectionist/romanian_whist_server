@@ -37,6 +37,10 @@ struct GameRunSetup
 
     std::chrono::milliseconds instantFloor{30};
 
+    // Online only: the hold after a round waits for the humans connected then, at most this long.
+    // None in solo, whose hold waits for as long as it takes.
+    std::optional<std::chrono::milliseconds> roundHold;
+
     // Game threads run below the I/O threads, so a table of Reckoners never slows the server.
     int threadNiceness = 10;
 
@@ -92,10 +96,15 @@ public:
     // gives them now.
     SeatDriver::Submitted submit(MemberId member, const Answer& answer);
 
-    // Any thread. Pause or resume, end the hold on a round, or change the speed and the wait.
+    // Any thread. Pause or resume, or change the speed and the wait.
     void setPaused(bool paused);
-    void continueRound(unsigned int round);
     void setPacing(Pacing pacing, bool waitAfterRound);
+
+    // Any thread. The member's Continue for a held round, from the seat they play in this game.
+    void continueRound(MemberId member, unsigned int round);
+
+    // Any thread. Online: the member has gone, so the hold no longer waits for them.
+    void excuse(MemberId member);
 
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
