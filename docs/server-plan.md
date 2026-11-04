@@ -1528,7 +1528,8 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **`default` and `release`** (warnings as errors) pass 115 of 115 at `ccdfd14`.
   - **`tsan`,** one run with the owner's leave, passes 115 of 115 at `411b39a`, with no report. The
     last fix adds no code that runs on more than one thread.
-  - **CI** is green at `87637db` and at `411b39a`.
+  - **CI** is green at `87637db`, `411b39a` and `7bbfc74`. The run at `ccdfd14` was cancelled when
+    the run at `7bbfc74` started, which has the same code.
 
 ### Phase 5: drops and replacement — M
 
