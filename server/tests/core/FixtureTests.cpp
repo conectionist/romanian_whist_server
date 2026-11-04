@@ -153,6 +153,61 @@ void stoppedGame(Samples& samples)
     }
 }
 
+// An online table made, joined and started step by step, so every message before the first hold has
+// the same seq on every run. The hold's time left is the one thing that varies, so it is pinned.
+void onlineGame(Samples& samples)
+{
+    test::Recorder recorder;
+
+    ServiceOptions options;
+    options.registry.table.instantFloor = milliseconds(0);
+    options.registry.table.threadNiceness = 0;
+    options.registry.random = [random = std::mt19937_64(2027)]() mutable { return random(); };
+    const auto service = std::make_shared<Service>(std::move(options));
+
+    test::Client ana(service, recorder, 1);
+    test::Client bogdan(service, recorder, 2);
+    ana.hello();
+    bogdan.hello();
+
+    Settings settings = test::tableSettings(3, {0, 1}, Level::Cyborg);
+    settings.seats[0] = SeatSetting{};
+    settings.seats[1] = SeatSetting{};
+    settings.waitAfterRound = true;
+
+    Json::Value create = test::typed("createTable");
+    create["settings"] = encodeSettings(settings);
+    create["profile"]["name"] = "Ana";
+    create["profile"]["gender"] = "female";
+    create["profile"]["avatar"] = "woman-long-red-hair";
+    ana.send(create);
+    const std::string code = recorder.messagesTo(1).back()["table"]["code"].asString();
+
+    Json::Value join = test::typed("joinTable");
+    join["code"] = code;
+    join["profile"]["name"] = "Bogdan";
+    join["profile"]["gender"] = "male";
+    join["profile"]["avatar"] = "man-dark-hair-beard";
+    bogdan.send(join);
+    const auto joined = recorder.waitFor(1, [](const Json::Value& m) { return m["type"] == "tableState"; }, patience);
+    REQUIRE(joined);
+    samples.try_emplace("tableState.online", *joined);
+
+    test::ScriptedHuman first(recorder, 1, ana.answerer(), test::Behaviour::Good);
+    test::ScriptedHuman second(recorder, 2, bogdan.answerer(), test::Behaviour::Good);
+    ana.send(test::typed("startGame"));
+
+    auto held = recorder.waitFor(1, [](const Json::Value& m) { return m["type"] == "held"; }, patience);
+    REQUIRE(held);
+    CHECK((*held)["deadline"].asInt64() <= 30000);
+    (*held)["deadline"] = 30000;
+    samples.try_emplace("held.online", *held);
+
+    service->registry().closeTable(code);
+    CHECK(first.waitUntilOver(patience));
+    CHECK(second.waitUntilOver(patience));
+}
+
 } // namespace
 
 TEST_CASE("Every message the server sends has a fixture, and it is up to date", "[fixtures]")
@@ -161,9 +216,10 @@ TEST_CASE("Every message the server sends has a fixture, and it is up to date", 
     soloGame(samples);
     timedOutGame(samples);
     stoppedGame(samples);
+    onlineGame(samples);
 
     const std::vector<std::string> expected{
-        "welcome", "tableState", "sync", "held", "error",
+        "welcome", "tableState", "tableState.online", "sync", "held", "held.online", "error",
         "prompt.bet", "prompt.play", "prompt.bet-blind", "prompt.play-blind",
         "promptClosed.you", "promptClosed.computer",
         "game.gameStarted", "game.roundStarted", "game.betRequested", "game.betPlaced", "game.bettingComplete",

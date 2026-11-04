@@ -26,6 +26,9 @@ struct LeakGame
     romanian_whist::GameStructure structure;
     bool allOneCardForehead;
     std::uint32_t seed;
+
+    // Online: no watcher, and the hold after each round waits for every human's Continue.
+    bool online = false;
 };
 
 // Plays one game with scripted humans at `humans` and a watcher, and returns the whole log. Every
@@ -39,7 +42,9 @@ std::vector<test::Entry> play(const LeakGame& spec)
     Settings settings = test::tableSettings(spec.seats, spec.humans, Level::Random);
     settings.structure = spec.structure;
     settings.allOneCardForehead = spec.allOneCardForehead;
-    settings.waitAfterRound = spec.seed % 2 == 0;
+    settings.waitAfterRound = spec.online || spec.seed % 2 == 0;
+    if(spec.online)
+        settings.replacement = Level::ReckonerBeta;
 
     std::vector<std::optional<MemberId>> seatMembers(spec.seats);
     std::vector<Viewer> viewers;
@@ -48,11 +53,15 @@ std::vector<test::Entry> play(const LeakGame& spec)
         seatMembers[seat] = seat + 1;
         viewers.push_back({seat + 1, seat});
     }
-    viewers.push_back({watcher, std::nullopt});
+    if(!spec.online)
+        viewers.push_back({watcher, std::nullopt});
 
     test::Oracle oracle(recorder, viewers);
     GameRunSetup setup = test::quickGame(settings, seatMembers, spec.seed);
-    setup.watchers = {watcher};
+    if(spec.online)
+        setup.roundHold = patience;
+    else
+        setup.watchers = {watcher};
     setup.firstObservers = {&oracle};
 
     for(const Viewer& viewer : viewers)
@@ -126,6 +135,9 @@ TEST_CASE("No message carries a card its member may not see", "[leak]")
             }
         }
     }
+
+    // Three people and three computer players online, as the phase's own game is played.
+    games.push_back({6, {0, 2, 4}, GameStructure::S_181, false, seed++, true});
 
     std::size_t messages = 0;
     for(const LeakGame& game : games)
