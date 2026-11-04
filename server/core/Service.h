@@ -44,8 +44,8 @@ public:
     void shutdown();
 
     // Called every second or so, on any one thread at a time. Closes the connections nothing has
-    // been heard from since `now` less the pong timeout, and tells their tables they are away. Does
-    // nothing once shut down.
+    // been heard from since `now` less the pong timeout, and tells their tables they are away. Then
+    // every table is reaped. Does nothing once shut down.
     void reap(Clock::time_point now);
 
 private:

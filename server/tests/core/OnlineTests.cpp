@@ -1,203 +1,16 @@
-#include "core/Codec.h"
-#include "core/Service.h"
-
-#include "support/Client.h"
-#include "support/Games.h"
-#include "support/Recorder.h"
-#include "support/ScriptedHuman.h"
-#include "support/ServerMessages.h"
-
-#include <catch2/catch_test_macros.hpp>
-
-#include <map>
-#include <memory>
+#include "support/Online.h"
 
 using namespace whist;
 using std::chrono::milliseconds;
+using test::checkShapes;
+using test::Match;
+using test::Online;
+using test::ofType;
+using test::onlineSettings;
+using test::patience;
+using test::profile;
+using test::quiet;
 
-namespace
-{
-
-const milliseconds patience(60000 * test::slowdown);
-
-// Long enough for a message that is coming to have come.
-const milliseconds quiet(300 * test::slowdown);
-
-using Match = std::function<bool(const Json::Value&)>;
-
-Match ofType(std::string type)
-{
-    return [type](const Json::Value& m) { return m["type"] == type; };
-}
-
-Json::Value profile(const std::string& name, const std::string& gender = "female")
-{
-    Json::Value value(Json::objectValue);
-    value["name"] = name;
-    value["gender"] = gender;
-    value["avatar"] = gender == "female" ? "woman-long-red-hair" : "man-dark-hair-beard";
-    return value;
-}
-
-// `seats` seats: the first `open` open, the rest computer players of `level`.
-Settings tableSettings(unsigned int seats, unsigned int open, Level level = Level::FirstCard)
-{
-    std::vector<unsigned int> humans;
-    for(unsigned int i = 0 ; i < open ; i++)
-        humans.push_back(i);
-    Settings settings = test::tableSettings(seats, humans, level);
-    for(unsigned int i = 0 ; i < open ; i++)
-        settings.seats[i] = SeatSetting{};
-    for(SeatSetting& seat : settings.seats)
-        seat.profile.name = seat.kind == SeatKind::Computer ? "Bot-" + seat.profile.name : seat.profile.name;
-    settings.structure = romanian_whist::GameStructure::S_818;
-    return settings;
-}
-
-// People at an online table, each a browser tab through a session.
-struct Online
-{
-    test::Recorder recorder;
-    std::shared_ptr<Service> service;
-    std::map<MemberId, std::unique_ptr<test::Client>> tabs;
-    std::map<MemberId, std::string> tokens;
-    std::string code;
-
-    explicit Online(milliseconds roundHold = milliseconds(30000))
-    {
-        ServiceOptions options;
-        options.registry.table.instantFloor = milliseconds(0);
-        options.registry.table.threadNiceness = 0;
-        options.registry.table.roundHold = roundHold;
-        service = std::make_shared<Service>(std::move(options));
-    }
-
-    ~Online()
-    {
-        service->shutdown();
-    }
-
-    test::Client& open(MemberId label)
-    {
-        tabs[label] = std::make_unique<test::Client>(service, recorder, label);
-        tokens[label] = tabs[label]->hello()["token"].asString();
-        return *tabs[label];
-    }
-
-    void send(MemberId label, const Json::Value& message)
-    {
-        tabs.at(label)->send(message);
-    }
-
-    std::size_t mark(MemberId label) const
-    {
-        return recorder.messagesTo(label).size();
-    }
-
-    // The first message at or after `from` that matches.
-    std::optional<Json::Value> waitFrom(MemberId label, std::size_t from, const Match& match)
-    {
-        std::size_t cursor = from;
-        while(const std::optional<Json::Value> message = recorder.next(label, cursor, patience))
-        {
-            if(match(*message))
-                return message;
-        }
-        return std::nullopt;
-    }
-
-    // Sends, and returns the first message after it that matches.
-    Json::Value ask(MemberId label, const Json::Value& message, const Match& match)
-    {
-        const std::size_t from = mark(label);
-        send(label, message);
-        const std::optional<Json::Value> answer = waitFrom(label, from, match);
-        REQUIRE(answer);
-        return *answer;
-    }
-
-    // Sends, and returns the error it was refused with, or null when none came.
-    Json::Value refusal(MemberId label, const Json::Value& message)
-    {
-        const std::size_t from = mark(label);
-        send(label, message);
-        std::this_thread::sleep_for(quiet);
-        const auto messages = recorder.messagesTo(label);
-        for(std::size_t i = from ; i < messages.size() ; i++)
-        {
-            if(messages[i]["type"] == "error")
-                return messages[i];
-        }
-        return Json::nullValue;
-    }
-
-    // The table as the member last saw it, from a tableState or a sync.
-    Json::Value table(MemberId label) const
-    {
-        const auto messages = recorder.messagesTo(label);
-        for(auto it = messages.rbegin() ; it != messages.rend() ; ++it)
-        {
-            if((*it)["type"] == "tableState")
-                return *it;
-            if((*it)["type"] == "sync")
-                return (*it)["table"];
-        }
-        return Json::nullValue;
-    }
-
-    void create(MemberId label, const Settings& settings, const std::string& name)
-    {
-        Json::Value message = test::typed("createTable");
-        message["settings"] = encodeSettings(settings);
-        message["profile"] = profile(name);
-        const Json::Value sync = ask(label, message, ofType("sync"));
-        REQUIRE(sync["table"].isObject());
-        code = sync["table"]["code"].asString();
-    }
-
-    Json::Value join(const std::string& name, const std::string& gender = "female")
-    {
-        Json::Value message = test::typed("joinTable");
-        message["code"] = code;
-        message["profile"] = profile(name, gender);
-        return message;
-    }
-
-    Json::Value setSeat(unsigned int seat, std::optional<Level> level)
-    {
-        Json::Value message = test::typed("setSeat");
-        message["seat"] = seat;
-        message["kind"] = level ? "computer" : "open";
-        if(level)
-            message["level"] = std::string(levelName(*level));
-        return message;
-    }
-
-    Json::Value takeSeat(unsigned int seat)
-    {
-        Json::Value message = test::typed("takeSeat");
-        message["seat"] = seat;
-        return message;
-    }
-
-    Json::Value updateSettings(const Json::Value& settings)
-    {
-        Json::Value message = test::typed("updateSettings");
-        message["settings"] = settings;
-        return message;
-    }
-};
-
-void checkShapes(const std::vector<Json::Value>& messages)
-{
-    for(const Json::Value& message : messages)
-    {
-        INFO(message.toStyledString());
-        CHECK(test::shapeError(message).empty());
-    }
-}
-
-} // namespace
 
 TEST_CASE("An online table is made with its maker as host, and joined by its code", "[online]")
 {
@@ -207,7 +20,7 @@ TEST_CASE("An online table is made with its maker as host, and joined by its cod
     online.open(3);
     online.open(4);
 
-    online.create(1, tableSettings(4, 3), "  Ana  ");
+    online.create(1, onlineSettings(4, 3), "  Ana  ");
     const Json::Value made = online.table(1);
     CHECK(made["mode"] == "online");
     CHECK(made["state"] == "lobby");
@@ -259,7 +72,7 @@ TEST_CASE("Online, the lobby's seats, profiles and settings", "[online]")
     Online online;
     online.open(1);
     online.open(2);
-    online.create(1, tableSettings(4, 3), "Ana");
+    online.create(1, onlineSettings(4, 3), "Ana");
     online.ask(2, online.join("Bea"), ofType("sync"));
 
     // The host alone sets seats, and never one a person holds.
@@ -329,7 +142,7 @@ TEST_CASE("Online, leaving opens the seat, passes the host on, and the last one 
     online.open(1);
     online.open(2);
     online.open(3);
-    online.create(1, tableSettings(3, 3), "Ana");
+    online.create(1, onlineSettings(3, 3), "Ana");
     online.ask(2, online.join("Bea"), ofType("sync"));
     online.ask(3, online.join("Cora"), ofType("sync"));
 
@@ -360,7 +173,7 @@ TEST_CASE("Online, presence is sent as people come and go, and not for a replace
     Online online;
     online.open(1);
     online.open(2);
-    online.create(1, tableSettings(3, 2), "Ana");
+    online.create(1, onlineSettings(3, 2), "Ana");
     online.ask(2, online.join("Bea"), ofType("sync"));
 
     std::size_t before = online.mark(1);
@@ -407,7 +220,7 @@ TEST_CASE("Online, three people and three computer players play a game to the en
     for(MemberId label : {1, 2, 3})
         online.open(label);
 
-    Settings settings = tableSettings(6, 4);
+    Settings settings = onlineSettings(6, 4);
     settings.waitAfterRound = true;
     settings.botSpeed = fastestSpeed;
     online.create(1, settings, "Ana");
@@ -472,7 +285,7 @@ TEST_CASE("Online, a finished table is a lobby again, and plays again at the sam
     online.open(1);
     online.open(2);
 
-    Settings settings = tableSettings(3, 2);
+    Settings settings = onlineSettings(3, 2);
     settings.botSpeed = fastestSpeed;
     settings.foreheadAndHidden = false;
     online.create(1, settings, "Ana");
@@ -529,7 +342,7 @@ TEST_CASE("Online, nothing in the lobby may change while a game is on, and nobod
     online.open(3);
 
     // No timer, and nobody answers, so the game waits on its first person.
-    Settings settings = tableSettings(3, 2);
+    Settings settings = onlineSettings(3, 2);
     settings.turnTimer = std::chrono::milliseconds(0);
     online.create(1, settings, "Ana");
     online.ask(2, online.join("Bea"), ofType("sync"));
@@ -541,13 +354,12 @@ TEST_CASE("Online, nothing in the lobby may change while a game is on, and nobod
     rename["name"] = "Anca";
     rename["gender"] = "female";
     rename["avatar"] = "woman-long-red-hair";
-    for(const Json::Value& message : {test::typed("leaveTable"), online.takeSeat(0), online.setSeat(2, Level::Random),
-                                      rename, online.updateSettings(online.table(1)["settings"])})
+    for(const Json::Value& message : {online.takeSeat(0), online.setSeat(2, Level::Random), rename,
+                                      online.updateSettings(online.table(1)["settings"])})
     {
         INFO(message.toStyledString());
         CHECK(online.refusal(1, message)["code"] == "illegal");
     }
-    CHECK(online.refusal(2, test::typed("leaveTable"))["code"] == "illegal");
     CHECK(online.refusal(3, online.join("Cora"))["code"] == "tableFull");
     CHECK(online.table(1)["state"] == "playing");
 
@@ -563,7 +375,7 @@ TEST_CASE("Online, a tab that closes during a hold is no longer waited for; a re
     online.open(1);
     online.open(2);
 
-    Settings settings = tableSettings(3, 2);
+    Settings settings = onlineSettings(3, 2);
     settings.waitAfterRound = true;
     settings.botSpeed = fastestSpeed;
     online.create(1, settings, "Ana");
@@ -617,7 +429,7 @@ TEST_CASE("Online, the turn timer is 60 s unless set, 0 turns it off, and short 
     online.open(2);
 
     // A timer alone is enough: the replacement has its default.
-    Settings settings = tableSettings(3, 2);
+    Settings settings = onlineSettings(3, 2);
     settings.turnTimer = std::chrono::milliseconds(30000);
     online.create(1, settings, "Ana");
     CHECK(online.table(1)["settings"]["turnTimer"] == 30000);
@@ -633,7 +445,7 @@ TEST_CASE("Online, the turn timer is 60 s unless set, 0 turns it off, and short 
     CHECK(online.refusal(1, online.updateSettings(changed))["detail"] == "turnTimer");
 
     Json::Value create = test::typed("createTable");
-    Settings fast = tableSettings(3, 2);
+    Settings fast = onlineSettings(3, 2);
     fast.turnTimer = std::chrono::milliseconds(1);
     create["settings"] = encodeSettings(fast);
     create["profile"] = profile("Bea");

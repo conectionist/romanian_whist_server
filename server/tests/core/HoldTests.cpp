@@ -38,7 +38,7 @@ std::vector<unsigned int> seats(const Json::Value& list)
 }
 
 // An online game of humans at seats 0 to humans - 1, member seat + 1, and computer players after
-// them, waiting after each round. Members in `away` have no connection.
+// them, waiting after each round. Members in `away` have no connection, and no turn of theirs waits.
 struct OnlineGame
 {
     test::Recorder recorder;
@@ -63,12 +63,14 @@ struct OnlineGame
         settings.foreheadAndHidden = false;
         settings.waitAfterRound = true;
         settings.replacement = Level::Random;
-        if(!away.empty())
-            settings.turnTimer = milliseconds(1);
 
         GameRunSetup setup = test::quickGame(settings, members);
         setup.roundHold = hold;
         run = std::make_unique<GameRun>(std::move(setup), outbox);
+
+        // Their grace period is over, so their turns are their computer players'.
+        for(MemberId member : away)
+            run->away(member, Clock::now());
     }
 
     ~OnlineGame()

@@ -17,6 +17,7 @@ add_executable(core_tests
     core/support/Fixtures.cpp
     core/support/Games.h
     core/support/Games.cpp
+    core/support/Online.h
     core/support/Oracle.h
     core/support/Oracle.cpp
     core/support/Recorder.h
@@ -28,6 +29,7 @@ add_executable(core_tests
     core/CardsTests.cpp
     core/CatalogueTests.cpp
     core/CodecTests.cpp
+    core/DropTests.cpp
     core/EngineTests.cpp
     core/FixtureTests.cpp
     core/GameRunTests.cpp

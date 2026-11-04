@@ -62,6 +62,12 @@ void Client::drop()
     session_.closed();
 }
 
+void Client::heard()
+{
+    std::lock_guard lock(mutex_);
+    session_.heard();
+}
+
 MemberId Client::label() const
 {
     return label_;

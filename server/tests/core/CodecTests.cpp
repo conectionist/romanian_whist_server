@@ -82,6 +82,7 @@ TEST_CASE("Every client message decodes", "[codec]")
     decodeAs<Pause>(R"({"type":"pause"})");
     decodeAs<Resume>(R"({"type":"resume"})");
     decodeAs<LeaveTable>(R"({"type":"leaveTable"})");
+    decodeAs<Back>(R"({"type":"back"})");
 }
 
 TEST_CASE("A huge answer stays whole until the seat checks it", "[codec]")

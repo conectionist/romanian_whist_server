@@ -141,9 +141,14 @@ struct LeaveTable
 {
 };
 
+// Takes back a seat a computer player has been playing for the sender.
+struct Back
+{
+};
+
 using ClientMessage = std::variant<Hello, CreateSolo, CreateTable, JoinTable, UpdateProfile, TakeSeat,
                                    SetSeat, UpdateSettings, StartGame, Answer, Continue, Pause, Resume,
-                                   LeaveTable>;
+                                   LeaveTable, Back>;
 
 // ---- server to client ----
 

@@ -53,6 +53,7 @@ void Service::reap(Clock::time_point now)
         if(const std::shared_ptr<Table> table = registry_.tableOf(member))
             table->presenceChanged(member);
     }
+    registry_.reap(now);
 }
 
 } // namespace whist

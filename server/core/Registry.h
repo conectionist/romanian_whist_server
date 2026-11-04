@@ -7,6 +7,7 @@
 #include "core/Settings.h"
 #include "core/Table.h"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -26,6 +27,9 @@ struct RegistryOptions
 
     // 64 random bits a call. Tokens and table codes come from it, so tests can make them fixed.
     std::function<std::uint64_t()> random;
+
+    // A member nobody has been connected as, and who is at no table, is forgotten after this long.
+    std::chrono::milliseconds forgetMember{60 * 60 * 1000};
 };
 
 // Every table and every member the server knows. Its lock comes first: the Registry may take a
@@ -79,6 +83,10 @@ public:
 
     void closeTable(std::string_view code);
 
+    // Called every second or so. Closes tables that have been idle too long, and forgets members who
+    // are at no table and have not been connected for long.
+    void reap(Clock::time_point now);
+
     // Refuses new tables, closes every table, and joins every game thread. Call it before the
     // Outbox's connections are gone.
     void shutdown();
@@ -90,6 +98,9 @@ private:
     {
         std::string token;
         std::string table;
+
+        // Since when the member has been at no table and not connected.
+        std::optional<Clock::time_point> unseenSince{};
     };
 
     std::string newToken();
@@ -100,6 +111,7 @@ private:
 
     Outbox& outbox_;
     const TableOptions tableOptions_;
+    const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();
 
     mutable std::mutex mutex_;

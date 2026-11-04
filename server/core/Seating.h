@@ -4,6 +4,7 @@
 #include "core/Protocol.h"
 #include "core/Settings.h"
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <random>
@@ -20,6 +21,9 @@ struct TableMember
 {
     MemberId id = 0;
     std::optional<unsigned int> seat;
+
+    // When their connection went, while it stays gone.
+    std::optional<Clock::time_point> awaySince{};
 };
 
 // Who sits where at a table, who hosts it, and the rules for changing them. Plain data: a table
@@ -42,6 +46,30 @@ public:
 
     // Solo: the speed and the wait, which may change at any time.
     void setPacing(int botSpeed, bool waitAfterRound);
+
+    std::optional<Clock::time_point> awaySince(MemberId member) const;
+
+    // Records when the member's connection went, or that it is back.
+    void setAway(MemberId member, std::optional<Clock::time_point> since);
+
+    // The first member after the host, in the order they came, for whom `here` holds takes over
+    // hosting. False when there is no one.
+    bool passHost(const std::function<bool(MemberId)>& here);
+
+    // ---- Members who left a game under way ----
+
+    // The member leaves a game under way, but their seat stays as it is, with a computer player in
+    // it. They are no longer a member. A host who leaves hands over as in leave().
+    void depart(MemberId member);
+
+    bool hasDeparted() const;
+    bool departed(MemberId member) const;
+
+    // The member of a game still under way comes back to the seat they left.
+    void rejoin(MemberId member);
+
+    // The game is over: the seats of those who left open.
+    void openDeparted();
 
     // ---- Online, between games. Each changes nothing when it refuses. ----
 
@@ -80,6 +108,7 @@ private:
 
     Settings settings_;
     std::vector<TableMember> members_;
+    std::vector<TableMember> departed_;
     MemberId host_;
 };
 

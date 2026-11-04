@@ -81,6 +81,12 @@ std::optional<RunOutcome> Table::outcome() const
     return run_->outcome();
 }
 
+std::size_t Table::scoredRounds() const
+{
+    std::lock_guard lock(mutex_);
+    return run_ ? run_->publisher().history().size() : 0;
+}
+
 TableState Table::stateLocked() const
 {
     // Nothing on the game thread calls back into the table, so a game's end is read off its run.
@@ -101,6 +107,11 @@ TableView Table::viewLocked(MemberId member) const
     view.settings = settings;
     view.paused = paused_ && view.state == TableState::Playing;
 
+    // Only a game under way has seats a computer player took over.
+    const bool playing = run_ && view.state == TableState::Playing;
+    if(playing && mode_ == Mode::Online)
+        view.waitingFor = run_->waitingFor();
+
     for(unsigned int i = 0 ; i < settings.seats.size() ; i++)
     {
         const SeatSetting& seat = settings.seats[i];
@@ -111,11 +122,13 @@ TableView Table::viewLocked(MemberId member) const
 
         if(seat.kind == SeatKind::Human)
         {
-            if(const std::optional<MemberId> holder = seating_.memberAt(i))
-            {
+            const std::optional<MemberId> holder = seating_.memberAt(i);
+            if(playing && run_->replaced(i))
+                seatView.presence = Presence::Replaced;
+            else if(holder)
                 seatView.presence = outbox_.isConnected(*holder) ? Presence::Here : Presence::Away;
+            if(holder)
                 seatView.you = *holder == member;
-            }
         }
         view.seats.push_back(std::move(seatView));
     }
@@ -149,6 +162,9 @@ std::optional<Refusal> Table::startGame(MemberId by)
         if(stateLocked() == TableState::Playing)
             return ErrorCode::Illegal;
 
+        // Seats of those who left the last game are open for this one.
+        settleLocked();
+
         // Not badMessage: the message was sound, and the table is not ready yet.
         if(seating_.hasOpenSeat())
             return Refusal(ErrorCode::Illegal, "seats");
@@ -171,8 +187,17 @@ std::optional<Refusal> Table::startGame(MemberId by)
         setup.instantFloor = options_.instantFloor;
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
+        setup.changed = [self = weak_from_this(), game = setup.game]
+        {
+            if(const std::shared_ptr<Table> table = self.lock())
+                table->runChanged(game);
+        };
         if(mode_ == Mode::Online)
+        {
             setup.roundHold = options_.roundHold;
+            if(options_.turnTimerOverride && setup.settings.turnTimer && setup.settings.turnTimer->count() > 0)
+                setup.settings.turnTimer = options_.turnTimerOverride;
+        }
 
         auto run = std::make_unique<GameRun>(std::move(setup), outbox_);
         const TableState before = state_;
@@ -181,6 +206,22 @@ std::optional<Refusal> Table::startGame(MemberId by)
         game_++;
         state_ = TableState::Playing;
         paused_ = false;
+
+        // Members whose connection is gone are waited for through their grace period at most, counted
+        // from when they went.
+        if(mode_ == Mode::Online)
+        {
+            const Clock::time_point now = Clock::now();
+            for(const TableMember& member : seating_.members())
+            {
+                if(outbox_.isConnected(member.id))
+                    continue;
+                const Clock::time_point since = member.awaySince.value_or(now);
+                seating_.setAway(member.id, since);
+                run_->away(member.id, since + options_.gracePeriod);
+            }
+        }
+        refreshPresenceLocked();
 
         // The tableState goes out before the game's first message.
         broadcastLocked();
@@ -257,6 +298,7 @@ std::optional<Refusal> Table::updateSettings(MemberId by, const Settings& settin
     if(mode_ == Mode::Online)
     {
         std::lock_guard lock(mutex_);
+        settleLocked();
         if(std::optional<Refusal> refused = checkBetweenGamesLocked(by))
             return refused;
         if(std::optional<Refusal> refused = seating_.updateSettings(by, settings))
@@ -336,10 +378,112 @@ bool Table::sync(MemberId member)
     if(state_ == TableState::Closed || !seating_.hasMember(member))
         return false;
 
+    settleLocked();
+    arriveLocked(member);
     syncLocked(member);
     if(mode_ == Mode::Online)
         broadcastLocked(member);
     return true;
+}
+
+bool Table::settleLocked()
+{
+    if(!seating_.hasDeparted() || stateLocked() == TableState::Playing)
+        return false;
+
+    seating_.openDeparted();
+    return true;
+}
+
+void Table::arriveLocked(MemberId member)
+{
+    seating_.setAway(member, std::nullopt);
+    if(run_)
+    {
+        run_->here(member);
+        run_->reclaim(member);
+    }
+    refreshPresenceLocked();
+}
+
+void Table::refreshPresenceLocked()
+{
+    const bool here = std::ranges::any_of(seating_.members(),
+                                          [this](const TableMember& m) { return outbox_.isConnected(m.id); });
+    if(here)
+        idleSince_.reset();
+    else if(!idleSince_)
+        idleSince_ = Clock::now();
+
+    if(run_)
+        run_->setNobodyHere(!here);
+}
+
+void Table::back(MemberId member)
+{
+    std::lock_guard lock(mutex_);
+    if(state_ == TableState::Closed || !seating_.hasMember(member))
+        return;
+
+    if(run_ && stateLocked() == TableState::Playing && run_->reclaim(member))
+        broadcastLocked();
+}
+
+void Table::runChanged(unsigned int game)
+{
+    std::lock_guard lock(mutex_);
+    if(state_ == TableState::Closed || game != game_ || !run_)
+        return;
+
+    // The end of a game is its gameOver message, not a tableState: only seats that open are news.
+    const bool opened = settleLocked();
+    if(opened || !run_->over())
+        broadcastLocked();
+}
+
+bool Table::reap(Clock::time_point now)
+{
+    std::lock_guard lock(mutex_);
+    if(state_ == TableState::Closed)
+        return false;
+
+    const std::chrono::milliseconds idleLimit = mode_ == Mode::Solo ? options_.soloIdle : options_.onlineIdle;
+    if(idleSince_ && now - *idleSince_ >= idleLimit)
+        return true;
+    if(mode_ == Mode::Solo)
+        return false;
+
+    bool changed = settleLocked();
+    const auto goneFor = [&](const TableMember& member)
+    {
+        return member.awaySince && now >= *member.awaySince + options_.gracePeriod;
+    };
+
+    // A turn that came inside the grace period is replaced by its own game thread; any other seat
+    // nothing would notice.
+    if(run_ && stateLocked() == TableState::Playing)
+    {
+        for(const TableMember& member : seating_.members())
+        {
+            if(member.seat && goneFor(member) && !run_->replaced(*member.seat))
+            {
+                run_->replace(member.id, false);
+                changed = true;
+            }
+        }
+    }
+
+    const MemberId host = seating_.host();
+    const auto hostSeat = std::ranges::find_if(seating_.members(), [host](const TableMember& m) { return m.id == host; });
+    if(hostSeat != seating_.members().end() && goneFor(*hostSeat))
+    {
+        if(seating_.passHost([this](MemberId id) { return outbox_.isConnected(id); }))
+            changed = true;
+    }
+
+    if(changed)
+        broadcastLocked();
+    return false;
 }
 
 void Table::close()

@@ -29,11 +29,22 @@ struct TableOptions
 
     // Online: how long the hold after a round waits for the players' Continues at most.
     std::chrono::milliseconds roundHold{30000};
+
+    // Online: how long, from when their connection went, a player's turn is waited for before a
+    // computer player takes their seat.
+    std::chrono::milliseconds gracePeriod{30000};
+
+    // How long a table is kept once nobody at it is connected.
+    std::chrono::milliseconds onlineIdle{10 * 60 * 1000};
+    std::chrono::milliseconds soloIdle{30 * 60 * 1000};
+
+    // For tests: the turn timer of every online table that has one, whatever its settings allow.
+    std::optional<std::chrono::milliseconds> turnTimerOverride;
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's
 // and before any seat driver's. Messages are sent under it: Outbox::send only queues.
-class Table
+class Table : public std::enable_shared_from_this<Table>
 {
 public:
     // `seed` draws computer players' names and portraits.
@@ -77,8 +88,22 @@ public:
     std::optional<Refusal> continueRound(MemberId by, unsigned int round);
 
     // Sends the member everything they need to pick the game up where it is, and, online, tells the
-    // others they are here. False when they are not at this table, and nothing was sent.
+    // others they are here. A seat a computer player took over is theirs again. False when they are
+    // not at this table, and nothing was sent.
     bool sync(MemberId member);
+
+    // A seat a computer player took over while the member was connected is theirs again. Anything
+    // else changes nothing.
+    void back(MemberId member);
+
+    // Called every second or so. Replaces members who are away past the grace period, hands over a
+    // host who is, and lets go of those who left a finished game. True when the table has been idle
+    // too long, and is to close.
+    bool reap(Clock::time_point now);
+
+    // The game's callback, from its own thread: something it waits for or has done is for the table
+    // to tell everyone. Calls for any game but the current one are ignored.
+    void runChanged(unsigned int game);
 
     TableView viewFor(MemberId member) const;
 
@@ -86,8 +111,9 @@ public:
     // message anyone gets from this table.
     void close();
 
-    // For tests: the outcome of the current game, if there is one.
+    // For tests: the outcome of the current game, if there is one, and how many rounds it has scored.
     std::optional<RunOutcome> outcome() const;
+    std::size_t scoredRounds() const;
 
     // ---- Online, between games: in the lobby, or once a game is over (TableLobby.cpp) ----
 
@@ -103,8 +129,8 @@ public:
         bool empty = false;
     };
 
-    // The member's seat opens, and a host hands over to whoever has been there longest. Not while
-    // a game is on.
+    // Between games the member's seat opens. During a game it stays theirs, with a computer player in
+    // it, and they are sent nothing more of it until they join again. A host hands over either way.
     Left leave(MemberId member);
 
     std::optional<Refusal> takeSeat(MemberId member, unsigned int seat);
@@ -115,8 +141,8 @@ public:
 
     std::optional<Refusal> updateProfile(MemberId member, Profile profile);
 
-    // Online: the member's connection has gone. Everyone is told, and a hold after a round stops
-    // waiting for them.
+    // The member's connection has gone. Online, everyone is told and their turn is waited for through
+    // the grace period. A game nobody is connected to holds.
     void presenceChanged(MemberId member);
 
 private:
@@ -130,6 +156,16 @@ private:
 
     // Online, by a member, with no game on.
     std::optional<Refusal> checkBetweenGamesLocked(MemberId by) const;
+
+    // A game that is over lets go of the members who left it: their seats open. True when any did.
+    bool settleLocked();
+
+    // The member's connection is here: they are not away, and have the seat back that a computer
+    // player took over.
+    void arriveLocked(MemberId member);
+
+    // Works out whether anybody is connected, for the idle timer and for a game that holds for nobody.
+    void refreshPresenceLocked();
 
     const std::string code_;
     const Mode mode_;
@@ -148,6 +184,9 @@ private:
     bool paused_ = false;
     unsigned int game_ = 0;
     std::unique_ptr<GameRun> run_;
+
+    // Since when nobody at the table has been connected.
+    std::optional<Clock::time_point> idleSince_;
 };
 
 } // namespace whist

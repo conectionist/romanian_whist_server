@@ -28,10 +28,24 @@ std::optional<Refusal> Table::join(MemberId member, Profile profile)
     if(seating_.hasMember(member))
         return ErrorCode::Illegal;
 
+    settleLocked();
+
+    // Someone who left a game still under way comes back to their seat, whatever profile they bring:
+    // the engine fixed the names when it started.
+    if(seating_.departed(member))
+    {
+        seating_.rejoin(member);
+        arriveLocked(member);
+        syncLocked(member);
+        broadcastLocked(member);
+        return std::nullopt;
+    }
+
     // A table with a game on has no open seat.
     if(std::optional<Refusal> refused = seating_.join(member, std::move(profile)))
         return refused;
 
+    refreshPresenceLocked();
     syncLocked(member);
     broadcastLocked(member);
     return std::nullopt;
@@ -40,10 +54,23 @@ std::optional<Refusal> Table::join(MemberId member, Profile profile)
 Table::Left Table::leave(MemberId member)
 {
     std::lock_guard lock(mutex_);
-    if(std::optional<Refusal> refused = checkBetweenGamesLocked(member))
-        return {refused, false};
+    if(state_ == TableState::Closed || !seating_.hasMember(member))
+        return {ErrorCode::NotFound, false};
+    if(mode_ != Mode::Online)
+        return {ErrorCode::Illegal, false};
 
-    seating_.leave(member);
+    settleLocked();
+
+    if(run_ && stateLocked() == TableState::Playing && seating_.seatOf(member))
+    {
+        // Their seat stays theirs on the table, and the game goes on with a computer player in it.
+        seating_.depart(member);
+        run_->replace(member, true);
+    }
+    else
+        seating_.leave(member);
+
+    refreshPresenceLocked();
     if(seating_.members().empty())
         return {std::nullopt, true};
 
@@ -54,6 +81,7 @@ Table::Left Table::leave(MemberId member)
 std::optional<Refusal> Table::takeSeat(MemberId member, unsigned int seat)
 {
     std::lock_guard lock(mutex_);
+    settleLocked();
     if(std::optional<Refusal> refused = checkBetweenGamesLocked(member))
         return refused;
     if(std::optional<Refusal> refused = seating_.takeSeat(member, seat))
@@ -66,6 +94,7 @@ std::optional<Refusal> Table::setSeat(MemberId by, unsigned int seat, SeatKind k
                                       std::string_view language)
 {
     std::lock_guard lock(mutex_);
+    settleLocked();
     if(std::optional<Refusal> refused = checkBetweenGamesLocked(by))
         return refused;
     if(std::optional<Refusal> refused = seating_.setSeat(by, seat, kind, level, language, random_))
@@ -80,6 +109,7 @@ std::optional<Refusal> Table::updateProfile(MemberId member, Profile profile)
         return Refusal(ErrorCode::BadMessage, error->field);
 
     std::lock_guard lock(mutex_);
+    settleLocked();
     if(std::optional<Refusal> refused = checkBetweenGamesLocked(member))
         return refused;
     if(std::optional<Refusal> refused = seating_.updateProfile(member, std::move(profile)))
@@ -91,12 +121,27 @@ std::optional<Refusal> Table::updateProfile(MemberId member, Profile profile)
 void Table::presenceChanged(MemberId member)
 {
     std::lock_guard lock(mutex_);
-    if(state_ == TableState::Closed || mode_ != Mode::Online || !seating_.hasMember(member))
+    if(state_ == TableState::Closed || !seating_.hasMember(member))
         return;
 
-    broadcastLocked();
-    if(run_ && !outbox_.isConnected(member))
+    // Told late of a connection that a newer tab has since replaced: nothing has changed.
+    if(outbox_.isConnected(member))
+        return;
+
+    if(!seating_.awaySince(member))
+        seating_.setAway(member, Clock::now());
+    refreshPresenceLocked();
+
+    // A solo game never replaces anyone, and nobody else is there to be told.
+    if(mode_ != Mode::Online)
+        return;
+
+    if(run_ && stateLocked() == TableState::Playing)
+    {
+        run_->away(member, *seating_.awaySince(member) + options_.gracePeriod);
         run_->excuse(member);
+    }
+    broadcastLocked();
 }
 
 } // namespace whist
