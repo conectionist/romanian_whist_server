@@ -331,3 +331,91 @@ TEST_CASE("The publisher keeps every scored round and the last trick across roun
     CHECK(last->cards.size() == 3);
     CHECK(last->winning);
 }
+
+TEST_CASE("A game nobody is here to watch holds at its next rest, and goes on once someone is", "[game][away]")
+{
+    GameRunSetup setup = test::quickGame(test::tableSettings(2, {}), {});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+
+    game.run->setNobodyHere(true);
+    game.run->start();
+    std::this_thread::sleep_for(milliseconds(300 * test::slowdown));
+    const std::size_t held = game.recorder.messagesTo(watcher).size();
+    CHECK(held > 0);
+    std::this_thread::sleep_for(milliseconds(300 * test::slowdown));
+    CHECK(game.recorder.messagesTo(watcher).size() == held);
+    CHECK_FALSE(game.run->finished());
+
+    game.run->setNobodyHere(false);
+    REQUIRE(game.waitUntilFinished());
+    CHECK(game.run->outcome() == RunOutcome::Finished);
+}
+
+TEST_CASE("Closing a game that holds for nobody joins its thread at once", "[game][away][close]")
+{
+    GameRunSetup setup = test::quickGame(test::tableSettings(2, {}), {});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+
+    game.run->setNobodyHere(true);
+    game.run->start();
+    std::this_thread::sleep_for(milliseconds(100 * test::slowdown));
+    CHECK(game.closeAndJoin() < milliseconds(1000 * test::slowdown));
+}
+
+TEST_CASE("A seat replaced silently is sent nothing more, and the others see the game through", "[game][away]")
+{
+    Settings settings = test::tableSettings(2, {0});
+    settings.replacement = Level::FirstCard;
+    GameRunSetup setup = test::quickGame(settings, {ana});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+
+    game.run->start();
+    REQUIRE(silent.waitForPrompt(patience));
+
+    game.run->replace(ana, true);
+    const std::size_t sent = game.recorder.messagesTo(ana).size();
+    REQUIRE(game.waitUntilFinished());
+    CHECK(game.run->outcome() == RunOutcome::Finished);
+    CHECK(game.run->replaced(0));
+    CHECK(game.recorder.messagesTo(ana).size() == sent);
+    CHECK(game.waitFor(watcher, "gameOver"));
+}
+
+TEST_CASE("A seat taken back is sent the game again, and asked for its next turn", "[game][away]")
+{
+    Settings settings = test::tableSettings(2, {0});
+    settings.replacement = Level::FirstCard;
+    GameRunSetup setup = test::quickGame(settings, {ana});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+
+    game.run->start();
+    REQUIRE(silent.waitForPrompt(patience));
+    const std::uint64_t first = game.recorder.messagesTo(ana).back()["id"].asUInt64();
+    REQUIRE(first > 0);
+
+    // Held at the next rest, so the seat can be taken back before the game goes on. Once the
+    // computer player has made the bid, the seat has been replaced for good.
+    game.run->setNobodyHere(true);
+    game.run->replace(ana, true);
+    REQUIRE(game.recorder.waitFor(watcher, [](const Json::Value& m)
+    {
+        return m["type"] == "game" && m["event"]["kind"] == "betPlaced" && m["event"]["seat"] == 0;
+    }, patience));
+
+    CHECK_FALSE(game.run->reclaim(bogdan));
+    CHECK(game.run->reclaim(ana));
+    CHECK_FALSE(game.run->reclaim(ana));
+    CHECK_FALSE(game.run->replaced(0));
+    game.run->setNobodyHere(false);
+
+    CHECK(game.recorder.waitFor(ana, [first](const Json::Value& m)
+    {
+        return m["type"] == "prompt" && m["id"].asUInt64() > first;
+    }, patience));
+}

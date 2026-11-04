@@ -5,6 +5,7 @@
 #include "core/Log.h"
 #include "core/SeatProvider.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -51,7 +52,7 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
             throw std::invalid_argument("a human seat needs its member");
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
-                                                       turnTimer, outbox, setup.promptIds));
+                                                       turnTimer, outbox, setup.promptIds, setup.changed));
     }
     return drivers;
 }
@@ -84,11 +85,12 @@ void lowerPriority(int niceness)
 GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
     : game_(setup.game),
       threadNiceness_(setup.threadNiceness),
+      changed_(setup.changed),
       firstObservers_(setup.firstObservers),
       viewers_(viewersOf(setup)),
       drivers_(makeDrivers(setup, outbox)),
       publisher_(setup.game, viewers_, pacingFor(setup.settings.botSpeed, setup.instantFloor),
-                 setup.settings.waitAfterRound, setup.roundHold, drivers_, outbox)
+                 setup.settings.waitAfterRound, setup.roundHold, drivers_, outbox, setup.changed)
 {
     GameSetup engineSetup;
     for(unsigned int i = 0 ; i < drivers_.size() ; i++)
@@ -141,12 +143,16 @@ void GameRun::play(GameSetup setup)
         log(LogLevel::Error, std::string("game ") + std::to_string(game_) + " failed: " + failure.what());
         publisher_.announceFailure();
         outcome_ = RunOutcome::Failed;
+        if(changed_)
+            changed_();
     }
     catch(...)
     {
         log(LogLevel::Error, "game " + std::to_string(game_) + " failed");
         publisher_.announceFailure();
         outcome_ = RunOutcome::Failed;
+        if(changed_)
+            changed_();
     }
 }
 
@@ -191,6 +197,63 @@ void GameRun::excuse(MemberId member)
 {
     if(const std::optional<Viewer> seen = viewer(member); seen && seen->seat)
         publisher_.excuse(*seen->seat);
+}
+
+void GameRun::away(MemberId member, Clock::time_point graceEnds)
+{
+    if(const std::optional<Viewer> seen = viewer(member); seen && seen->seat)
+        drivers_.at(*seen->seat)->away(graceEnds);
+}
+
+void GameRun::here(MemberId member)
+{
+    if(const std::optional<Viewer> seen = viewer(member); seen && seen->seat)
+        drivers_.at(*seen->seat)->here();
+}
+
+void GameRun::replace(MemberId member, bool silent)
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
+        return;
+
+    if(silent)
+        publisher_.setMuted(member, true);
+    drivers_.at(*seen->seat)->replace(silent);
+    publisher_.excuse(*seen->seat);
+}
+
+bool GameRun::reclaim(MemberId member)
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
+        return false;
+
+    publisher_.setMuted(member, false);
+    return drivers_.at(*seen->seat)->reclaim();
+}
+
+bool GameRun::replaced(unsigned int seat) const
+{
+    return drivers_.at(seat)->replaced();
+}
+
+std::optional<WaitingFor> GameRun::waitingFor() const
+{
+    for(unsigned int seat = 0 ; seat < drivers_.size() ; seat++)
+    {
+        if(const std::optional<Clock::time_point> end = drivers_[seat]->awayDeadline())
+        {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(*end - Clock::now());
+            return WaitingFor{seat, std::max(left, std::chrono::milliseconds(0))};
+        }
+    }
+    return std::nullopt;
+}
+
+void GameRun::setNobodyHere(bool nobodyHere)
+{
+    publisher_.setNobodyHere(nobodyHere);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

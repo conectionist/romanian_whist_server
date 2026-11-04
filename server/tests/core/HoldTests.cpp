@@ -299,3 +299,17 @@ TEST_CASE("Online, closing during the hold joins at once", "[hold][online][close
     online.run.reset();
     CHECK(Clock::now() - started < milliseconds(1000 * test::slowdown));
 }
+
+TEST_CASE("Online, a replaced human is not waited for", "[hold][online][away]")
+{
+    OnlineGame online(3, 2, longHold);
+    online.addHuman(1, true);
+    online.run->replace(2, false);
+    online.run->start();
+    REQUIRE(online.finish());
+
+    const std::vector<Json::Value> held = online.held(1);
+    CHECK(held.size() == online.run->publisher().history().size());
+    for(const Json::Value& message : held)
+        CHECK(seats(message["waitingFor"]) == std::vector<unsigned int>{0});
+}

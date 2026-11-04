@@ -12,6 +12,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -45,6 +46,10 @@ struct GameRunSetup
     int threadNiceness = 10;
 
     std::shared_ptr<std::atomic<std::uint64_t>> promptIds;
+
+    // Called on the game thread, with no lock held, when a seat that waits for a member who is away
+    // changes, and once the game is over: the table has something new to tell everyone.
+    std::function<void()> changed;
 
     // Registered before everything else, so they see each event first. For tests and tools.
     std::vector<romanian_whist::IGameObserver*> firstObservers;
@@ -106,6 +111,27 @@ public:
     // Any thread. Online: the member has gone, so the hold no longer waits for them.
     void excuse(MemberId member);
 
+    // Any thread. The member's connection is gone, and their turn is waited for until `graceEnds` at
+    // most, or back again. Of the seat they play in this game.
+    void away(MemberId member, Clock::time_point graceEnds);
+    void here(MemberId member);
+
+    // Any thread. The seat's computer player plays from now on. A member who `silent`ly leaves is
+    // sent nothing of the game, and the round hold stops waiting for them.
+    void replace(MemberId member, bool silent);
+
+    // Any thread. The member has their seat again, and is sent the game again. False when it was
+    // theirs already.
+    bool reclaim(MemberId member);
+
+    bool replaced(unsigned int seat) const;
+
+    // The seat whose member is away, and the time left until the table stops waiting for them.
+    std::optional<WaitingFor> waitingFor() const;
+
+    // Any thread. Whether nobody who sees the game is connected: it holds at its next rest.
+    void setNobodyHere(bool nobodyHere);
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 
@@ -119,6 +145,7 @@ private:
 
     const unsigned int game_;
     const int threadNiceness_;
+    const std::function<void()> changed_;
     const std::vector<romanian_whist::IGameObserver*> firstObservers_;
     const std::vector<Viewer> viewers_;
     std::optional<romanian_whist::GameSetup> engineSetup_;
