@@ -149,6 +149,10 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     ServiceOptions serviceOptions;
     serviceOptions.registry.table.instantFloor = options.instantFloor;
     serviceOptions.pongTimeout = options.pongTimeout;
+    serviceOptions.registry.table.gracePeriod = options.gracePeriod;
+    serviceOptions.registry.table.onlineIdle = options.onlineIdle;
+    serviceOptions.registry.table.soloIdle = options.soloIdle;
+    serviceOptions.registry.forgetMember = options.forgetMember;
     service() = std::make_shared<Service>(std::move(serviceOptions));
 
     drogon::app()

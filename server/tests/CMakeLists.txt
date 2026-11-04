@@ -59,8 +59,11 @@ add_test(NAME no_direct_hand_reads
 add_executable(app_tests
     app/TestSupport.h
     app/TestSupport.cpp
+    app/RawSocket.h
+    app/ServerProcess.h
     app/SpikeController.h
     app/SpikeController.cpp
+    app/DropTests.cpp
     app/GameTests.cpp
     app/OnlineTests.cpp
     app/OptionsTests.cpp

@@ -131,6 +131,19 @@ struct Online
         return *fresh;
     }
 
+    // As reopen(), but nothing waits for the sync, so a thread other than the test's may call it.
+    void reconnect(MemberId label)
+    {
+        test::Client* fresh = nullptr;
+        {
+            std::lock_guard lock(tabsMutex);
+            retired.push_back(std::move(tabs.at(label)));
+            tabs[label] = std::make_unique<test::Client>(service, recorder, label);
+            fresh = tabs[label].get();
+        }
+        fresh->sendHello(tokens.at(label));
+    }
+
     // Answers and Continues through whichever tab the member has now.
     ScriptedHuman::Answerer answerer(MemberId label)
     {

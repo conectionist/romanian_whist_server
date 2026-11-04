@@ -91,6 +91,14 @@ ServerOptions parseOptions(std::string_view json)
             options.pongTimeout = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "reap_interval_ms")
             options.reapInterval = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "grace_period_ms")
+            options.gracePeriod = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "online_idle_ms")
+            options.onlineIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "solo_idle_ms")
+            options.soloIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "forget_member_ms")
+            options.forgetMember = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "shutdown_delay_ms")
             options.shutdownDelay = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
         else if(key == "instant_floor_ms")

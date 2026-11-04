@@ -1,6 +1,7 @@
 #include "support/Online.h"
 
 #include <atomic>
+#include <random>
 
 using namespace whist;
 using std::chrono::milliseconds;
@@ -516,4 +517,114 @@ TEST_CASE("A connection that says nothing for the pong timeout is closed, and it
     d.drop(2);
     std::this_thread::sleep_for(milliseconds(100 * test::slowdown));
     CHECK(d.mark(1) == before);
+}
+
+TEST_CASE("A member nobody has been connected as for long is forgotten; one connected, or at a table, is not",
+          "[drops][reaper]")
+{
+    using std::chrono::minutes;
+    Drops d;
+    d.open(1);
+    d.open(2);
+    d.open(3);
+    Settings settings = onlineSettings(3, 2);
+    d.create(2, settings, "Ana");
+    d.drop(1);
+    d.drop(2);
+
+    Registry& registry = d.service->registry();
+    const auto known = [&](MemberId label) { return registry.findMember(d.tokens.at(label)).has_value(); };
+
+    // The clock starts at the first look. Member 1 is at no table; member 2's table closes for being
+    // idle, and only then does their own hour begin.
+    const Clock::time_point now = Clock::now();
+    d.service->reap(now);
+    d.service->reap(now + minutes(59));
+    CHECK(known(1));
+    CHECK(known(2));
+    CHECK_FALSE(d.theTable());
+
+    d.tab(3).heard();
+    d.service->reap(now + minutes(61));
+    CHECK_FALSE(known(1));
+    CHECK(known(2));
+
+    d.service->reap(now + minutes(121));
+    CHECK_FALSE(known(2));
+}
+
+namespace
+{
+
+// People who come and go at random while a game is played: each tab is closed and opened again, or
+// its player leaves and joins again by the table's code, or takes a seat back.
+void churn(Drops& d, const std::vector<MemberId>& labels, std::atomic<bool>& stop, unsigned int seed)
+{
+    std::mt19937 random(seed);
+    while(!stop)
+    {
+        const MemberId label = labels[random() % labels.size()];
+        switch(random() % 5)
+        {
+            case 0:
+                d.tab(label).drop();
+                d.reconnect(label);
+                break;
+            case 1:
+                d.tab(label).drop();
+                std::this_thread::sleep_for(milliseconds(random() % 40));
+                d.reconnect(label);
+                break;
+            case 2:
+                d.send(label, test::typed("leaveTable"));
+                std::this_thread::sleep_for(milliseconds(random() % 20));
+                d.send(label, d.join("Back" + std::to_string(label)));
+                break;
+            case 3:
+                d.send(label, test::typed("back"));
+                break;
+            default:
+                break;
+        }
+        std::this_thread::sleep_for(milliseconds(random() % 15));
+    }
+}
+
+} // namespace
+
+TEST_CASE("People who come and go at random never stop a game, and every message is well formed",
+          "[drops][churn]")
+{
+    // Short grace and turn timers, so people are replaced and take their seats back all game long.
+    Drops d(milliseconds(60 * test::slowdown), milliseconds(80 * test::slowdown));
+    for(MemberId label : {1, 2, 3})
+        d.open(label);
+    Settings settings = onlineSettings(6, 4);
+    settings.structure = romanian_whist::GameStructure::S_181;
+    d.create(1, settings, "Ana");
+    d.ask(2, d.join("Bea"), ofType("sync"));
+    d.ask(3, d.join("Cora"), ofType("sync"));
+    d.ask(1, d.setSeat(3, Level::ReckonerAlpha), ofType("tableState"));
+
+    std::vector<std::unique_ptr<test::ScriptedHuman>> humans;
+    for(MemberId label : {1, 2, 3})
+    {
+        humans.push_back(std::make_unique<test::ScriptedHuman>(d.recorder, label, d.answerer(label),
+                                                               test::Behaviour::Good, test::ScriptedHuman::OnPrompt{},
+                                                               d.continuer(label)));
+    }
+    d.send(1, test::typed("startGame"));
+
+    std::atomic<bool> stop{false};
+    std::thread comers(churn, std::ref(d), std::vector<MemberId>{2, 3}, std::ref(stop), 17);
+
+    // Ana never leaves, so she sees the game to its end, however the others come and go.
+    const bool over = humans[0]->waitUntilOver(patience);
+    stop = true;
+    comers.join();
+    REQUIRE(over);
+    CHECK(humans[0]->problems().empty());
+
+    for(MemberId label : {1, 2, 3})
+        test::checkShapes(d.recorder.messagesTo(label));
 }
