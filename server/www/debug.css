@@ -32,6 +32,12 @@ textarea
     font-size: 0.9rem;
 }
 
+/* A rule that sets display would otherwise show what is hidden. */
+[hidden]
+{
+    display: none !important;
+}
+
 .controls
 {
     display: flex;

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Romanian Whist: debug table</title>
-<link rel="stylesheet" href="debug.css">
-<script type="module" src="debug.js"></script>
+<link rel="stylesheet" href="/debug.css">
+<script type="module" src="/debug.js"></script>
 </head>
 <body>
 <header>
@@ -15,6 +15,21 @@
   <a href="https://github.com/conectionist/romanian_whist_web">romanian_whist_web</a>: set
   <code>document_root</code> to its <code>dist/</code> folder to serve it here.</p>
 </header>
+
+<section id="you" hidden>
+  <fieldset>
+    <legend>You</legend>
+    <label for="name">Name</label>
+    <input id="name" maxlength="20" value="Ana">
+    <label for="gender">Gender</label>
+    <select id="gender">
+      <option value="female">female</option>
+      <option value="male">male</option>
+    </select>
+    <label for="avatar">Portrait</label>
+    <select id="avatar"></select>
+  </fieldset>
+</section>
 
 <section id="setup" hidden>
   <h2>New solo game</h2>
@@ -29,22 +44,56 @@
   <p><button id="start" type="button">Start</button></p>
 </section>
 
+<section id="online" hidden>
+  <h2>Online table</h2>
+  <p>
+    <label for="joinCode">Join the table with the code</label>
+    <input id="joinCode" maxlength="6" size="8" autocapitalize="characters">
+    <button id="join" type="button">Join</button>
+  </p>
+  <p>
+    <label for="onlinePreset">Or make one</label>
+    <select id="onlinePreset"></select>
+  </p>
+  <p><textarea id="onlineSettings" rows="12" cols="80" spellcheck="false"></textarea></p>
+  <p><button id="create" type="button">Make the table</button></p>
+</section>
+
 <section id="table" hidden>
   <h2>Table <span id="code"></span></h2>
   <p id="summary"></p>
   <div class="controls">
-    <button id="pause" type="button">Pause</button>
-    <label for="speed">Bot speed</label>
-    <select id="speed">
-      <option value="0">0 (slow)</option>
-      <option value="1">1</option>
-      <option value="2">2 (normal)</option>
-      <option value="3">3</option>
-      <option value="4">4 (instant)</option>
-    </select>
-    <label><input id="wait" type="checkbox"> Wait for me after each round</label>
+    <span id="soloControls" class="controls">
+      <button id="pause" type="button">Pause</button>
+      <label for="speed">Bot speed</label>
+      <select id="speed">
+        <option value="0">0 (slow)</option>
+        <option value="1">1</option>
+        <option value="2">2 (normal)</option>
+        <option value="3">3</option>
+        <option value="4">4 (instant)</option>
+      </select>
+      <label><input id="wait" type="checkbox"> Wait for me after each round</label>
+    </span>
     <button id="again" type="button" hidden>Play again</button>
     <button id="leave" type="button">Leave</button>
+  </div>
+
+  <div id="lobby" class="box" hidden>
+    <p>Link: <a id="link"></a></p>
+    <ol id="seats" start="0"></ol>
+    <div id="hostControls">
+      <p>
+        <label for="tableSettings">Settings (the number of seats comes from <code>seats</code>; what each
+        holds, from the buttons above)</label><br>
+        <textarea id="tableSettings" rows="10" cols="80" spellcheck="false"></textarea>
+      </p>
+      <p>
+        <button id="update" type="button">Update settings</button>
+        <button id="profile" type="button">Use my profile</button>
+        <button id="startOnline" type="button">Start the game</button>
+      </p>
+    </div>
   </div>
 
   <div id="held" class="box" hidden>
