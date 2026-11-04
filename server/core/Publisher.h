@@ -10,7 +10,6 @@
 #include <romanian_whist/IGameObserver.h>
 #include <romanian_whist/Snapshot.h>
 
-#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -69,7 +68,8 @@ public:
     // round, so a hold already on stays on.
     void setPacing(Pacing pacing, bool waitAfterRound);
 
-    // Any thread. True once gameOver has been sent: nothing else of this game's follows it.
+    // Any thread. True once gameOver has been sent: nothing else of this game's follows it. Read
+    // under the lock it is sent under, so it never reads false after gameOver has gone out.
     bool gameOverSent() const;
 
     // Game thread, after run() failed: tells every viewer the game stopped, from the cache.
@@ -119,7 +119,7 @@ private:
     std::optional<HoldView> hold_;
     bool silenced_ = false;
 
-    std::atomic<bool> gameOverSent_{false};
+    bool gameOverSent_ = false;
 
     // Guards everything below, and is never held with cacheMutex_.
     std::mutex restMutex_;

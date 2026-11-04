@@ -265,8 +265,7 @@ TEST_CASE("Pause holds the game at its next rest, and resume lets it go on", "[s
 
     // A game that is over cannot be paused.
     solo.send("pause");
-    REQUIRE(solo.waitFor(ofType("error")));
-    CHECK(solo.messages().back()["code"] == "illegal");
+    CHECK(solo.waitFor([](const Json::Value& m) { return m["type"] == "error" && m["code"] == "illegal"; }));
 }
 
 TEST_CASE("With the wait on, every scored round holds until Continue", "[solo][hold]")

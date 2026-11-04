@@ -83,7 +83,9 @@ written by the server's tests (`core_tests "[fixtures]"`). A client's tests shou
 
 Unknown types and unknown fields are refused with `error {code: "badMessage", detail}`, where
 `detail` names the field at fault. Whole numbers must be written as whole numbers: `3.0` is refused.
-An error always goes back on the connection whose message caused it.
+An error goes back on the connection whose message caused it. The one exception comes from the
+game: `illegal` for an invalid answer, and the prompt sent again with it, go to the member's
+connection at that moment, which may be a newer tab.
 
 | `type` | Fields | Allowed |
 |---|---|---|
@@ -116,8 +118,8 @@ the server has online tables.
 
 ### Solo, while a game is on
 
-- **`pause`** holds the game at its next rest: after a computer player's move, or on a finished
-  trick or round. A move already under way finishes first. The game takes your own answers while
+- **`pause`** holds the game at its next rest: after a computer player's bid, before its card, or
+  on a finished trick or round. A move already under way finishes first. The game takes your own answers while
   paused, then holds at its next rest, so grey your buttons. `resume` lets it go on. Both are
   answered with a `tableState`, whose `paused` says which it is; pausing twice changes nothing and sends nothing.
 - **`updateSettings`** takes the whole settings, of which only `botSpeed` and `waitAfterRound` may

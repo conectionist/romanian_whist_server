@@ -70,7 +70,8 @@ public:
     // running game takes them up at once.
     std::optional<ErrorCode> updateSettings(MemberId by, const Settings& settings);
 
-    // Ends the hold on that round, if it is on. Anything else is ignored.
+    // Ends the hold on that round, if it is on. A Continue for any other round, or after the game,
+    // is ignored.
     std::optional<ErrorCode> continueRound(MemberId by, unsigned int round);
 
     // Sends the member everything they need to pick the game up where it is. False when they are

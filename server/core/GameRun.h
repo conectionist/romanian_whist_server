@@ -91,7 +91,7 @@ public:
     // Any thread.
     SeatDriver::Submitted submit(unsigned int seat, const Answer& answer);
 
-    // Any thread. See Publisher.
+    // Any thread. Pause or resume, end the hold on a round, or change the speed and the wait.
     void setPaused(bool paused);
     void continueRound(unsigned int round);
     void setPacing(Pacing pacing, bool waitAfterRound);

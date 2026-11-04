@@ -174,6 +174,7 @@ void Publisher::setPacing(Pacing pacing, bool waitAfterRound)
 
 bool Publisher::gameOverSent() const
 {
+    std::lock_guard lock(cacheMutex_);
     return gameOverSent_;
 }
 

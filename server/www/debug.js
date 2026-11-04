@@ -55,6 +55,9 @@ const state = {
   history: [],
   lastTrick: null,
   events: [],
+
+  // A game that stopped, by a failure on the server, is over: nothing else will say so.
+  stopped: false,
 };
 
 function storage(kind) {
@@ -132,6 +135,11 @@ function receive(message) {
   switch (message.type) {
     case "welcome":
       writeToken(message.token);
+      try {
+        storage("session")?.removeItem(reloadedKey);
+      } catch {
+        // Then a later deploy finds the flag still set, and asks for a reload by hand.
+      }
       state.waitingForSync = true;
       setStatus(`connected as member ${message.member}, server ${message.server.version} ${message.server.commit}`);
       return;
@@ -205,12 +213,11 @@ function receiveGame(message) {
   }
   if (event.kind === "trickWon" && message.snapshot) {
     const table = message.snapshot.table;
-    const winning = table.cards.find((played) => played.winning);
-    state.lastTrick = { round: message.snapshot.round.index, ledBy: table.ledBy,
-                        winning: winning?.seat, cards: table.cards };
+    state.lastTrick = { round: message.snapshot.round.index, ledBy: table.ledBy, cards: table.cards };
   }
   if (event.kind === "gameOver" || event.kind === "gameStopped") {
     state.prompt = null;
+    state.stopped = event.kind === "gameStopped";
   }
   addEvent(describeEvent(event));
 }
@@ -235,6 +242,7 @@ function receiveError(message) {
 
 function clearGame() {
   state.game = null;
+  state.stopped = false;
   state.snapshot = null;
   state.prompt = null;
   state.held = null;
@@ -325,7 +333,7 @@ function lastTrickText() {
   if (!trick) {
     return "None yet.";
   }
-  const cards = trick.cards.map((p) => `${seatName(p.seat)} ${card(p.card)}${p.seat === trick.winning ? "*" : ""}`);
+  const cards = trick.cards.map((p) => `${seatName(p.seat)} ${card(p.card)}${p.winning ? "*" : ""}`);
   return `Round ${trick.round + 1}, led by ${seatName(trick.ledBy)}: ${cards.join(", ")}`;
 }
 
@@ -397,7 +405,8 @@ function render() {
   }
 
   const playing = table.state === "playing";
-  const over = state.snapshot?.phase === "gameOver" || table.state === "finished";
+  const over = state.snapshot?.phase === "gameOver" || state.snapshot?.status === "stopped" ||
+               state.stopped || table.state === "finished";
   $("code").textContent = table.code;
   $("summary").textContent = `${table.mode} · ${table.state}${table.paused ? " · paused" : ""} · game ${state.game ?? "-"}` +
                              ` · ${table.host === null ? "watching" : `you are seat ${table.host}`}`;
