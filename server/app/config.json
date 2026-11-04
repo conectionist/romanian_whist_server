@@ -5,6 +5,8 @@
     "io_threads": 2,
     "max_message_bytes": 4096,
     "ping_interval_ms": 10000,
+    "pong_timeout_ms": 30000,
+    "reap_interval_ms": 1000,
     "shutdown_delay_ms": 0,
     "instant_floor_ms": 30,
     "log_level": "info"

@@ -18,6 +18,13 @@ struct ServerOptions
     std::size_t ioThreads = 2;
     std::size_t maxMessageBytes = 4096;
     std::chrono::milliseconds pingInterval{10000};
+
+    // A connection nothing is heard from for this long is closed, and its player counts as away. It
+    // must be longer than the ping interval.
+    std::chrono::milliseconds pongTimeout{30000};
+
+    // How often the server looks for silent connections.
+    std::chrono::milliseconds reapInterval{1000};
     std::chrono::milliseconds shutdownDelay{0};
 
     // The shortest beat a computer player's move gets, even at Instant, so a watched game of

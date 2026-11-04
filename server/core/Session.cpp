@@ -52,6 +52,11 @@ void Session::receiveBinary()
         refuseMalformed(ErrorCode::BadMessage, {});
 }
 
+void Session::heard()
+{
+    service_->outbox().heard(*link_);
+}
+
 void Session::closed()
 {
     closing_ = true;

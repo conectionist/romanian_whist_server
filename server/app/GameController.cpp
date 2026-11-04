@@ -44,6 +44,15 @@ public:
         });
     }
 
+    void abort() override
+    {
+        loop_->queueInLoop([connection = connection_]
+        {
+            if(const auto live = connection.lock())
+                live->forceClose();
+        });
+    }
+
 private:
     const std::weak_ptr<drogon::WebSocketConnection> connection_;
     trantor::EventLoop* const loop_;
@@ -76,7 +85,10 @@ void GameController::handleNewMessage(const drogon::WebSocketConnectionPtr& conn
     if(!session)
         return;
 
-    // Pings, pongs and closes are Drogon's business.
+    // Whatever the peer sends, a pong above all, shows it is there.
+    session->heard();
+
+    // Pings, pongs and closes are otherwise Drogon's business.
     if(type == drogon::WebSocketMessageType::Text)
         session->receive(message);
     else if(type == drogon::WebSocketMessageType::Binary)

@@ -33,6 +33,9 @@ public:
     // A frame that is not text.
     void receiveBinary();
 
+    // Any frame from the peer, a pong included: it is alive. Any thread.
+    void heard();
+
     // The connection has closed.
     void closed();
 

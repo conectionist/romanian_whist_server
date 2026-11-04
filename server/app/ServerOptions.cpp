@@ -87,6 +87,10 @@ ServerOptions parseOptions(std::string_view json)
             options.maxMessageBytes = readCount(value, key, 1, 1024 * 1024);
         else if(key == "ping_interval_ms")
             options.pingInterval = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "pong_timeout_ms")
+            options.pongTimeout = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "reap_interval_ms")
+            options.reapInterval = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "shutdown_delay_ms")
             options.shutdownDelay = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
         else if(key == "instant_floor_ms")
@@ -100,6 +104,10 @@ ServerOptions parseOptions(std::string_view json)
         else
             refuse(key, "is not a known setting");
     }
+
+    // A pong cannot come before the ping it answers.
+    if(options.pongTimeout <= options.pingInterval)
+        refuse("pong_timeout_ms", "must be longer than ping_interval_ms");
 
     return options;
 }

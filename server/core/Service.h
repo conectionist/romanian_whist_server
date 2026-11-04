@@ -4,6 +4,7 @@
 #include "core/Outbox.h"
 #include "core/Registry.h"
 
+#include <chrono>
 #include <string>
 
 namespace whist
@@ -12,6 +13,9 @@ namespace whist
 struct ServiceOptions
 {
     RegistryOptions registry;
+
+    // A connection with nothing heard from it for this long is closed, and its member is away.
+    std::chrono::milliseconds pongTimeout{30000};
 
     // What welcome says the server is.
     std::string version;
@@ -39,9 +43,15 @@ public:
     // after it returns. Call it before Drogon quits.
     void shutdown();
 
+    // Called every second or so, on any one thread at a time. Closes the connections nothing has
+    // been heard from since `now` less the pong timeout, and tells their tables they are away. Does
+    // nothing once shut down.
+    void reap(Clock::time_point now);
+
 private:
     const std::string version_;
     const std::string commit_;
+    const std::chrono::milliseconds pongTimeout_;
 
     // The Registry's tables send through the Outbox, so it is declared first and outlives them.
     Outbox outbox_;

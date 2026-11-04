@@ -33,6 +33,11 @@ public:
         close_(member_);
     }
 
+    void abort() override
+    {
+        close_(member_);
+    }
+
 private:
     std::function<void(MemberId, std::string)> record_;
     std::function<void(MemberId)> close_;
