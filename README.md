@@ -65,6 +65,17 @@ WHIST_WRITE_FIXTURES=1 nice -n 19 ./build/server/tests/core_tests "[fixtures]"
 
 The browser tests of the page against this server are in `romanian_whist_web`.
 
+The chaos test starts the server with short timeouts and plays online tables whose people answer,
+close their tabs, leave and come back at random. It needs Node 22 or later and no packages, and it
+takes a core for as long as it runs, so run it on purpose, and in the background:
+
+```
+nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --minutes 60
+```
+
+It passes when every game has reached its end after the last disruption, no table stalled, and no
+snapshot or prompt carried a hand its viewer may not see.
+
 ## Licence
 
 AGPL-3.0-or-later, as the engine is. A server built from this code must offer its users the source
