@@ -154,13 +154,13 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
 
 Registry::Created Registry::createTable(MemberId member, Settings settings, Profile profile)
 {
+    completeOnline(settings);
     if(const std::optional<SettingsError> error = cleanNames(settings))
         return {nullptr, ErrorCode::BadMessage, error->field};
     if(const std::optional<SettingsError> error = checkNewTableSettings(settings))
         return {nullptr, ErrorCode::BadMessage, error->field};
     if(const std::optional<SettingsError> error = preparePersonProfile(profile))
         return {nullptr, ErrorCode::BadMessage, error->field};
-    completeOnline(settings);
 
     // The maker chose their computer players' names, so a clash with their own is theirs to fix.
     for(const SeatSetting& seat : settings.seats)

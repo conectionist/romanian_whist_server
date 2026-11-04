@@ -82,7 +82,8 @@ struct Settings
     // Solo only: a seed is the whole deal.
     std::optional<std::uint32_t> seed;
 
-    // Online only. Who plays a human's seat while they cannot, and how long a turn may take.
+    // Online only. Who plays a human's seat while they cannot, and how long a turn may take; a turn
+    // timer of 0 is none.
     std::optional<Level> replacement;
     std::optional<std::chrono::milliseconds> turnTimer;
 
@@ -92,6 +93,10 @@ struct Settings
 inline constexpr int slowestSpeed = 0;
 inline constexpr int fastestSpeed = 4;
 
+// Online turn timers. A timer of 0 is none.
+inline constexpr std::chrono::milliseconds defaultTurnTimer{60000};
+inline constexpr std::chrono::milliseconds minTurnTimer{10000};
+
 struct SettingsError
 {
     // The field at fault, for error.detail.
@@ -99,8 +104,8 @@ struct SettingsError
 };
 
 // Everything the engine's start() would refuse is refused here, so a game never fails to start on
-// its own thread. A game needs every seat filled, its names clean (see cleanNames()), and every
-// portrait one the catalogue gives that seat.
+// its own thread. A game needs every seat filled, its names already cleaned, and every portrait
+// one the catalogue gives that seat.
 std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode);
 
 // The form of a catalogue id: lower-case letters, digits and '-', at most 40 characters.
@@ -113,7 +118,8 @@ std::optional<SettingsError> checkNewTableSettings(const Settings& settings);
 // An online table's settings apart from its seats: speed, structure, replacement, timer, no seed.
 std::optional<SettingsError> checkOnlineRules(const Settings& settings);
 
-// Online, no replacement means Reckoner Beta, the strongest of the affordable ones.
+// Online, no replacement means Reckoner Beta, the strongest of the affordable ones, and no turn
+// timer means 60 s.
 void completeOnline(Settings& settings);
 
 // A person's profile: a clean name that a Reckoner would not take for a computer player's, and a

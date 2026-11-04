@@ -199,3 +199,15 @@ TEST_CASE("Portraits go to those worn least, counting everyone's", "[catalogue]"
     const Profile fifth = catalogue.drawComputer(Level::Random, "en", std::string("female"), 2, {}, worn, random);
     CHECK(catalogue.suitsHuman(fifth.avatar, "female"));
 }
+
+TEST_CASE("Only the deterministic computer players may be named for their kind", "[catalogue][settings]")
+{
+    Settings settings = test::tableSettings(3, {0}, Level::ReckonerGamma);
+    settings.seats[1].profile.name = "Ducking Dan";
+    const auto error = checkSettings(settings, Mode::Solo);
+    REQUIRE(error);
+    CHECK(error->field == "name");
+
+    settings.seats[1].level = Level::Ducking;
+    CHECK_FALSE(checkSettings(settings, Mode::Solo));
+}

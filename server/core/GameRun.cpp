@@ -28,6 +28,9 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
         throw std::invalid_argument("a member slot is needed for every seat");
 
     std::vector<std::unique_ptr<SeatDriver>> drivers;
+    std::optional<std::chrono::milliseconds> turnTimer = setup.settings.turnTimer;
+    if(turnTimer && turnTimer->count() == 0)
+        turnTimer.reset();
     for(unsigned int i = 0 ; i < setup.settings.seats.size() ; i++)
     {
         const SeatSetting& seat = setup.settings.seats[i];
@@ -48,7 +51,7 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
             throw std::invalid_argument("a human seat needs its member");
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
-                                                       setup.settings.turnTimer, outbox, setup.promptIds));
+                                                       turnTimer, outbox, setup.promptIds));
     }
     return drivers;
 }

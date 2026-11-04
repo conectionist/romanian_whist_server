@@ -197,7 +197,9 @@ std::optional<Refusal> Seating::updateSettings(MemberId by, const Settings& sett
 {
     if(by != host_)
         return ErrorCode::NotHost;
-    if(const std::optional<SettingsError> error = checkOnlineRules(settings))
+    Settings next = settings;
+    completeOnline(next);
+    if(const std::optional<SettingsError> error = checkOnlineRules(next))
         return Refusal(ErrorCode::BadMessage, error->field);
 
     const std::size_t count = settings.seats.size();
@@ -207,10 +209,8 @@ std::optional<Refusal> Seating::updateSettings(MemberId by, const Settings& sett
             return Refusal(ErrorCode::Illegal, "seats");
     }
 
-    Settings next = settings;
     next.seats = settings_.seats;
     next.seats.resize(count);
-    completeOnline(next);
     settings_ = std::move(next);
     return std::nullopt;
 }

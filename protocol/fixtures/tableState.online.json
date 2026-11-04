@@ -59,6 +59,7 @@
       }
     ],
     "structure" : "1-8-1",
+    "turnTimer" : 60000,
     "waitAfterRound" : true
   },
   "state" : "lobby",

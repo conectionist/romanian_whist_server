@@ -68,7 +68,8 @@ public:
     std::optional<Refusal> setPaused(MemberId by, bool paused);
 
     // Solo: only the bot speed and the wait after each round may change once the table exists. A
-    // running game takes them up at once. Online: the host's, between games (Seating::updateSettings).
+    // running game takes them up at once. Online: the host's, between games, of which the seats
+    // give only their number.
     std::optional<Refusal> updateSettings(MemberId by, const Settings& settings);
 
     // A Continue for a held round. Solo, the host's ends the hold; online, each seated member's
@@ -114,8 +115,8 @@ public:
 
     std::optional<Refusal> updateProfile(MemberId member, Profile profile);
 
-    // Online: the member's connection has gone, or a newer one replaced it. Everyone is told, and a
-    // hold after a round stops waiting for them.
+    // Online: the member's connection has gone. Everyone is told, and a hold after a round stops
+    // waiting for them.
     void presenceChanged(MemberId member);
 
 private:

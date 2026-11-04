@@ -50,8 +50,8 @@ The names and portraits players may have are in [`catalogues/`](catalogues/).
 - **Two names clash** when they match ignoring case, width (`Ａｎａ` is `Ana`) and invisible
   characters, with Romanian's cedilla letters counted as its comma-below ones (`Ştefan` is
   `Ștefan`). Names at a table may not clash.
-- A person's name may not contain "LowRisk" or "Ducking", in any case or width: the Reckoner takes
-  any seat so named for a computer player of that kind.
+- A name may not contain "LowRisk" or "Ducking", in any case or width, unless it is a computer
+  player of that kind: the Reckoner takes any seat so named for one.
 - `gender`: `female` or `male`.
 - `avatar`: an `id` from [`catalogues/avatars.json`](catalogues/avatars.json) that suits the seat. A
   person's must be kept for no level (no `strategy`) and be for their gender, or for `any`. A
@@ -87,7 +87,7 @@ The names and portraits players may have are in [`catalogues/`](catalogues/).
 | `waitAfterRound` | `false` | Online, the round hold |
 | `seed` | none | Solo only: a fixed deal. Online it is refused, since a seed is the whole deal |
 | `replacement` | Online: `reckoner-beta` | Online only: the computer player that stands in for a human |
-| `turnTimer` | none (off) | Online only, and only with a `replacement` |
+| `turnTimer` | Online: `60000` | Online only: how long a person's turn may take, at least 10000, or `0` for no timer |
 
 `null` counts as absent. Names may not clash (see [Profile](#profile)), and each seat's portrait
 must suit it.
@@ -160,6 +160,7 @@ A table's link is `/t/<code>`, which serves the page; the page reads the code fr
     the end).
   - `updateProfile` changes your name, gender and portrait; `nameTaken` when someone at the table
     has that name.
+  - Nobody may move or remove someone else; people move themselves.
   - The host's `setSeat` makes a seat open, or a computer player of that level. The server gives a
     computer player its name and portrait from the catalogues, by the desktop client's rules: a
     name kept for its level first, else anyone's, in the host's `hello.lang`, else "Bot N"; its
@@ -217,8 +218,8 @@ game waits for `continue {round}`.
 { "kind": "open" }
 ```
 
-- `presence`: `here`, `away` or `replaced`.
-- `presence`: whether the person's connection is open. Sent again whenever it changes.
+- `presence`: `here` or `away`, whether the person's connection is open, sent again whenever it
+  changes. `replaced` comes with replacement, which is not built yet.
 - `paused`: whether a solo game is paused. Always `false` online, and when no game is on.
 - `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the table waits for an away player's turn.
 - `state` turns to `finished` only in the next `tableState`; a game's end is its `gameOver` event.

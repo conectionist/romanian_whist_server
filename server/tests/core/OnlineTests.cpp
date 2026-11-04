@@ -510,3 +510,116 @@ TEST_CASE("Online, a finished table is a lobby again, and plays again at the sam
     CHECK(again["state"] == "playing");
     CHECK(online.service->registry().findTable(online.code)->game() == 2);
 }
+
+TEST_CASE("Online, nothing in the lobby may change while a game is on, and nobody can join", "[online][game]")
+{
+    Online online;
+    online.open(1);
+    online.open(2);
+    online.open(3);
+
+    // No timer, and nobody answers, so the game waits on its first person.
+    Settings settings = tableSettings(3, 2);
+    settings.turnTimer = std::chrono::milliseconds(0);
+    online.create(1, settings, "Ana");
+    online.ask(2, online.join("Bea"), ofType("sync"));
+    online.ask(1, test::typed("startGame"), [](const Json::Value& m) { return m["type"] == "prompt"; });
+
+    Json::Value rename = test::typed("updateProfile");
+    rename["name"] = "Anca";
+    rename["gender"] = "female";
+    rename["avatar"] = "woman-long-red-hair";
+    for(const Json::Value& message : {test::typed("leaveTable"), online.takeSeat(0), online.setSeat(2, Level::Random),
+                                      rename, online.updateSettings(online.table(1)["settings"])})
+    {
+        INFO(message.toStyledString());
+        CHECK(online.refusal(1, message)["code"] == "illegal");
+    }
+    CHECK(online.refusal(2, test::typed("leaveTable"))["code"] == "illegal");
+    CHECK(online.refusal(3, online.join("Cora"))["code"] == "tableFull");
+    CHECK(online.table(1)["state"] == "playing");
+}
+
+TEST_CASE("Online, a tab that closes during a hold is no longer waited for; a replaced one still is",
+          "[online][hold][presence]")
+{
+    Online online(patience);
+    online.open(1);
+    online.open(2);
+
+    Settings settings = tableSettings(3, 2);
+    settings.waitAfterRound = true;
+    settings.botSpeed = fastestSpeed;
+    online.create(1, settings, "Ana");
+    online.ask(2, online.join("Bea"), ofType("sync"));
+
+    std::vector<std::unique_ptr<test::ScriptedHuman>> humans;
+    for(MemberId label : {1, 2})
+        humans.push_back(std::make_unique<test::ScriptedHuman>(online.recorder, label, online.tabs.at(label)->answerer(),
+                                                               test::Behaviour::Good));
+    online.send(1, test::typed("startGame"));
+
+    const auto first = online.waitFrom(1, 0, ofType("held"));
+    REQUIRE(first);
+    REQUIRE((*first)["waitingFor"].size() == 2);
+    const unsigned int round = (*first)["round"].asUInt();
+
+    // Bea's second tab takes her over, and her first one's close changes nothing.
+    std::size_t before = online.mark(1);
+    online.tabs[12] = std::make_unique<test::Client>(online.service, online.recorder, 12);
+    online.tabs.at(12)->hello(online.tokens.at(2));
+    REQUIRE(online.recorder.waitForClose(2, patience));
+    online.tabs.at(2)->drop();
+    std::this_thread::sleep_for(quiet);
+    std::vector<Json::Value> since = online.recorder.messagesTo(1);
+    for(std::size_t i = before ; i < since.size() ; i++)
+        CHECK(since[i]["type"] != "held");
+
+    // Her last tab closes: the hold is sent again, awaiting Ana alone.
+    before = online.mark(1);
+    online.tabs.at(12)->drop();
+    const auto again = online.waitFrom(1, before, ofType("held"));
+    REQUIRE(again);
+    CHECK((*again)["round"].asUInt() == round);
+    CHECK((*again)["waitingFor"].size() == 1);
+    CHECK((*again)["waitingFor"][0].asUInt() == 0);
+
+    before = online.mark(1);
+    Json::Value next = test::typed("continue");
+    next["round"] = round;
+    online.send(1, next);
+    CHECK(online.waitFrom(1, before, [](const Json::Value& m)
+    {
+        return m["type"] == "game" && m["event"]["kind"] == "roundComplete";
+    }));
+}
+
+TEST_CASE("Online, the turn timer is 60 s unless set, 0 turns it off, and short ones are refused", "[online]")
+{
+    Online online;
+    online.open(1);
+    online.open(2);
+
+    // A timer alone is enough: the replacement has its default.
+    Settings settings = tableSettings(3, 2);
+    settings.turnTimer = std::chrono::milliseconds(30000);
+    online.create(1, settings, "Ana");
+    CHECK(online.table(1)["settings"]["turnTimer"] == 30000);
+    CHECK(online.table(1)["settings"]["replacement"] == "reckoner-beta");
+
+    Json::Value changed = online.table(1)["settings"];
+    changed.removeMember("turnTimer");
+    changed.removeMember("replacement");
+    CHECK(online.ask(1, online.updateSettings(changed), ofType("tableState"))["settings"]["turnTimer"] == 60000);
+    changed["turnTimer"] = 0;
+    CHECK(online.ask(1, online.updateSettings(changed), ofType("tableState"))["settings"]["turnTimer"] == 0);
+    changed["turnTimer"] = 5000;
+    CHECK(online.refusal(1, online.updateSettings(changed))["detail"] == "turnTimer");
+
+    Json::Value create = test::typed("createTable");
+    Settings fast = tableSettings(3, 2);
+    fast.turnTimer = std::chrono::milliseconds(1);
+    create["settings"] = encodeSettings(fast);
+    create["profile"] = profile("Bea");
+    CHECK(online.refusal(2, create)["detail"] == "turnTimer");
+}

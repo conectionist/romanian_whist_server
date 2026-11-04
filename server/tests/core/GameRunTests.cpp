@@ -237,7 +237,11 @@ TEST_CASE("Online, a turn that times out is played by the seat's computer player
     Settings settings = test::tableSettings(3, {0, 1});
     settings.replacement = Level::Cyborg;
     settings.turnTimer = milliseconds(3);
-    REQUIRE_FALSE(checkSettings(settings, Mode::Online));
+
+    // A table refuses a timer this short; a run takes what it is given, which keeps this test quick.
+    const auto refused = checkSettings(settings, Mode::Online);
+    REQUIRE(refused);
+    CHECK(refused->field == "turnTimer");
 
     Game game(test::quickGame(settings, {ana, bogdan}));
     test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);

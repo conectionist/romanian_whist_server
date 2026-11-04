@@ -87,8 +87,10 @@ std::optional<SettingsError> checkPacingAndRules(const Settings& settings, Mode 
     if(mode == Mode::Online && settings.seed)
         return SettingsError{"seed"};
 
-    // A turn that times out is played by the seat's computer player, so a timer needs one.
-    if(settings.turnTimer && (!settings.replacement || settings.turnTimer->count() <= 0))
+    // A turn that times out is played by the seat's computer player, so a timer needs one. Online,
+    // 0 is no timer; a short one would let the computer player make every move.
+    if(settings.turnTimer && settings.turnTimer->count() != 0 &&
+       (!settings.replacement || *settings.turnTimer < minTurnTimer))
         return SettingsError{"turnTimer"};
 
     return std::nullopt;
@@ -136,7 +138,9 @@ std::optional<SettingsError> checkPersonProfile(const Profile& profile)
 
 std::optional<SettingsError> checkComputerProfile(const Profile& profile, Level level)
 {
-    if(!isCleanName(profile.name))
+    // Only the deterministic players themselves may be named so.
+    if(!isCleanName(profile.name) ||
+       (level != Level::LowRisk && level != Level::Ducking && isReservedName(profile.name)))
         return SettingsError{"name"};
     if(!isValidGender(profile.gender))
         return SettingsError{"gender"};
@@ -187,6 +191,8 @@ void completeOnline(Settings& settings)
 {
     if(!settings.replacement)
         settings.replacement = Level::ReckonerBeta;
+    if(!settings.turnTimer)
+        settings.turnTimer = defaultTurnTimer;
 }
 
 std::optional<SettingsError> cleanProfile(Profile& profile)
