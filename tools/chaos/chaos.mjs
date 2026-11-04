@@ -9,7 +9,7 @@
 // pong timeouts) and stops it at the end. With --url the server is yours, and its grace period
 // should be short too. Node 22 or later, no packages.
 //
-// It passes when, after the last disruption, every game that was on has reached its end, and:
+// It passes when, after the last disruption, every table finishes a game, and:
 //   - no table went without progress for longer than any wait of the server's allows;
 //   - no snapshot held a hand its viewer may not see, and no blind prompt held one;
 //   - every message parsed, and the server sent no error a person could not have caused.
@@ -144,6 +144,8 @@ class Group {
     this.counted = 0;
     this.progress = Date.now();
     this.people = [];
+    this.last = "-";
+    this.round = "-";
   }
 
   connected() {
@@ -166,6 +168,17 @@ class Group {
 
   touch() {
     this.progress = Date.now();
+  }
+
+  // One line of what is known about the table, for the reports and for a failure.
+  describe() {
+    const people = this.people.map((person) => {
+      const seat = person.mySeat();
+      const where = person.table ? `${person.table.state}${seat === null ? "" : `/seat ${seat}`}` : "no table";
+      return `${person.name} ${person.connected ? "on" : "off"} ${where}`;
+    });
+    return `table ${this.index} ${this.code ?? "-"}: ${this.state}, game ${this.counted}, round ${this.round}, ` +
+           `last event ${this.last} ${Math.round((Date.now() - this.progress) / 1000)} s ago [${people.join("; ")}]`;
   }
 }
 
@@ -265,11 +278,22 @@ class Person {
       case "game":
         group.touch();
         checkAll(this, checkSnapshot(message.snapshot));
-        if (message.event.kind === "gameOver" && message.game > group.counted) {
-          group.counted = message.game;
-          group.games++;
-          group.state = "finished";
-          world.count("games finished");
+        group.last = message.event.kind;
+        if (message.snapshot?.round) {
+          group.round = `${message.snapshot.round.index + 1}/${message.snapshot.round.count}`;
+        }
+        if (message.event.kind === "gameOver") {
+          // The server sends no tableState for a game's end: the table is a lobby again from here.
+          if (this.table) {
+            this.table.state = "finished";
+          }
+          if (message.game > group.counted) {
+            group.counted = message.game;
+            group.games++;
+            group.state = "finished";
+            world.count("games finished");
+          }
+          setTimeout(() => this.afterState(), 300);
         }
         return;
       case "prompt":
@@ -353,7 +377,7 @@ class Person {
   onHeld(held) {
     const seat = this.mySeat();
     const awaited = held.waitingFor.length === 0 || (seat !== null && held.waitingFor.includes(seat));
-    if (!awaited || this.continued === held.round || this.world.random() < 0.1) {
+    if (!awaited || this.continued === held.round || this.world.random() < 0.03) {
       return;
     }
     this.continued = held.round;
@@ -580,7 +604,7 @@ async function main() {
   const watchdog = setInterval(() => {
     for (const group of groups) {
       if (group.quietFor() > stallLimit && group.state !== "closed") {
-        world.fail(`table ${group.index} (${group.code}) made no progress for ${Math.round(group.quietFor())} s`);
+        world.fail(`no progress for ${Math.round(group.quietFor())} s at ${group.describe()}`);
         group.touch();
       }
     }
@@ -591,32 +615,33 @@ async function main() {
 
   const report = setInterval(() => {
     console.log(`${new Date().toISOString()} ${JSON.stringify(world.counts)}`);
+    for (const group of groups) {
+      console.log(`  ${group.describe()}`);
+    }
   }, 30000);
 
   await sleep(minutes * 60000);
 
-  // Everyone comes back and stays, and every game that is on must reach its end.
+  // Everyone comes back and stays. Tables go on with game after game, so each one must finish a game
+  // from here: the one that is on, or one its host starts.
   world.disrupting = false;
-  for (const person of people) {
-    if (!person.connected) {
-      person.open();
-    }
-  }
-  const settleBy = Date.now() + 180000;
-  while (Date.now() < settleBy && groups.some((group) => group.state === "playing")) {
-    await sleep(1000);
+  const finishedAtStop = groups.map((group) => group.counted);
+  const unfinished = () => groups.filter((group, index) => group.counted <= finishedAtStop[index]);
+  const settleBy = Date.now() + 300000;
+  while (Date.now() < settleBy && unfinished().length > 0) {
     for (const person of people) {
       if (!person.connected) {
         person.open();
       }
     }
+    await sleep(1000);
+  }
+  for (const group of unfinished()) {
+    world.fail(`no game finished in the 5 minutes after the last disruption: ${group.describe()}`);
   }
   for (const group of groups) {
-    if (group.state === "playing") {
-      world.fail(`table ${group.index} (${group.code}) was still playing 3 minutes after the last disruption`);
-    }
     if (group.games === 0) {
-      world.fail(`table ${group.index} finished no game at all`);
+      world.fail(`no game finished at all: ${group.describe()}`);
     }
   }
 

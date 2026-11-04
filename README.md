@@ -73,7 +73,7 @@ takes a core for as long as it runs, so run it on purpose, and in the background
 nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --minutes 60
 ```
 
-It passes when every game has reached its end after the last disruption, no table stalled, and no
+It passes when every table finishes a game after the last disruption, no table stalled, and no
 snapshot or prompt carried a hand its viewer may not see.
 
 ## Licence
