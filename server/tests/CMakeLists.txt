@@ -36,6 +36,7 @@ add_executable(core_tests
     core/NamesTests.cpp
     core/OutboxTests.cpp
     core/SeatDriverTests.cpp
+    core/SeatingTests.cpp
     core/SessionTests.cpp
     core/SettingsTests.cpp
     core/SoloTests.cpp

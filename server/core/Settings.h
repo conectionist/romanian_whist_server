@@ -106,8 +106,27 @@ std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode);
 // The form of a catalogue id: lower-case letters, digits and '-', at most 40 characters.
 bool isValidAvatarId(std::string_view avatar);
 
+// An online table's settings when it is made: open and computer seats only, at least one open for
+// its maker. Everything about the game is checked as for a game.
+std::optional<SettingsError> checkNewTableSettings(const Settings& settings);
+
+// An online table's settings apart from its seats: speed, structure, replacement, timer, no seed.
+std::optional<SettingsError> checkOnlineRules(const Settings& settings);
+
+// Online, no replacement means Reckoner Beta, the strongest of the affordable ones.
+void completeOnline(Settings& settings);
+
+// A person's profile: a clean name that a Reckoner would not take for a computer player's, and a
+// portrait for their gender that is kept for no level.
+std::optional<SettingsError> checkPersonProfile(const Profile& profile);
+std::optional<SettingsError> checkComputerProfile(const Profile& profile, Level level);
+
 // Cleans every name in place, as cleanName() does, or names the field at fault.
 std::optional<SettingsError> cleanNames(Settings& settings);
+std::optional<SettingsError> cleanProfile(Profile& profile);
+
+// Cleans a person's profile, then checks it.
+std::optional<SettingsError> preparePersonProfile(Profile& profile);
 
 } // namespace whist
 

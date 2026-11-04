@@ -34,6 +34,8 @@ add_library(whist_session STATIC
     SeatDriver.h
     SeatDriver.cpp
     SeatProvider.h
+    Seating.h
+    Seating.cpp
     Service.h
     Service.cpp
     Session.h

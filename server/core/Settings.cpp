@@ -70,7 +70,10 @@ std::optional<Level> parseLevel(std::string_view name)
     return std::nullopt;
 }
 
-std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
+namespace
+{
+
+std::optional<SettingsError> checkPacingAndRules(const Settings& settings, Mode mode)
 {
     if(settings.seats.size() < 2 || settings.seats.size() > 6)
         return SettingsError{"seats"};
@@ -88,45 +91,118 @@ std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
     if(settings.turnTimer && (!settings.replacement || settings.turnTimer->count() <= 0))
         return SettingsError{"turnTimer"};
 
-    std::size_t humans = 0;
-    std::set<std::string> names;
+    return std::nullopt;
+}
 
+// Every seat that is not open, and their names against each other.
+std::optional<SettingsError> checkSeats(const Settings& settings)
+{
+    std::set<std::string> names;
     for(const SeatSetting& seat : settings.seats)
     {
         if(seat.kind == SeatKind::Open)
-            return SettingsError{"seats"};
+            continue;
 
         if(seat.kind == SeatKind::Computer && !seat.level)
             return SettingsError{"level"};
         if(seat.kind == SeatKind::Human && seat.level)
             return SettingsError{"level"};
 
-        const Profile& profile = seat.profile;
-        if(!isCleanName(profile.name))
-            return SettingsError{"name"};
-        if(!isValidGender(profile.gender))
-            return SettingsError{"gender"};
-        const Catalogue& catalogue = Catalogue::get();
-        if(seat.kind == SeatKind::Human ? !catalogue.suitsHuman(profile.avatar, profile.gender)
-                                        : !catalogue.suitsComputer(profile.avatar, profile.gender, *seat.level))
-            return SettingsError{"avatar"};
+        const std::optional<SettingsError> profile = seat.kind == SeatKind::Human
+                                                     ? checkPersonProfile(seat.profile)
+                                                     : checkComputerProfile(seat.profile, *seat.level);
+        if(profile)
+            return profile;
 
         // The engine wants names that differ byte for byte; people want them to differ to the eye.
-        if(!names.insert(nameKey(profile.name)).second)
+        if(!names.insert(nameKey(seat.profile.name)).second)
             return SettingsError{"name"};
-
-        if(seat.kind == SeatKind::Human)
-        {
-            humans++;
-            if(isReservedName(profile.name))
-                return SettingsError{"name"};
-        }
     }
+    return std::nullopt;
+}
 
+} // namespace
+
+std::optional<SettingsError> checkPersonProfile(const Profile& profile)
+{
+    if(!isCleanName(profile.name) || isReservedName(profile.name))
+        return SettingsError{"name"};
+    if(!isValidGender(profile.gender))
+        return SettingsError{"gender"};
+    if(!Catalogue::get().suitsHuman(profile.avatar, profile.gender))
+        return SettingsError{"avatar"};
+    return std::nullopt;
+}
+
+std::optional<SettingsError> checkComputerProfile(const Profile& profile, Level level)
+{
+    if(!isCleanName(profile.name))
+        return SettingsError{"name"};
+    if(!isValidGender(profile.gender))
+        return SettingsError{"gender"};
+    if(!Catalogue::get().suitsComputer(profile.avatar, profile.gender, level))
+        return SettingsError{"avatar"};
+    return std::nullopt;
+}
+
+std::optional<SettingsError> checkSettings(const Settings& settings, Mode mode)
+{
+    if(const std::optional<SettingsError> error = checkPacingAndRules(settings, mode))
+        return error;
+
+    std::size_t humans = 0;
+    for(const SeatSetting& seat : settings.seats)
+    {
+        if(seat.kind == SeatKind::Open)
+            return SettingsError{"seats"};
+        if(seat.kind == SeatKind::Human)
+            humans++;
+    }
     if(mode == Mode::Solo && humans > 1)
         return SettingsError{"seats"};
 
+    return checkSeats(settings);
+}
+
+std::optional<SettingsError> checkNewTableSettings(const Settings& settings)
+{
+    if(const std::optional<SettingsError> error = checkPacingAndRules(settings, Mode::Online))
+        return error;
+
+    // People take their seats by joining.
+    if(std::ranges::any_of(settings.seats, [](const SeatSetting& seat) { return seat.kind == SeatKind::Human; }))
+        return SettingsError{"seats"};
+    if(std::ranges::none_of(settings.seats, [](const SeatSetting& seat) { return seat.kind == SeatKind::Open; }))
+        return SettingsError{"seats"};
+
+    return checkSeats(settings);
+}
+
+std::optional<SettingsError> checkOnlineRules(const Settings& settings)
+{
+    return checkPacingAndRules(settings, Mode::Online);
+}
+
+void completeOnline(Settings& settings)
+{
+    if(!settings.replacement)
+        settings.replacement = Level::ReckonerBeta;
+}
+
+std::optional<SettingsError> cleanProfile(Profile& profile)
+{
+    std::optional<std::string> cleaned = cleanName(profile.name);
+    if(!cleaned)
+        return SettingsError{"name"};
+    profile.name = std::move(*cleaned);
     return std::nullopt;
+}
+
+std::optional<SettingsError> preparePersonProfile(Profile& profile)
+{
+    if(const std::optional<SettingsError> error = cleanProfile(profile))
+        return error;
+    return checkPersonProfile(profile);
 }
 
 std::optional<SettingsError> cleanNames(Settings& settings)
