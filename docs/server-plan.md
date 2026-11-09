@@ -3,7 +3,8 @@
 > **Status: phases 0 to 5 are complete (2026-11-09). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
-> are phase 5. Phases 6 to 11 are not built yet.**
+> are phase 5. Phase 6 has begun: its fixture tool, this repository's part (§10.5), is complete
+> (PR #9). The page's part of phase 6, and phases 7 to 11, are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1655,6 +1656,139 @@ In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/bl
 In this repository it first builds the fixture tool (§10.5), on a phase branch of its own off this
 repository's parent branch. That branch is reviewed like any phase's, and merged with a merge
 commit before the page needs the fixtures. The page's submodule then moves to that merge.
+
+**The fixture tool — ✅ COMPLETE.**
+
+- **Done when:**
+  - `protocol/look/` holds one file for each table picture phase 6 compares, each at the desktop's
+    moment, and the tool checks that moment;
+  - `core_tests "[look]"` fails when the files are stale, and passes in both presets and on CI;
+  - the review and its fixes are done, and the owner has approved.
+
+**Outcome** (branch `web/phase-6-fixtures`, PR #9, commits `514a699`, `3c350a8`, `0673495`,
+`5a27968` and, after the cold review, `6be9126`):
+
+- **The owner's choices** (2026-11-09), the plan's nine questions all at their defaults:
+  - a look file holds a state, a sync's fields without `type` and `seq`, with a `shot` header;
+  - the tool writes the `hand-*` files, built by hand as the desktop's are;
+  - `table-empty` is a file with its header only, `state: null`;
+  - the one viewer is the person at seat 0;
+  - the tool only writes, and `core_tests "[look]"` plays everything again and compares;
+  - the games follow the desktop's `tests/ScreenshotTool.cpp` at `cfeae4c`, and the tool is
+    changed by hand when the desktop's changes;
+  - no `tsan` run;
+  - the phase's heading keeps no ✅, and the fixture tool is marked on its own line when approved;
+  - the "done when" above;
+  - after the cold review: fix all seven findings, in my order, and no second cold review.
+- **Built.**
+  - **`tools/look/`,** a library `whist_look_fixtures` and the program `whist_look`, which build in
+    every preset and need no Drogon.
+    - **`DesktopRules`** is the desktop's player and faces: the lowest bid its strip offers, the
+      first legal card in the order its hand is shown, not the engine's, and `avatars::assign`
+      from a `std::mt19937` seeded with 42, ported line for line.
+    - **`LookFixtures`** holds the shot table and the desktop's settings, plays each game through a
+      real `Service` and `Session` over an inbox of its own, builds the hands and the empty table,
+      and writes the text.
+    - **A game** is played to each picture's decision. There the tool checks the moment (round,
+      trick, cards on the table and in hand, and that it is the person's turn), takes the person's
+      `sync` from the table, and checks it against the messages: the same snapshot, the same
+      prompt, game 1, no hold. It builds every file first, and writes nothing and exits 1 when
+      anything is wrong.
+    - **`whist_look [directory]`** writes `protocol/look/`, or the directory it is given. It
+      cleans out leftover `.json` files only in `protocol/look/`, after every file is written.
+  - **`protocol/look/`,** nine files, each a `shot` header (the desktop picture's name, size and
+    view, and the raised card in `hand-8-cards`) and a `state`. The tool prints, for each, the
+    moment it shows:
+    - `table-3-players`: round 8 of 23, trick 2 of 6, 2 on the table, 5 in hand;
+    - `table-4-players`: round 8 of 26, trick 2 of 5, 3 on the table, 4 in hand;
+    - `table-5-players`: round 9 of 29, trick 2 of 5, 4 on the table, 4 in hand;
+    - `bidding`: round 1 of 32, trick 0 of 1, 0 on the table, 1 in hand;
+    - `table-6-players`: round 10 of 32, trick 2 of 5, 5 on the table, 4 in hand;
+    - `hand-1-card`, `hand-4-cards`, `hand-8-cards` and `table-empty`, built by hand.
+    - Every game reached the desktop's moment on the first run. The plan's assumption, that the
+      same seed, bots and rule give the same game through the server, held.
+  - **The docs:** `protocol/look/README.md`, a line in `PROTOCOL.md`, and a section in the README.
+- **Tests:** 6 new core tests, 138 in all. CTest runs 158. All six together take about half a
+  second.
+  - **`[look]`:**
+    - the fixtures reach the desktop's moments, are up to date, and each state reads as a sync: a
+      missing, stale or leftover file fails;
+    - the games play the same way twice;
+    - after the review, the table-6 and bidding fixtures show what the desktop's pictures show;
+    - after the review, every state is coherent: the person is seat 0, only that seat has a hand,
+      the prompt holds the same hand, `legal` is what `CardValidator` gives, and the hand files
+      are in the desktop's display order.
+  - **`[look][desktop]`:** the player's bids and cards against the desktop's own layout oracle, and
+    each seat's face for 2 to 6 players, with the Cyborg rule.
+  - **Mutation checks,** each made and reverted:
+    - a stray `protocol/look/x.json` fails the up-to-date test, and the tool removes it, but
+      removes nothing from a directory it is given;
+    - a renamed snapshot field in `Codec.cpp` fails `[look]` (16 assertions, for the 8 files with a
+      state) and `[fixtures]`;
+    - a wrong expected moment makes the tool print what it shows and what the desktop's shot is,
+      write nothing and exit 1;
+    - the person playing the engine's first legal card passes the moment check, which counts
+      rounds, tricks and cards and cannot see which card is played. Before the review, only the
+      two stale files (`table-3-players`, `table-6-players`) failed; now the table-6 pin fails too,
+      on its totals, 7/40/26/41/45/45 against 8/33/20/47/45/45;
+    - a hand on every seat of the hand files fails the coherence test (9 assertions) and the
+      files;
+    - another seed for the faces fails the face pins, in the settings and in the file;
+    - one wrong `legal` flag in `hand-4-cards` fails the coherence test.
+  - **The faces,** apart from the pins: the desktop's `avatars::assign`, compiled apart from Qt,
+    deals the same faces for 2 to 6 players.
+- **Where the build departs from the plan, or found what it did not say:**
+  - **A file holds a state, not a snapshot** (the owner's choice 1): §10.5 says "each viewer's
+    snapshot", and a snapshot alone shows neither the legal cards nor the bid strip nor the faces.
+  - **`LookFile` has a `moment`,** for the tool's line. **`buildLookFiles` takes how long a game
+    may stay silent,** so that a test can scale it. **`shotSettings`** is public, for the faces
+    test.
+  - **The rules throw** on a prompt that offers no bid or no card, and a game reports that as a
+    problem.
+  - **The moment check is weaker than the plan said.** The round, trick and hand size follow from
+    the decision count, and the cards on the table hardly depend on play, so it cannot see the
+    card rule. The committed files and the pins after the review guard it.
+  - **The deal does not rest on libstdc++,** as §3.6 assumed. The engine shuffles with its own
+    `uniformIndex`, and the table code uses raw generator output. Only the faces use
+    `std::uniform_int_distribution`.
+  - **The tool cleans only `protocol/look/`.** The plan had it clean any directory it was given.
+- **Not done:**
+  - **A run of the desktop's own `"[.screenshot]"`** to check its cards and faces against
+    `table-4-players` (the plan's Q6, optional). The desktop's history pictures of its phase 13
+    show the same cards for `table-6-players` and `bidding`, but come from before faces were drawn
+    from files, so they cannot show the faces. The faces are pinned from the desktop's own
+    `avatars::assign`.
+  - **The page's part of phase 6,** in `romanian_whist_web`, which starts once this is merged with
+    a merge commit and its submodule has moved to the merge. Its phase-1 echo end-to-end test will
+    break then, because `/ws` is now the game controller.
+- **Reviews.**
+  - **The cold review,** of the whole branch, found 7 problems, none above severity 3, and no
+    crash, hang or leaked card. It found sound: the desktop's tool unchanged since `cfeae4c`, the
+    games, players, rules and faces (worked by hand), `table-6-players`, `bidding` and `hand-8-cards`
+    matching the desktop's history pictures card for card, determinism, message order, the build,
+    CI and the comments.
+    1. Severity 3: the tool removed every `.json` in any directory it was given.
+    2. Severity 2: nothing pinned the files to what the desktop shows.
+    3. Severity 2: nothing checked the files for a hidden hand.
+    4. Severity 1: the hand shots' legal flags, order and raised card were not checked. The raised
+       card's range was, by `.at()`.
+    5. Severity 1: the look README said the deal rests on libstdc++, and `PROTOCOL.md` called a
+       file a sync's fields without its header.
+    6. Severity 1: the twice-test did not print a game's problems.
+    7. Severity 1: the tool did not catch filesystem errors, and removed leftovers before writing.
+  - **My re-check** agreed with all seven, one only in part (4). The owner chose to fix all seven,
+    in my order, and to skip a second cold review. They are fixed in `6be9126`.
+  - **The review ran on the PR,** as the plan says.
+- **Builds and CI.**
+  - **`default` and `release`** (warnings as errors) pass 156 of 156 at `5a27968` and 158 of 158 at
+    `6be9126`, the whole suite taking 151 s and 137 s. `protocol/look/` is unchanged by
+    `whist_look` in either. `clang`, `asan` and `tsan` were not built.
+  - **CI** is green at `5a27968` (run 30) and at `6be9126` (run 31). Run 31's first two attempts,
+    and a run started by hand, failed before any job started, with the workflow file unchanged
+    from the run that had passed minutes before; the third attempt passed. A push of `.md` files
+    to the PR still starts a run, because the path filter reads all of the PR's changes.
+  - **CI** is green at `83d40c8` too (run 34), after the same failed start twice.
+  - **The owner approved** the fixture tool on 2026-11-09.
 
 ### Phase 7: sheets and menus — L
 

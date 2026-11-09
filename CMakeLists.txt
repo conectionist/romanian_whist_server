@@ -60,6 +60,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_subdirectory(server/core)
 add_subdirectory(server/app)
+add_subdirectory(tools/look)
 
 option(WHIST_SERVER_BUILD_TESTS "Build the server's tests" ${PROJECT_IS_TOP_LEVEL})
 

@@ -76,6 +76,19 @@ nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --m
 It passes when every table finishes a game after the last disruption, no table stalled, and no
 snapshot or prompt carried a hand its viewer may not see.
 
+## The look fixtures
+
+[`protocol/look/`](protocol/look/) holds the states the browser page draws its tables from, to
+compare its look with the desktop client's screenshots. A small tool plays the desktop's screenshot
+games and writes them. After changing a message, or the desktop's shots, write them again and
+commit the difference:
+
+```
+nice -n 19 ./build/tools/look/whist_look
+```
+
+`core_tests "[look]"` fails when they are stale.
+
 ## Licence
 
 AGPL-3.0-or-later, as the engine is. A server built from this code must offer its users the source

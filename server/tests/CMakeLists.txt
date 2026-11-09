@@ -35,6 +35,7 @@ add_executable(core_tests
     core/GameRunTests.cpp
     core/HoldTests.cpp
     core/LeakScanTests.cpp
+    core/LookTests.cpp
     core/OnlineTests.cpp
     core/NamesTests.cpp
     core/OutboxTests.cpp
@@ -48,7 +49,7 @@ add_executable(core_tests
 target_include_directories(core_tests PRIVATE core)
 target_compile_options(core_tests PRIVATE ${WHIST_SERVER_WARNINGS})
 target_compile_definitions(core_tests PRIVATE WHIST_PROTOCOL_DIR="${PROJECT_SOURCE_DIR}/protocol")
-target_link_libraries(core_tests PRIVATE whist_session Catch2::Catch2WithMain)
+target_link_libraries(core_tests PRIVATE whist_session whist_look_fixtures Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
 
 # Hands reach the server only through the engine's viewer-filtered snapshot and the move contexts,
