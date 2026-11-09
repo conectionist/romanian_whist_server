@@ -1786,8 +1786,8 @@ commit before the page needs the fixtures. The page's submodule then moves to th
     `whist_look` in either. `clang`, `asan` and `tsan` were not built.
   - **CI** is green at `5a27968` (run 30) and at `6be9126` (run 31). Run 31's first two attempts,
     and a run started by hand, failed before any job started, with the workflow file unchanged
-    from the run that had passed minutes before; the third attempt passed. A commit of `.md` files
-    alone starts no run.
+    from the run that had passed minutes before; the third attempt passed. A push of `.md` files
+    to the PR still starts a run, because the path filter reads all of the PR's changes.
 
 ### Phase 7: sheets and menus — L
 
