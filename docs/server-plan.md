@@ -3,9 +3,8 @@
 > **Status: phases 0 to 5 are complete (2026-11-09). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
-> are phase 5. Phase 6 has begun: its fixture tool, this repository's part (§10.5), is built and
-> reviewed (PR #9) and waits for the owner's approval. The page's part of phase 6, and phases 7 to
-> 11, are not built yet.**
+> are phase 5. Phase 6 has begun: its fixture tool, this repository's part (§10.5), is complete
+> (PR #9). The page's part of phase 6, and phases 7 to 11, are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1658,7 +1657,7 @@ In this repository it first builds the fixture tool (§10.5), on a phase branch 
 repository's parent branch. That branch is reviewed like any phase's, and merged with a merge
 commit before the page needs the fixtures. The page's submodule then moves to that merge.
 
-**The fixture tool.**
+**The fixture tool — ✅ COMPLETE.**
 
 - **Done when:**
   - `protocol/look/` holds one file for each table picture phase 6 compares, each at the desktop's
@@ -1788,6 +1787,8 @@ commit before the page needs the fixtures. The page's submodule then moves to th
     and a run started by hand, failed before any job started, with the workflow file unchanged
     from the run that had passed minutes before; the third attempt passed. A push of `.md` files
     to the PR still starts a run, because the path filter reads all of the PR's changes.
+  - **CI** is green at `83d40c8` too (run 34), after the same failed start twice.
+  - **The owner approved** the fixture tool on 2026-11-09.
 
 ### Phase 7: sheets and menus — L
 
