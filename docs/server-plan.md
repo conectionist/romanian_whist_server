@@ -1,9 +1,9 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 4 are complete (2026-11-04). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 5 are complete (2026-11-09). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
-> through `/ws` and a debug page, is phase 3, and online tables are phase 4. Phases 5 to 11 are not
-> built yet.**
+> through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
+> are phase 5. Phases 6 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -1532,7 +1532,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
     the run at `7bbfc74` started, which has the same code.
   - **The owner approved** the phase on 2026-11-04.
 
-### Phase 5: drops and replacement — M
+### Phase 5: drops and replacement — M ✅ COMPLETE
 
 - **Work:**
   - here, away, replaced and reclaimed, with pong-based detection;
@@ -1647,6 +1647,7 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
       - 1,149 turns were left to the timer, and 8 tables were made again;
       - no table stalled, and no hand was seen where it should not be.
   - **CI** is green at `77a6abf` and `95b2ba2` (runs 24 and 25, started by hand).
+  - **The owner approved** the phase on 2026-11-09.
 
 ### Phase 6: the table page — L
 
