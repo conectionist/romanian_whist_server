@@ -1,9 +1,11 @@
 #include "core/Catalogue.h"
 
 #include "look/DesktopRules.h"
+#include "look/LookFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <set>
 #include <stdexcept>
 
 using namespace whist;
@@ -43,6 +45,35 @@ TEST_CASE("The desktop's player bids the lowest bid it is offered, and plays the
 TEST_CASE("Each seat wears a face the desktop would deal it", "[look][desktop]")
 {
     const Catalogue& catalogue = Catalogue::get();
+
+    for(unsigned int players = 2 ; players <= 6 ; players++)
+    {
+        INFO(players << " players");
+        const Settings settings = shotSettings(players);
+        REQUIRE(settings.seats.size() == players);
+
+        std::set<std::string> worn;
+        for(std::size_t seat = 0 ; seat < settings.seats.size() ; seat++)
+        {
+            INFO("seat " << seat);
+            const SeatSetting& setting = settings.seats[seat];
+            if(seat == 0)
+                CHECK(catalogue.suitsHuman(setting.profile.avatar, setting.profile.gender));
+            else
+                CHECK(catalogue.suitsComputer(setting.profile.avatar, setting.profile.gender, *setting.level));
+            worn.insert(setting.profile.avatar);
+        }
+
+        // The catalogue has faces enough for every seat to wear its own.
+        CHECK(worn.size() == players);
+        CHECK(shotSettings(players) == settings);
+    }
+
+    // A smaller table's faces are the first ones of a bigger table's: each is drawn in turn.
+    const Settings six = shotSettings(6);
+    const Settings three = shotSettings(3);
+    for(std::size_t seat = 0 ; seat < three.seats.size() ; seat++)
+        CHECK(three.seats[seat].profile.avatar == six.seats[seat].profile.avatar);
 
     // A Cyborg wears a cyborg face, and nobody else does.
     const std::vector<desktop::Wearer> wearers{{"male", ""},        {"male", "cyborg"}, {"female", "cyborg"},
