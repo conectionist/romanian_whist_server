@@ -1,0 +1,685 @@
+{
+  "shot" : 
+  {
+    "file" : "table-5-players.png",
+    "height" : 1080,
+    "view" : "window",
+    "width" : 1920
+  },
+  "state" : 
+  {
+    "game" : 1,
+    "held" : null,
+    "history" : 
+    [
+      {
+        "count" : 29,
+        "index" : 0,
+        "nextCountsForStreaks" : false,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 0,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 0,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : -1,
+            "total" : 0,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 0,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 0,
+            "wins" : 0,
+            "won" : 0
+          }
+        ],
+        "tricks" : 1,
+        "trump" : "TH",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 1,
+        "nextCountsForStreaks" : false,
+        "seats" : 
+        [
+          {
+            "bet" : 1,
+            "losses" : 0,
+            "roundScore" : -1,
+            "total" : 5,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 1,
+            "losses" : 0,
+            "roundScore" : 6,
+            "total" : 5,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : -1,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 5,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 5,
+            "wins" : 0,
+            "won" : 0
+          }
+        ],
+        "tricks" : 1,
+        "trump" : "KC",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 2,
+        "nextCountsForStreaks" : false,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 4,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : -1,
+            "total" : 11,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 4,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 10,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 10,
+            "wins" : 0,
+            "won" : 0
+          }
+        ],
+        "tricks" : 1,
+        "trump" : "9D",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 3,
+        "nextCountsForStreaks" : false,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 9,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : -1,
+            "total" : 10,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 9,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 15,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 15,
+            "wins" : 0,
+            "won" : 0
+          }
+        ],
+        "tricks" : 1,
+        "trump" : "7D",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 4,
+        "nextCountsForStreaks" : true,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 14,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 9,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : -1,
+            "total" : 14,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 20,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 20,
+            "wins" : 0,
+            "won" : 0
+          }
+        ],
+        "tricks" : 1,
+        "trump" : "KD",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 5,
+        "nextCountsForStreaks" : true,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 19,
+            "wins" : 1,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 14,
+            "wins" : 1,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 1,
+            "roundScore" : -2,
+            "total" : 13,
+            "wins" : 0,
+            "won" : 2
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 25,
+            "wins" : 1,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 25,
+            "wins" : 1,
+            "won" : 0
+          }
+        ],
+        "tricks" : 2,
+        "trump" : "KD",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 6,
+        "nextCountsForStreaks" : true,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 1,
+            "roundScore" : -1,
+            "total" : 24,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 19,
+            "wins" : 2,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 2,
+            "roundScore" : -2,
+            "total" : 11,
+            "wins" : 0,
+            "won" : 2
+          },
+          {
+            "bet" : 2,
+            "losses" : 1,
+            "roundScore" : -2,
+            "total" : 30,
+            "wins" : 0,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 30,
+            "wins" : 2,
+            "won" : 0
+          }
+        ],
+        "tricks" : 3,
+        "trump" : "QS",
+        "type" : "normal"
+      },
+      {
+        "count" : 29,
+        "index" : 7,
+        "nextCountsForStreaks" : true,
+        "seats" : 
+        [
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 23,
+            "wins" : 1,
+            "won" : 0
+          },
+          {
+            "bet" : 0,
+            "losses" : 1,
+            "roundScore" : -1,
+            "total" : 24,
+            "wins" : 0,
+            "won" : 1
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 9,
+            "wins" : 1,
+            "won" : 0
+          },
+          {
+            "bet" : 2,
+            "losses" : 2,
+            "roundScore" : -1,
+            "total" : 28,
+            "wins" : 0,
+            "won" : 3
+          },
+          {
+            "bet" : 0,
+            "losses" : 0,
+            "roundScore" : 5,
+            "total" : 35,
+            "wins" : 3,
+            "won" : 0
+          }
+        ],
+        "tricks" : 4,
+        "trump" : "5C",
+        "type" : "normal"
+      }
+    ],
+    "lastTrick" : 
+    {
+      "cards" : 
+      [
+        {
+          "card" : "KC",
+          "seat" : 3,
+          "winning" : false
+        },
+        {
+          "card" : "AS",
+          "seat" : 4,
+          "winning" : false
+        },
+        {
+          "card" : "5C",
+          "seat" : 0,
+          "winning" : false
+        },
+        {
+          "card" : "AC",
+          "seat" : 1,
+          "winning" : true
+        },
+        {
+          "card" : "JC",
+          "seat" : 2,
+          "winning" : false
+        }
+      ],
+      "ledBy" : 3,
+      "round" : 8
+    },
+    "prompt" : 
+    {
+      "blind" : false,
+      "deadline" : null,
+      "hand" : 
+      [
+        "6S",
+        "AD",
+        "8S",
+        "9S"
+      ],
+      "id" : 25,
+      "kind" : "play",
+      "legal" : 
+      [
+        1
+      ]
+    },
+    "snapshot" : 
+    {
+      "active" : 0,
+      "bets" : 
+      {
+        "placed" : 5,
+        "sum" : 3
+      },
+      "forbiddenBet" : null,
+      "phase" : "playing",
+      "round" : 
+      {
+        "count" : 29,
+        "index" : 8,
+        "leader" : 3,
+        "trick" : 2,
+        "tricks" : 5,
+        "trump" : "8C",
+        "type" : "normal"
+      },
+      "seats" : 
+      [
+        {
+          "bet" : 0,
+          "bidOrder" : 3,
+          "cards" : 4,
+          "hand" : 
+          [
+            "6S",
+            "AD",
+            "8S",
+            "9S"
+          ],
+          "losses" : 0,
+          "name" : "Player",
+          "roundScore" : 0,
+          "total" : 28,
+          "wins" : 1,
+          "won" : 0
+        },
+        {
+          "bet" : 1,
+          "bidOrder" : 4,
+          "cards" : 3,
+          "losses" : 1,
+          "name" : "Ana",
+          "roundScore" : 0,
+          "total" : 23,
+          "wins" : 0,
+          "won" : 1
+        },
+        {
+          "bet" : 0,
+          "bidOrder" : 5,
+          "cards" : 3,
+          "losses" : 0,
+          "name" : "Bogdan",
+          "roundScore" : 0,
+          "total" : 14,
+          "wins" : 1,
+          "won" : 0
+        },
+        {
+          "bet" : 2,
+          "bidOrder" : 1,
+          "cards" : 3,
+          "losses" : 2,
+          "name" : "Cristina",
+          "roundScore" : 0,
+          "total" : 27,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 0,
+          "bidOrder" : 2,
+          "cards" : 3,
+          "losses" : 0,
+          "name" : "Dan",
+          "roundScore" : 0,
+          "total" : 40,
+          "wins" : 3,
+          "won" : 0
+        }
+      ],
+      "status" : "inProgress",
+      "table" : 
+      {
+        "cards" : 
+        [
+          {
+            "card" : "7D",
+            "seat" : 1,
+            "winning" : false
+          },
+          {
+            "card" : "9D",
+            "seat" : 2,
+            "winning" : false
+          },
+          {
+            "card" : "6D",
+            "seat" : 3,
+            "winning" : false
+          },
+          {
+            "card" : "JD",
+            "seat" : 4,
+            "winning" : true
+          }
+        ],
+        "leadSuit" : "D",
+        "ledBy" : 1
+      },
+      "you" : 0
+    },
+    "table" : 
+    {
+      "code" : "TN4HF9",
+      "host" : 0,
+      "mode" : "solo",
+      "paused" : false,
+      "seats" : 
+      [
+        {
+          "avatar" : "man-white-hair-hat",
+          "gender" : "male",
+          "kind" : "human",
+          "name" : "Player",
+          "presence" : "here",
+          "you" : true
+        },
+        {
+          "avatar" : "woman-shoulder-hair",
+          "gender" : "female",
+          "kind" : "computer",
+          "level" : "low-risk",
+          "name" : "Ana"
+        },
+        {
+          "avatar" : "man-black-tee",
+          "gender" : "male",
+          "kind" : "computer",
+          "level" : "ducking",
+          "name" : "Bogdan"
+        },
+        {
+          "avatar" : "woman-long-brown-hair",
+          "gender" : "female",
+          "kind" : "computer",
+          "level" : "low-risk",
+          "name" : "Cristina"
+        },
+        {
+          "avatar" : "man-stubble",
+          "gender" : "male",
+          "kind" : "computer",
+          "level" : "ducking",
+          "name" : "Dan"
+        }
+      ],
+      "settings" : 
+      {
+        "allOneCardForehead" : false,
+        "botSpeed" : 4,
+        "foreheadAndHidden" : true,
+        "seats" : 
+        [
+          {
+            "avatar" : "man-white-hair-hat",
+            "gender" : "male",
+            "kind" : "human",
+            "name" : "Player"
+          },
+          {
+            "avatar" : "woman-shoulder-hair",
+            "gender" : "female",
+            "kind" : "computer",
+            "level" : "low-risk",
+            "name" : "Ana"
+          },
+          {
+            "avatar" : "man-black-tee",
+            "gender" : "male",
+            "kind" : "computer",
+            "level" : "ducking",
+            "name" : "Bogdan"
+          },
+          {
+            "avatar" : "woman-long-brown-hair",
+            "gender" : "female",
+            "kind" : "computer",
+            "level" : "low-risk",
+            "name" : "Cristina"
+          },
+          {
+            "avatar" : "man-stubble",
+            "gender" : "male",
+            "kind" : "computer",
+            "level" : "ducking",
+            "name" : "Dan"
+          }
+        ],
+        "seed" : 42,
+        "structure" : "1-8-1",
+        "waitAfterRound" : false
+      },
+      "state" : "playing"
+    }
+  }
+}

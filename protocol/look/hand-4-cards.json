@@ -1,0 +1,203 @@
+{
+  "shot" : 
+  {
+    "file" : "hand-4-cards.png",
+    "height" : 1034,
+    "view" : "table",
+    "width" : 1920
+  },
+  "state" : 
+  {
+    "game" : 1,
+    "held" : null,
+    "history" : [],
+    "lastTrick" : null,
+    "prompt" : 
+    {
+      "blind" : false,
+      "deadline" : null,
+      "hand" : 
+      [
+        "9C",
+        "AS",
+        "TH",
+        "8H"
+      ],
+      "id" : 1,
+      "kind" : "play",
+      "legal" : 
+      [
+        2,
+        3
+      ]
+    },
+    "snapshot" : 
+    {
+      "active" : 0,
+      "bets" : 
+      {
+        "placed" : 4,
+        "sum" : 4
+      },
+      "forbiddenBet" : null,
+      "phase" : "playing",
+      "round" : 
+      {
+        "count" : 24,
+        "index" : 6,
+        "leader" : 1,
+        "trick" : 1,
+        "tricks" : 4,
+        "trump" : "7C",
+        "type" : "normal"
+      },
+      "seats" : 
+      [
+        {
+          "bet" : 1,
+          "bidOrder" : 4,
+          "cards" : 4,
+          "hand" : 
+          [
+            "9C",
+            "AS",
+            "TH",
+            "8H"
+          ],
+          "losses" : 0,
+          "name" : "You",
+          "roundScore" : 0,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 2,
+          "bidOrder" : 1,
+          "cards" : 3,
+          "losses" : 0,
+          "name" : "Bogdan",
+          "roundScore" : 0,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 0,
+          "bidOrder" : 2,
+          "cards" : 4,
+          "losses" : 0,
+          "name" : "Ana",
+          "roundScore" : 0,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        },
+        {
+          "bet" : 1,
+          "bidOrder" : 3,
+          "cards" : 4,
+          "losses" : 0,
+          "name" : "Costel",
+          "roundScore" : 0,
+          "total" : 0,
+          "wins" : 0,
+          "won" : 0
+        }
+      ],
+      "status" : "inProgress",
+      "table" : 
+      {
+        "cards" : 
+        [
+          {
+            "card" : "KH",
+            "seat" : 1,
+            "winning" : true
+          }
+        ],
+        "leadSuit" : "H",
+        "ledBy" : 1
+      },
+      "you" : 0
+    },
+    "table" : 
+    {
+      "code" : "HAND01",
+      "host" : 0,
+      "mode" : "solo",
+      "paused" : false,
+      "seats" : 
+      [
+        {
+          "avatar" : "man-dark-hair-beard",
+          "gender" : "male",
+          "kind" : "human",
+          "name" : "You",
+          "presence" : "here",
+          "you" : true
+        },
+        {
+          "avatar" : "man-hat-mustache",
+          "gender" : "male",
+          "kind" : "computer",
+          "level" : "low-risk",
+          "name" : "Bogdan"
+        },
+        {
+          "avatar" : "woman-long-brown-hair",
+          "gender" : "female",
+          "kind" : "computer",
+          "level" : "ducking",
+          "name" : "Ana"
+        },
+        {
+          "avatar" : "man-white-hair-hat",
+          "gender" : "male",
+          "kind" : "computer",
+          "level" : "low-risk",
+          "name" : "Costel"
+        }
+      ],
+      "settings" : 
+      {
+        "allOneCardForehead" : false,
+        "botSpeed" : 4,
+        "foreheadAndHidden" : false,
+        "seats" : 
+        [
+          {
+            "avatar" : "man-dark-hair-beard",
+            "gender" : "male",
+            "kind" : "human",
+            "name" : "You"
+          },
+          {
+            "avatar" : "man-hat-mustache",
+            "gender" : "male",
+            "kind" : "computer",
+            "level" : "low-risk",
+            "name" : "Bogdan"
+          },
+          {
+            "avatar" : "woman-long-brown-hair",
+            "gender" : "female",
+            "kind" : "computer",
+            "level" : "ducking",
+            "name" : "Ana"
+          },
+          {
+            "avatar" : "man-white-hair-hat",
+            "gender" : "male",
+            "kind" : "computer",
+            "level" : "low-risk",
+            "name" : "Costel"
+          }
+        ],
+        "structure" : "1-8-1",
+        "waitAfterRound" : false
+      },
+      "state" : "playing"
+    }
+  }
+}

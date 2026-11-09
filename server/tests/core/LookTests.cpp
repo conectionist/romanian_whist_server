@@ -3,9 +3,15 @@
 #include "look/DesktopRules.h"
 #include "look/LookFixtures.h"
 
+#include "support/Recorder.h"
+#include "support/ServerMessages.h"
+
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 
 using namespace whist;
@@ -13,6 +19,81 @@ using namespace whist::look;
 using romanian_whist::Card;
 using romanian_whist::Rank;
 using romanian_whist::Suit;
+
+namespace
+{
+
+const std::chrono::milliseconds patience(60000 * test::slowdown);
+
+const std::string regenerate = "Run ./build/tools/look/whist_look and commit the difference.";
+
+std::optional<std::string> readFile(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    if(!file)
+        return std::nullopt;
+    std::stringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+} // namespace
+
+TEST_CASE("The look fixtures reach the desktop's moments, and are up to date", "[look]")
+{
+    const Built built = buildLookFiles(patience);
+
+    for(const std::string& problem : built.problems)
+        UNSCOPED_INFO(problem);
+    REQUIRE(built.problems.empty());
+
+    std::set<std::string> written;
+    for(const LookFile& file : built.files)
+    {
+        INFO(file.name);
+        written.insert(file.name);
+
+        // A client draws a state as it draws a sync, so it has to read as one.
+        const Json::Value& state = file.content["state"];
+        if(!state.isNull())
+        {
+            Json::Value sync = state;
+            sync["type"] = "sync";
+            sync["seq"] = 1;
+            CHECK(test::shapeError(sync).empty());
+        }
+
+        const std::filesystem::path path = lookDirectory() / file.name;
+        const std::optional<std::string> committed = readFile(path);
+        if(!committed)
+            FAIL_CHECK(path.string() << " is missing. " << regenerate);
+        else if(*committed != lookText(file.content))
+            FAIL_CHECK(path.string() << " is not what the tool writes now. " << regenerate);
+    }
+
+    std::error_code none;
+    for(const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(lookDirectory(), none))
+    {
+        if(entry.path().extension() == ".json" && !written.contains(entry.path().filename().string()))
+            FAIL_CHECK(entry.path().string() << " is not written by the tool. " << regenerate);
+    }
+}
+
+TEST_CASE("The look games play the same way twice", "[look]")
+{
+    const Built first = buildLookFiles(patience);
+    const Built second = buildLookFiles(patience);
+
+    REQUIRE(first.problems.empty());
+    REQUIRE(second.problems.empty());
+    REQUIRE(first.files.size() == second.files.size());
+    for(std::size_t i = 0 ; i < first.files.size() ; i++)
+    {
+        INFO(first.files[i].name);
+        CHECK(first.files[i].name == second.files[i].name);
+        CHECK(lookText(first.files[i].content) == lookText(second.files[i].content));
+    }
+}
 
 TEST_CASE("The desktop's player bids the lowest bid it is offered, and plays the first legal card as its hand shows them",
           "[look][desktop]")
