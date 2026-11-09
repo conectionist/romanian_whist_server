@@ -29,11 +29,15 @@ struct Seat0
     std::unique_ptr<SeatDriver> driver;
     std::size_t cursor = 0;
 
+    // How often the driver told the table something had changed.
+    std::atomic<int> changes{0};
+
     explicit Seat0(std::optional<milliseconds> turnTimer = std::nullopt)
     {
         outbox.attach(ana, recorder.connect(ana));
         driver = std::make_unique<SeatDriver>(Seat{0}, ana, makeComputerPlayer(Level::LowRisk, Seat{0}, std::nullopt),
-                                              turnTimer, outbox, std::make_shared<std::atomic<std::uint64_t>>(0));
+                                              turnTimer, outbox, std::make_shared<std::atomic<std::uint64_t>>(0),
+                                              [this] { changes++; });
     }
 
     // Asks for a bid on another thread, as the engine would on the game thread.
@@ -291,4 +295,216 @@ TEST_CASE("An answer and a deadline at the same moment: exactly one wins", "[sea
     // Both sides of the race were reached.
     CHECK(answers > 0);
     CHECK(timeouts > 0);
+}
+
+TEST_CASE("A member who is away is waited for until the grace period ends, then replaced", "[seat][away]")
+{
+    Seat0 seat(milliseconds(60000));
+    seat.driver->away(Clock::now() + milliseconds(200 * test::slowdown));
+    auto play = seat.play();
+
+    const Json::Value prompt = seat.next();
+    CHECK(prompt["deadline"].asInt() > 50000);
+    CHECK(seat.driver->awayDeadline());
+
+    // Only the ten of spades follows suit.
+    CHECK(play.get() == 1u);
+    const Json::Value closed = seat.next();
+    CHECK(closed["by"] == "computer");
+    CHECK(seat.driver->replaced());
+    CHECK_FALSE(seat.driver->humanInCharge());
+    CHECK_FALSE(seat.driver->awayDeadline());
+
+    // The table was told the prompt opened for an away member, and that the seat was replaced.
+    CHECK(seat.changes == 2);
+}
+
+TEST_CASE("A member who is back before the grace period ends answers as usual", "[seat][away]")
+{
+    Seat0 seat(milliseconds(60000));
+    seat.driver->away(Clock::now() + milliseconds(30000));
+    auto bid = seat.bid();
+    const Json::Value prompt = seat.next();
+
+    seat.driver->here();
+    CHECK_FALSE(seat.driver->awayDeadline());
+    CHECK(seat.driver->submit(seat.answer(PromptKind::Bet, prompt["id"].asUInt64(), 3)) == SeatDriver::Submitted::Taken);
+    CHECK(bid.get() == 3u);
+    CHECK(seat.next()["by"] == "you");
+    CHECK_FALSE(seat.driver->replaced());
+}
+
+TEST_CASE("An away member's wait ends at the turn timer when that comes first", "[seat][away]")
+{
+    Seat0 seat(milliseconds(30));
+    seat.driver->away(Clock::now() + milliseconds(60000));
+    auto play = seat.play();
+    seat.next();
+
+    CHECK(play.get() == 1u);
+    CHECK(seat.next()["by"] == "computer");
+    CHECK(seat.driver->replaced());
+}
+
+TEST_CASE("With no turn timer, an away member is still waited for only as long as the grace period", "[seat][away]")
+{
+    Seat0 seat;
+    seat.driver->away(Clock::now() + milliseconds(30));
+    auto play = seat.play();
+    const Json::Value prompt = seat.next();
+    CHECK(prompt["deadline"].isNull());
+
+    CHECK(play.get() == 1u);
+    CHECK(seat.driver->replaced());
+}
+
+TEST_CASE("A turn that comes after the grace period is the computer player's, with no prompt", "[seat][away]")
+{
+    Seat0 seat(milliseconds(60000));
+    seat.driver->away(Clock::now() - milliseconds(1));
+
+    CHECK(seat.play().get() == 1u);
+    CHECK(seat.recorder.messagesTo(ana).empty());
+    CHECK(seat.driver->replaced());
+    CHECK(seat.changes == 1);
+
+    // And so is every turn after it.
+    CHECK(seat.play().get() == 1u);
+    CHECK(seat.recorder.messagesTo(ana).empty());
+}
+
+TEST_CASE("Three turns in a row that run out replace a connected member; an answer starts the count over",
+          "[seat][timer]")
+{
+    Seat0 seat(milliseconds(25 * test::slowdown));
+
+    const auto timeOut = [&]
+    {
+        auto play = seat.play();
+        seat.next();
+        CHECK(play.get() == 1u);
+        CHECK(seat.next()["by"] == "computer");
+    };
+    const auto answer = [&]
+    {
+        auto play = seat.play();
+        const Json::Value prompt = seat.next();
+        seat.driver->submit(seat.answer(PromptKind::Play, prompt["id"].asUInt64(), 1));
+        CHECK(play.get() == 1u);
+        CHECK(seat.next()["by"] == "you");
+    };
+
+    timeOut();
+    timeOut();
+    answer();
+    timeOut();
+    timeOut();
+    CHECK_FALSE(seat.driver->replaced());
+    CHECK(seat.changes == 0);
+
+    timeOut();
+    CHECK(seat.driver->replaced());
+    CHECK(seat.changes == 1);
+
+    // Replaced, the next turn is made at once and nothing is sent.
+    const std::size_t sent = seat.recorder.messagesTo(ana).size();
+    CHECK(seat.play().get() == 1u);
+    CHECK(seat.recorder.messagesTo(ana).size() == sent);
+}
+
+TEST_CASE("Replacing a seat closes its open prompt as the computer's, and it can be taken back", "[seat][away]")
+{
+    Seat0 seat;
+    auto play = seat.play();
+    const Json::Value prompt = seat.next();
+
+    seat.driver->replace(false);
+    CHECK(play.get() == 1u);
+    CHECK(seat.next()["by"] == "computer");
+    CHECK(seat.driver->submit(seat.answer(PromptKind::Play, prompt["id"].asUInt64(), 1)) == SeatDriver::Submitted::Stale);
+    CHECK_FALSE(seat.driver->humanInCharge());
+
+    CHECK(seat.driver->reclaim());
+    CHECK_FALSE(seat.driver->reclaim());
+    CHECK(seat.driver->humanInCharge());
+
+    // Their next turn is theirs.
+    auto again = seat.play();
+    const Json::Value second = seat.next();
+    CHECK(second["type"] == "prompt");
+    CHECK(seat.driver->submit(seat.answer(PromptKind::Play, second["id"].asUInt64(), 1)) == SeatDriver::Submitted::Taken);
+    CHECK(again.get() == 1u);
+}
+
+TEST_CASE("A member who leaves is sent nothing more, not even that their prompt closed", "[seat][away]")
+{
+    Seat0 seat;
+    auto play = seat.play();
+    seat.next();
+
+    seat.driver->replace(true);
+    CHECK(play.get() == 1u);
+    CHECK(seat.play().get() == 1u);
+    CHECK(seat.recorder.messagesTo(ana).size() == 1);
+
+    // Back, they are sent things again.
+    CHECK(seat.driver->reclaim());
+    auto asked = seat.play();
+    CHECK(seat.next()["type"] == "prompt");
+    seat.driver->abandon();
+    CHECK_THROWS_AS(asked.get(), GameAbandoned);
+}
+
+TEST_CASE("A seat with no computer player to stand in is never replaced", "[seat][away]")
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    outbox.attach(ana, recorder.connect(ana));
+    SeatDriver driver(Seat{0}, ana, ComputerPlayer{}, std::nullopt, outbox, std::make_shared<std::atomic<std::uint64_t>>(0));
+
+    driver.away(Clock::now() - milliseconds(1));
+    driver.replace(false);
+    CHECK_FALSE(driver.replaced());
+    CHECK(driver.humanInCharge());
+}
+
+TEST_CASE("An answer and the end of the grace period at the same moment: exactly one wins", "[seat][away][race]")
+{
+    std::mt19937 random(5);
+    int answers = 0;
+    int replaced = 0;
+
+    for(int round = 0 ; round < 300 ; round++)
+    {
+        Seat0 seat;
+        seat.driver->away(Clock::now() + milliseconds(2));
+        auto bid = seat.bid();
+        const Json::Value prompt = seat.next();
+
+        std::this_thread::sleep_for(std::chrono::microseconds(random() % 4000));
+        const SeatDriver::Submitted submitted =
+            seat.driver->submit(seat.answer(PromptKind::Bet, prompt["id"].asUInt64(), 3));
+        const unsigned int made = bid.get();
+        const Json::Value closed = seat.next();
+        REQUIRE(closed["type"] == "promptClosed");
+
+        if(submitted == SeatDriver::Submitted::Taken)
+        {
+            answers++;
+            CHECK(closed["by"] == "you");
+            CHECK(made == 3);
+            CHECK_FALSE(seat.driver->replaced());
+        }
+        else
+        {
+            replaced++;
+            CHECK(closed["by"] == "computer");
+            CHECK(made != 1);
+            CHECK(seat.driver->replaced());
+        }
+        CHECK(seat.recorder.messagesTo(ana).size() == 2);
+    }
+
+    CHECK(answers > 0);
+    CHECK(replaced > 0);
 }

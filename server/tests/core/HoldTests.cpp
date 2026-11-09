@@ -38,7 +38,7 @@ std::vector<unsigned int> seats(const Json::Value& list)
 }
 
 // An online game of humans at seats 0 to humans - 1, member seat + 1, and computer players after
-// them, waiting after each round. Members in `away` have no connection.
+// them, waiting after each round. Members in `away` have no connection, and no turn of theirs waits.
 struct OnlineGame
 {
     test::Recorder recorder;
@@ -63,12 +63,14 @@ struct OnlineGame
         settings.foreheadAndHidden = false;
         settings.waitAfterRound = true;
         settings.replacement = Level::Random;
-        if(!away.empty())
-            settings.turnTimer = milliseconds(1);
 
         GameRunSetup setup = test::quickGame(settings, members);
         setup.roundHold = hold;
         run = std::make_unique<GameRun>(std::move(setup), outbox);
+
+        // Their grace period is over, so their turns are their computer players'.
+        for(MemberId member : away)
+            run->away(member, Clock::now());
     }
 
     ~OnlineGame()
@@ -298,4 +300,18 @@ TEST_CASE("Online, closing during the hold joins at once", "[hold][online][close
     online.run->close();
     online.run.reset();
     CHECK(Clock::now() - started < milliseconds(1000 * test::slowdown));
+}
+
+TEST_CASE("Online, a replaced human is not waited for", "[hold][online][away]")
+{
+    OnlineGame online(3, 2, longHold);
+    online.addHuman(1, true);
+    online.run->replace(2, false);
+    online.run->start();
+    REQUIRE(online.finish());
+
+    const std::vector<Json::Value> held = online.held(1);
+    CHECK(held.size() == online.run->publisher().history().size());
+    for(const Json::Value& message : held)
+        CHECK(seats(message["waitingFor"]) == std::vector<unsigned int>{0});
 }

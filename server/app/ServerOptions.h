@@ -18,6 +18,24 @@ struct ServerOptions
     std::size_t ioThreads = 2;
     std::size_t maxMessageBytes = 4096;
     std::chrono::milliseconds pingInterval{10000};
+
+    // A connection nothing is heard from for this long is closed, and its player counts as away. It
+    // must be longer than the ping interval.
+    std::chrono::milliseconds pongTimeout{30000};
+
+    // How often the server looks for silent connections, and for tables to reap.
+    std::chrono::milliseconds reapInterval{1000};
+
+    // How long, from when their connection went, an online player's turn is waited for before a
+    // computer player takes their seat.
+    std::chrono::milliseconds gracePeriod{30000};
+
+    // How long a table is kept once nobody at it is connected: ten minutes online, half an hour solo.
+    std::chrono::milliseconds onlineIdle{10 * 60 * 1000};
+    std::chrono::milliseconds soloIdle{30 * 60 * 1000};
+
+    // How long a member who is at no table and not connected is remembered.
+    std::chrono::milliseconds forgetMember{60 * 60 * 1000};
     std::chrono::milliseconds shutdownDelay{0};
 
     // The shortest beat a computer player's move gets, even at Instant, so a watched game of

@@ -9,6 +9,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
+#include <random>
+#include <stop_token>
+#include <thread>
 
 using namespace whist;
 using std::chrono::milliseconds;
@@ -29,6 +32,9 @@ struct LeakGame
 
     // Online: no watcher, and the hold after each round waits for every human's Continue.
     bool online = false;
+
+    // People go away, are replaced, and take their seats back all through the game.
+    bool churn = false;
 };
 
 // Plays one game with scripted humans at `humans` and a watcher, and returns the whole log. Every
@@ -93,6 +99,30 @@ std::vector<test::Entry> play(const LeakGame& spec)
     }
 
     run->start();
+
+    // Stopped and joined before the run goes, whichever way the function ends.
+    std::jthread churner;
+    if(spec.churn)
+    {
+        churner = std::jthread([&run, &spec](std::stop_token stop)
+        {
+            std::mt19937 random(spec.seed);
+            while(!stop.stop_requested())
+            {
+                const MemberId member = spec.humans[random() % spec.humans.size()] + 1;
+                switch(random() % 5)
+                {
+                    case 0: run->away(member, Clock::now() + milliseconds(random() % 3)); break;
+                    case 1: run->here(member); break;
+                    case 2: run->replace(member, false); break;
+                    case 3: run->reclaim(member); break;
+                    default: run->sendSync(member, TableView{}); break;
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(random() % 1500));
+            }
+        });
+    }
+
     for(const auto& human : humans)
     {
         REQUIRE(human->waitUntilOver(patience));
@@ -102,6 +132,7 @@ std::vector<test::Entry> play(const LeakGame& spec)
     while(!run->finished() && Clock::now() < deadline)
         std::this_thread::sleep_for(milliseconds(1));
     CHECK(run->outcome() == RunOutcome::Finished);
+    churner = std::jthread();
     humans.clear();
     run.reset();
     return recorder.entries();
@@ -136,8 +167,11 @@ TEST_CASE("No message carries a card its member may not see", "[leak]")
         }
     }
 
-    // Three people and three computer players online, each continuing every hold.
+    // Three people and three computer players online, each continuing every hold, and again with
+    // people going away and coming back all through it.
     games.push_back({6, {0, 2, 4}, GameStructure::S_181, false, seed++, true});
+    games.push_back({6, {0, 2, 4}, GameStructure::S_181, false, seed++, true, true});
+    games.push_back({4, {1, 3}, GameStructure::S_818, true, seed++, true, true});
 
     std::size_t messages = 0;
     for(const LeakGame& game : games)

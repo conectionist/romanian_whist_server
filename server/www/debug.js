@@ -527,6 +527,15 @@ function render() {
   $("speed").value = String(table.settings.botSpeed);
   $("wait").checked = table.settings.waitAfterRound;
   $("again").hidden = !over || !solo;
+
+  // A computer player is playing the seat while its person is away or idle.
+  $("back").hidden = !(seat !== null && table.seats[seat].presence === "replaced");
+  const waiting = table.waitingFor;
+  $("waiting").hidden = !waiting;
+  if (waiting) {
+    $("waiting").textContent = `Waiting for ${seatName(waiting.seat)}, who is away: ` +
+                               `${Math.round(waiting.deadline / 1000)} s left when sent.`;
+  }
   renderLobby(table, seat);
 
   $("held").hidden = !state.held;
@@ -631,6 +640,7 @@ function setUp() {
   $("wait").addEventListener("change", () => changeSettings({ waitAfterRound: $("wait").checked }));
   $("again").addEventListener("click", () => send({ type: "startGame" }));
   $("leave").addEventListener("click", () => send({ type: "leaveTable" }));
+  $("back").addEventListener("click", () => send({ type: "back" }));
   $("continue").addEventListener("click", () => {
     if (state.held) {
       send({ type: "continue", round: state.held.round });

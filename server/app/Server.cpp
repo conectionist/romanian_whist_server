@@ -77,6 +77,16 @@ void watchForStop(std::chrono::milliseconds delay)
     });
 }
 
+// Closes connections that stopped answering pings. Once the service has shut down this does nothing.
+void watchForSilence(std::chrono::milliseconds interval)
+{
+    drogon::app().getLoop()->runEvery(interval, []
+    {
+        if(service())
+            service()->reap(Clock::now());
+    });
+}
+
 void announce()
 {
     LOG_INFO << "whist_server " << std::string(serverVersion()) << ", engine " << std::string(engineVersion());
@@ -138,6 +148,11 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
 
     ServiceOptions serviceOptions;
     serviceOptions.registry.table.instantFloor = options.instantFloor;
+    serviceOptions.pongTimeout = options.pongTimeout;
+    serviceOptions.registry.table.gracePeriod = options.gracePeriod;
+    serviceOptions.registry.table.onlineIdle = options.onlineIdle;
+    serviceOptions.registry.table.soloIdle = options.soloIdle;
+    serviceOptions.registry.forgetMember = options.forgetMember;
     service() = std::make_shared<Service>(std::move(serviceOptions));
 
     drogon::app()
@@ -152,9 +167,11 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
         .registerController(std::make_shared<GameController>(service(), options.pingInterval))
         .disableSigtermHandling()
-        .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, onListening = std::move(onListening)]
+        .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, reapInterval = options.reapInterval,
+                                  onListening = std::move(onListening)]
         {
             watchForStop(shutdownDelay);
+            watchForSilence(reapInterval);
             whenListening([onListening]
             {
                 announce();

@@ -72,6 +72,80 @@ void Seating::setPacing(int botSpeed, bool waitAfterRound)
     settings_.waitAfterRound = waitAfterRound;
 }
 
+std::optional<Clock::time_point> Seating::awaySince(MemberId member) const
+{
+    for(const TableMember& m : members_)
+    {
+        if(m.id == member)
+            return m.awaySince;
+    }
+    return std::nullopt;
+}
+
+void Seating::setAway(MemberId member, std::optional<Clock::time_point> since)
+{
+    if(TableMember* found = find(member))
+        found->awaySince = since;
+}
+
+bool Seating::passHost(const std::function<bool(MemberId)>& here)
+{
+    for(const TableMember& m : members_)
+    {
+        if(m.id != host_ && here(m.id))
+        {
+            host_ = m.id;
+            return true;
+        }
+    }
+    return false;
+}
+
+void Seating::depart(MemberId member)
+{
+    const auto found = std::ranges::find_if(members_, [member](const TableMember& m) { return m.id == member; });
+    if(found == members_.end())
+        return;
+
+    TableMember leaving = *found;
+    leaving.awaySince.reset();
+    departed_.push_back(leaving);
+    members_.erase(found);
+
+    if(host_ == member && !members_.empty())
+        host_ = members_.front().id;
+}
+
+bool Seating::hasDeparted() const
+{
+    return !departed_.empty();
+}
+
+bool Seating::departed(MemberId member) const
+{
+    return std::ranges::any_of(departed_, [member](const TableMember& m) { return m.id == member; });
+}
+
+void Seating::rejoin(MemberId member)
+{
+    const auto found = std::ranges::find_if(departed_, [member](const TableMember& m) { return m.id == member; });
+    if(found == departed_.end())
+        return;
+
+    members_.push_back(*found);
+    departed_.erase(found);
+}
+
+void Seating::openDeparted()
+{
+    for(const TableMember& m : departed_)
+    {
+        if(m.seat)
+            settings_.seats.at(*m.seat) = SeatSetting{};
+    }
+    departed_.clear();
+}
+
 std::set<std::string> Seating::takenKeys(std::optional<unsigned int> except) const
 {
     std::set<std::string> keys;

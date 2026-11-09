@@ -13,6 +13,9 @@ The names and portraits players may have are in [`catalogues/`](catalogues/).
 - **Every message has a `type`.**
 - **Every server message also has `seq`.** It counts from 1 on each connection, and messages
   arrive in `seq` order. It is there for logs and tests; a client needs it for nothing else.
+- **Silence.** A connection the server hears nothing from, not even a pong to its ping, for 30 s is
+  closed by the server, with no Close frame, and its member is away (see
+  [Going away](#going-away-and-coming-back)). Browsers answer pings below the page's script.
 - **One connection per member.** A `hello` with a token that another connection holds takes the
   member over: the older connection gets `error {code: "openElsewhere"}` and is closed. A page
   that gets it should not reconnect by itself, or the two tabs would take the member from each
@@ -115,7 +118,8 @@ connection at that moment, which may be a newer tab.
 | `play` | `prompt`, `index` | Your own open prompt |
 | `continue` | `round` | Once the round is scored: see [The round hold](#the-round-hold) |
 | `pause`, `resume` | – | Solo, while a game is on |
-| `leaveTable` | – | At a table. Solo: closes the table. Online: between games |
+| `leaveTable` | – | At a table. Solo: closes the table. Online: opens your seat between games; during a game a computer player takes it |
+| `back` | – | At a table: see [Going away](#going-away-and-coming-back). Ignored when there is nothing to take back |
 
 
 ### hello
@@ -172,10 +176,42 @@ A table's link is `/t/<code>`, which serves the page; the page reads the code fr
   - The host's `startGame` needs every seat filled: `illegal`, `seats`, otherwise.
   - `leaveTable` opens your seat and answers with a `sync` with `table: null`. A host who leaves
     hands over to whoever has been there longest, and the last one out closes the table.
-- **During a game** none of these are allowed (`illegal`), and nobody can join. Leaving during a
-  game comes later.
+- **During a game** none of these are allowed (`illegal`) but `leaveTable`, and nobody new can join
+  (`tableFull`). Someone who left the game can join again by its code: see
+  [Going away](#going-away-and-coming-back).
 - **Presence:** everyone is sent a `tableState` when someone's connection comes back or goes, with
   their seat's `presence` `here` or `away`. A connection that a newer tab replaced says nothing.
+
+### Going away and coming back
+
+Online, except where it says solo.
+
+- **Away.** The member's connection has closed, or has said nothing for 30 s. Their seat is still
+  theirs, and everyone is sent a `tableState` with its `presence` `away`.
+- **The grace period** is 30 s from going away. If a turn of theirs comes inside it, the game waits
+  for them until the earlier of the end of the grace period and their turn timer. `tableState`
+  then has `waitingFor`, `{ "seat": 2, "deadline": 23000 }`: whose turn is waited for, and the
+  milliseconds left when it was sent. A returning member's `sync` carries the prompt they had.
+- **Replaced.** A computer player, the table's `replacement`, makes the seat's moves from now on,
+  and the seat's `presence` is `replaced`. It keeps its name, portrait and score. This happens when
+  the wait above runs out, when the grace period ends before a turn of theirs comes, when they leave,
+  and when their turn timer runs out three times in a row while they are connected. A prompt open
+  for them is closed with `promptClosed {by: "computer"}`, and a replaced seat is not awaited in the
+  round hold.
+- **Reclaimed.** A `hello` with their token, `back`, or any other message from them but
+  `leaveTable` gives them the seat again from the next decision. A decision that the computer player
+  is making finishes first. Everyone is sent a `tableState` with `presence` `here`.
+- **Leaving** (`leaveTable` during a game) replaces the seat at once. The member is sent nothing
+  more of the game, not even the `promptClosed` of a prompt they had, and is at no table: they may
+  make or join another. Joining this table again by its code while the game is on gives them the
+  seat back, with a `sync`; the profile sent is not used, since the engine fixed the names when the
+  game started. Once the game is over their seat is open.
+- **Nobody connected.** A game nobody at the table is connected to holds at its next rest, and goes
+  on once someone is. A table nobody has been connected to for ten minutes is closed, game and all.
+- **The host** who is away past the grace period hands over to whoever has been there longest and
+  is connected.
+- **Solo** never replaces the player. When they go away the game holds where it is, and goes on
+  when they come back. The table is closed after thirty minutes of nobody being there.
 
 ### The round hold
 
@@ -218,13 +254,13 @@ game waits for `continue {round}`.
 { "kind": "open" }
 ```
 
-- `presence`: `here` or `away`, whether the person's connection is open, sent again whenever it
-  changes. `replaced` comes with the grace period, which is not built yet.
+- `presence`: `here` or `away`, whether the person's connection is open, or `replaced` while a
+  computer player plays their seat. It is sent again whenever it changes. See
+  [Going away](#going-away-and-coming-back).
 - `paused`: whether a solo game is paused. Always `false` online, and when no game is on.
-- `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the table waits for an away player's turn.
-  Not sent yet: it comes with the grace period. Until then the table waits for an away player's
-  turn as for anyone's, up to the turn timer on each of their moves, and for as long as it takes
-  with `turnTimer: 0`; nobody can leave a table while its game is on.
+- `waitingFor`: `{ "seat": 2, "deadline": 23000 }` while the game waits for the turn of a player
+  who is away. `deadline` is the milliseconds left when it was sent: count down from when you
+  receive it. Absent otherwise.
 - `state` turns to `finished` only in the next `tableState`; a game's end is its `gameOver` event.
 - **A closed table's `tableState` is the last message from it.** Nothing of its game follows.
 
