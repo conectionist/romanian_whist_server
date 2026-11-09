@@ -1,8 +1,9 @@
 # The look fixtures
 
 The states the browser page draws its tables from, to compare them with the desktop client's
-screenshots, with no server running. They are **states, not messages**: each is a `sync` without its
-`type` and `seq`, so the decoding tests of a client read [`../fixtures/`](../fixtures/) only.
+screenshots, with no server running. Each file holds a `shot` header and a `state`. A state is **not
+a message**: it is a `sync` without its `type` and `seq`, so the decoding tests of a client read
+[`../fixtures/`](../fixtures/) only.
 
 They are written by `tools/look/`, and `core_tests "[look]"` fails when any is stale, missing or
 left over.
@@ -64,8 +65,9 @@ what the server sends.
   rounds the pictures say.
 
 The engine the server builds on plays the same game as the desktop's. The pins differ only in the
-snapshot and the Cyborg strategy. The deal and the faces rest on libstdc++'s shuffle and
-distributions, as the server's other fixtures do: another standard library would write other files,
+snapshot and the Cyborg strategy. The deal and the table code use only a generator's raw output, so
+they do not depend on the standard library. The faces do: the desktop draws them with
+`std::uniform_int_distribution`, so a standard library other than libstdc++ could deal other faces,
 and `[look]` would say so.
 
 ## Writing them again
@@ -76,3 +78,6 @@ nice -n 19 ./build/tools/look/whist_look
 
 It prints each file with the moment it shows. Commit the difference. When the desktop's tool
 changes a shot, change the tool by hand to match: it does not read the desktop's code.
+
+Given a directory, the tool writes there and removes nothing. Without one it writes here, and also
+removes any `.json` here that it no longer writes.

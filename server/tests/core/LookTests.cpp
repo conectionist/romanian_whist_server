@@ -1,3 +1,4 @@
+#include "core/Cards.h"
 #include "core/Catalogue.h"
 
 #include "look/DesktopRules.h"
@@ -6,10 +7,14 @@
 #include "support/Recorder.h"
 #include "support/ServerMessages.h"
 
+#include <romanian_whist/CardValidator.h>
+
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -37,15 +42,48 @@ std::optional<std::string> readFile(const std::filesystem::path& path)
     return contents.str();
 }
 
+// Stops the test, with what went wrong, when a game did not reach its moment.
+void requireNoProblems(const Built& built)
+{
+    for(const std::string& problem : built.problems)
+        UNSCOPED_INFO(problem);
+    REQUIRE(built.problems.empty());
+}
+
+const LookFile& fileNamed(const Built& built, const std::string& name)
+{
+    for(const LookFile& file : built.files)
+    {
+        if(file.name == name)
+            return file;
+    }
+    throw std::out_of_range(name + " is not built");
+}
+
+std::vector<std::string> codes(const Json::Value& list)
+{
+    std::vector<std::string> found;
+    for(const Json::Value& code : list)
+        found.push_back(code.asString());
+    return found;
+}
+
+std::optional<Suit> suitOf(const Json::Value& code)
+{
+    for(const Suit suit : {Suit::Hearts, Suit::Diamonds, Suit::Spades, Suit::Clubs})
+    {
+        if(code == suitCode(suit))
+            return suit;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 TEST_CASE("The look fixtures reach the desktop's moments, and are up to date", "[look]")
 {
     const Built built = buildLookFiles(patience);
-
-    for(const std::string& problem : built.problems)
-        UNSCOPED_INFO(problem);
-    REQUIRE(built.problems.empty());
+    requireNoProblems(built);
 
     std::set<std::string> written;
     for(const LookFile& file : built.files)
@@ -84,14 +122,137 @@ TEST_CASE("The look games play the same way twice", "[look]")
     const Built first = buildLookFiles(patience);
     const Built second = buildLookFiles(patience);
 
-    REQUIRE(first.problems.empty());
-    REQUIRE(second.problems.empty());
+    requireNoProblems(first);
+    requireNoProblems(second);
     REQUIRE(first.files.size() == second.files.size());
     for(std::size_t i = 0 ; i < first.files.size() ; i++)
     {
         INFO(first.files[i].name);
         CHECK(first.files[i].name == second.files[i].name);
         CHECK(lookText(first.files[i].content) == lookText(second.files[i].content));
+    }
+}
+
+TEST_CASE("The table-6 and bidding fixtures show what the desktop shows, with the faces it deals",
+          "[look][desktop]")
+{
+    const Built built = buildLookFiles(patience);
+    requireNoProblems(built);
+
+    using Codes = std::vector<std::string>;
+
+    // Read off the desktop's picture of this moment, docs/ui-redesign/history/images/table-13.jpg
+    // in romanian_whist_desktop.
+    const Json::Value& table = fileNamed(built, "table-6-players.json").content["state"];
+    const Json::Value& snapshot = table["snapshot"];
+    CHECK(snapshot["round"]["trump"] == "JH");
+    CHECK(codes(snapshot["seats"][0]["hand"]) == Codes{"AC", "4H", "JD", "6H"});
+
+    Codes played;
+    std::optional<unsigned int> winning;
+    for(const Json::Value& entry : snapshot["table"]["cards"])
+    {
+        played.push_back(entry["card"].asString());
+        if(entry["winning"].asBool())
+            winning = entry["seat"].asUInt();
+    }
+    CHECK(played == Codes{"5C", "8H", "8C", "QC", "9C"});
+    CHECK(winning == 2U);
+
+    std::vector<int> totals;
+    for(const Json::Value& seat : snapshot["seats"])
+        totals.push_back(seat["total"].asInt());
+    CHECK(totals == std::vector<int>{8, 33, 20, 47, 45, 45});
+
+    // And of the first bid, docs/ui-redesign/history/images/bidding-13.jpg.
+    const Json::Value& bidding = fileNamed(built, "bidding.json").content["state"]["snapshot"];
+    CHECK(bidding["round"]["trump"] == "QD");
+    CHECK(codes(bidding["seats"][0]["hand"]) == Codes{"9C"});
+
+    // What the desktop's avatars::assign gives these six wearers with seed 42.
+    const Codes faces{"man-white-hair-hat", "woman-shoulder-hair", "man-black-tee",
+                      "woman-long-brown-hair", "man-stubble", "woman-wavy-black-hair"};
+    Codes dealt;
+    for(const SeatSetting& seat : shotSettings(6).seats)
+        dealt.push_back(seat.profile.avatar);
+    CHECK(dealt == faces);
+
+    Codes worn;
+    for(const Json::Value& seat : table["table"]["seats"])
+        worn.push_back(seat["avatar"].asString());
+    CHECK(worn == faces);
+}
+
+TEST_CASE("Every look state is coherent: one hand, the person's own, and the legal cards the rules give it",
+          "[look]")
+{
+    const Built built = buildLookFiles(patience);
+    requireNoProblems(built);
+
+    const romanian_whist::CardValidator validator;
+    for(const LookFile& file : built.files)
+    {
+        const Json::Value& state = file.content["state"];
+        if(state.isNull())
+            continue;
+        INFO(file.name);
+
+        const Json::Value& snapshot = state["snapshot"];
+        REQUIRE(snapshot["you"].isUInt());
+        const unsigned int you = snapshot["you"].asUInt();
+        CHECK(you == 0);
+
+        // No hand but the person's own is there for a client to draw.
+        const Json::Value& seats = snapshot["seats"];
+        for(Json::ArrayIndex seat = 0 ; seat < seats.size() ; seat++)
+            CHECK(seats[seat].isMember("hand") == (seat == you));
+
+        const Json::Value& prompt = state["prompt"];
+        REQUIRE(prompt.isObject());
+        CHECK(prompt["hand"] == seats[you]["hand"]);
+
+        std::vector<Card> hand;
+        for(const Json::Value& code : prompt["hand"])
+        {
+            const std::optional<Card> card = parseCard(code.asString());
+            REQUIRE(card);
+            hand.push_back(*card);
+        }
+
+        // Null for an 8-card round, which parses to no card.
+        const std::optional<Card> trump = parseCard(snapshot["round"]["trump"].asString());
+
+        if(prompt["kind"] == "play")
+        {
+            const std::vector<Card> allowed = validator.getLegalCards(hand, trump, suitOf(snapshot["table"]["leadSuit"]));
+            std::vector<std::size_t> legal;
+            for(std::size_t i = 0 ; i < hand.size() ; i++)
+            {
+                if(std::find(allowed.begin(), allowed.end(), hand[i]) != allowed.end())
+                    legal.push_back(i);
+            }
+
+            std::vector<std::size_t> offered;
+            for(const Json::Value& index : prompt["legal"])
+                offered.push_back(index.asUInt());
+            CHECK(offered == legal);
+        }
+
+        // The hand files are written in the order the desktop shows a hand, with the card under the
+        // cursor in it.
+        if(file.content["shot"]["view"] == "table")
+        {
+            std::vector<std::size_t> inOrder(hand.size());
+            std::iota(inOrder.begin(), inOrder.end(), std::size_t{0});
+            CHECK(desktop::displayOrder(hand, trump) == inOrder);
+
+            const Json::Value& raised = file.content["shot"]["raised"];
+            if(!raised.isNull())
+            {
+                const std::vector<std::string> shown = codes(prompt["hand"]);
+                CHECK(std::find(shown.begin(), shown.end(), raised.asString()) != shown.end());
+            }
+        }
     }
 }
 

@@ -5,7 +5,8 @@ Version **1**. This is the reference every client follows. The server's code is 
 written by the server's tests (`core_tests "[fixtures]"`). A client's tests should decode each one.
 The names and portraits players may have are in [`catalogues/`](catalogues/). The states the
 browser page draws its tables from, for comparing its look with the desktop client's, are in
-[`look/`](look/): each is a sync's fields without the envelope, not a message.
+[`look/`](look/): each file holds a `shot` header and a `state`, which is a sync's fields without
+the envelope, not a message.
 
 ## Transport
 
