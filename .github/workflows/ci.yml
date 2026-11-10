@@ -114,6 +114,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      # latest and the version tags come from a push only: a manual run on master or on a tag would
+      # otherwise move them.
       - name: Name the image's tags and labels
         id: meta
         uses: docker/metadata-action@v6
@@ -121,9 +123,9 @@ jobs:
           images: ${{ env.IMAGE }}
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' }}
             type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha
           labels: |
