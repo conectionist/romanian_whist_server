@@ -1006,9 +1006,9 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 - **Day to day:** the server serves `server/www/` by default, or the page's built `dist/` when
   `document_root` points there, as in production. The page's own dev server is in
   [its plan's §14](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#14-building-and-running-locally).
-- **File types:** the server serves only the page's own: html, js, css, svg, webp, png, ico, woff2,
-  txt and json. The list is `fileTypes` in `configureApp` (`server/app/Server.cpp`); a new kind of
-  file in the page's build needs its type added there.
+- **File types:** only html, js, css, svg, webp, png, ico, woff2, txt and json are served, from
+  anywhere under `document_root`, so keep the configuration file outside it. The list is `fileTypes`
+  in `server/app/Server.cpp`.
 - **CI:** one Linux job, which builds the server with a fixed job count (as the desktop client's CI
   does, never an unlimited `-j`) and runs its tests. The page has a CI job of its own.
 - **Pull requests:** change a PR's title or description with

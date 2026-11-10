@@ -147,8 +147,8 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     const std::filesystem::path uploads = std::filesystem::temp_directory_path()
                                         / ("whist_server-uploads-" + std::to_string(::getuid()));
 
-    // Drogon serves only the file types on its list. This is what the page is built from, so nothing
-    // else in the document root is served; png and ico are for a favicon.
+    // Drogon serves only the file types on its list, from anywhere under the document root. png and
+    // ico are for a favicon.
     const std::vector<std::string> fileTypes{"html", "js", "css", "svg", "webp", "png", "ico", "woff2", "txt", "json"};
 
     ServiceOptions serviceOptions;
