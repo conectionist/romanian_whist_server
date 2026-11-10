@@ -1169,11 +1169,17 @@ That is acceptable without a server change now: the examples carry the headers u
 
 - **The compose file** is `deploy/docker-compose.own-proxy.yml`. `page` copies `/srv` into the
   volume with no network, and exits. It writes each file under a temporary name and renames it into
-  place, which is atomic, so the server never reads half a file; it skips a file that is already
-  there, and does `index.html` last, after the scripts it names. The server waits for `page` to
+  place, which is atomic, so the server reads a file whole or not at all; it skips a file that is
+  already there and the same, and does `index.html` last, after the scripts it names. A folder where
+  a file now goes, or a page with no `assets`, fails the service. The server waits for `page` to
   complete, and mounts the volume with `nocopy`, so the image's debug page does not land in it. It
   listens on `${WHIST_LISTEN:-127.0.0.1:8080}`. A proxy in a container joins the server to its
   network with a `docker-compose.override.yml`, which the README gives.
+- **One limit of the copy:** Drogon sends a file over 200 KB with sendfile. It fixes the length when
+  it makes the response, opens the file by name when it sends, and keeps the response for 5 s. A
+  file of that size that changes can therefore be served cut short, or fail, for up to 5 s after
+  the rename. Hashed files never change, and the page's largest file is under 100 KB. Phase 9
+  closes it (below).
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
   `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
   `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
@@ -1197,6 +1203,8 @@ That is acceptable without a server change now: the examples carry the headers u
   headers, the examples' header lines are redundant. Keep them identical, or drop them; the page's
   planned smoke test then checks the server's own headers too.
 - Dot-folders refused in Drogon.
+- Static files sent without sendfile (`enableSendfile(false)`, or an equivalent), so that a large
+  file that changes is never served cut short.
 - The page's commit from a build argument.
 
 ### 12.2 By hand

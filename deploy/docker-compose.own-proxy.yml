@@ -16,16 +16,18 @@ services:
       - sh
       - -ec
       - |
-        # A rename is atomic, so the server never reads half a file; index.html goes last, after
-        # the scripts it names. cmp skips a file that is already there, whole.
+        # A rename is atomic, so the server reads a file whole or not at all; index.html goes last,
+        # after the scripts it names. cmp skips a file that is already there and the same. mv -T and
+        # pipefail make a folder in the way, or a missing assets folder, fail the service.
+        set -o pipefail
         cd /srv
-        { find assets -type f; find . -type f ! -path './assets/*' ! -name index.html; echo index.html; } |
+        { find assets -type f; find . -type f ! -path './assets/*' ! -path ./index.html; echo index.html; } |
         while IFS= read -r f; do
           f=$${f#./}
           cmp -s "$$f" "/page/$$f" && continue
           mkdir -p "$$(dirname "/page/$$f")"
           cp -p "$$f" "/page/$$f.new"
-          mv "/page/$$f.new" "/page/$$f"
+          mv -T "/page/$$f.new" "/page/$$f"
         done
     network_mode: none
     volumes: [page:/page]
