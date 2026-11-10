@@ -115,7 +115,9 @@ port or fetches a certificate. `.env` can set `WHIST_SERVER_TAG`, `WHIST_WEB_TAG
 Give the game a host of its own, such as `whist.example.org`. A sub-path such as
 `example.org/whist` does not work, because the page's links start at the root.
 
-**Caddy.** Copy [`deploy/examples/whist.caddy`](deploy/examples/whist.caddy) to
+**Caddy.** This needs Caddy 2.9.1 or later (`caddy version` says which you have): an older one
+accepts the file but reads its `match` lines as headers, and then puts the year-long cache rule on
+error answers too. Copy [`deploy/examples/whist.caddy`](deploy/examples/whist.caddy) to
 `/etc/caddy/whist.caddy`, and import it in the site block:
 
 ```

@@ -1175,12 +1175,14 @@ That is acceptable without a server change now: the examples carry the headers u
   listens on `${WHIST_LISTEN:-127.0.0.1:8080}`. A proxy in a container joins the server to its
   network with a `docker-compose.override.yml`, which the README gives.
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
-  `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block. The headers
-  are a file of their own because a location's `add_header` drops the ones it inherits. The cache
-  rules apply to successful answers only, so that a 404 or a 502 is not cached for long. The game
-  needs a host of its own: a sub-path is not supported, since the page's links start at the root.
-  The CSP string is the page's. The page's CI is to compare every copy of it against one constant;
-  that check is planned for the page's pull request.
+  `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
+  `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
+  headers, which puts the cache rules on error answers too. The headers are a file of their own
+  because a location's `add_header` drops the ones it inherits. The cache rules apply to successful
+  answers only, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
+  sub-path is not supported, since the page's links start at the root. The CSP string is the page's.
+  The page's CI is to compare every copy of it against one constant; that check is planned for the
+  page's pull request.
 - **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
   Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
   whist_page`.

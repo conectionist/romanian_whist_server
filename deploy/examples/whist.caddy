@@ -1,5 +1,6 @@
 # Romanian Whist behind your own Caddy: import this inside the site block for its host.
 # Caddy passes the WebSocket at /ws through by itself.
+# Needs Caddy 2.9.1 or later: an older one reads the match lines as headers, and caches errors too.
 reverse_proxy 127.0.0.1:8080
 header {
 	Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
