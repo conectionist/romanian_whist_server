@@ -12,7 +12,21 @@ services:
     image: ghcr.io/conectionist/romanian_whist_web:${WHIST_WEB_TAG:-latest}
     # Copies the built page into the volume the server serves, then exits; it runs again on every
     # up. Files of an older page stay, so a browser holding its index.html still finds its scripts.
-    entrypoint: ["cp", "-a", "/srv/.", "/page/"]
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        # A rename is atomic, so the server never reads half a file; index.html goes last, after
+        # the scripts it names. cmp skips a file that is already there, whole.
+        cd /srv
+        { find assets -type f; find . -type f ! -path './assets/*' ! -name index.html; echo index.html; } |
+        while IFS= read -r f; do
+          f=$${f#./}
+          cmp -s "$$f" "/page/$$f" && continue
+          mkdir -p "$$(dirname "/page/$$f")"
+          cp -p "$$f" "/page/$$f.new"
+          mv "/page/$$f.new" "/page/$$f"
+        done
     network_mode: none
     volumes: [page:/page]
     logging: *logging

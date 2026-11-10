@@ -1158,18 +1158,20 @@ should claim ports or fetch certificates.
 
 That is acceptable without a server change now: the examples carry the headers until phase 9.
 
-- **The compose file** is `deploy/docker-compose.own-proxy.yml`. `page` runs `cp -a /srv/. /page/`
-  with no network, and exits; the server waits for it to complete, and mounts the volume with
-  `nocopy`, so the image's debug page does not land in it. The server listens on
-  `${WHIST_LISTEN:-127.0.0.1:8080}`. A proxy in a container joins the server to its network with a
-  `docker-compose.override.yml`, which the README gives.
+- **The compose file** is `deploy/docker-compose.own-proxy.yml`. `page` copies `/srv` into the
+  volume with no network, and exits. It writes each file under a temporary name and renames it into
+  place, which is atomic, so the server never reads half a file; it skips a file that is already
+  there, and does `index.html` last, after the scripts it names. The server waits for `page` to
+  complete, and mounts the volume with `nocopy`, so the image's debug page does not land in it. It
+  listens on `${WHIST_LISTEN:-127.0.0.1:8080}`. A proxy in a container joins the server to its
+  network with a `docker-compose.override.yml`, which the README gives.
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
   `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block. The headers
   are a file of their own because a location's `add_header` drops the ones it inherits. The cache
   rules apply to successful answers only, so that a 404 or a 502 is not cached for long. The game
   needs a host of its own: a sub-path is not supported, since the page's links start at the root.
   The CSP string is the page's, and the page's CI compares every copy of it against one constant.
-- **Upgrades:** `pull && up -d` runs `page` again, which copies the new page over the old one.
+- **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
   Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
   whist_page`.
 - **Coverage:** the page's CI runs this setup directly, through the Caddy example, and through the
