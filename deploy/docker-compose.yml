@@ -1,0 +1,39 @@
+# Romanian Whist: the game server and the page, behind Caddy with automatic HTTPS.
+# Put this file beside a .env made from .env.example, then: docker compose pull && docker compose up -d
+name: whist
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "5" }
+
+services:
+  server:
+    image: ghcr.io/conectionist/romanian_whist_server:${WHIST_SERVER_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    # Longer than shutdown_delay_ms, plus the time to end every game.
+    stop_grace_period: 30s
+    # To change the settings: copy the image's /etc/whist/config.json beside this file, then
+    # volumes: [./config.json:/etc/whist/config.json:ro]
+    logging: *logging
+
+  web:
+    image: ghcr.io/conectionist/romanian_whist_web:${WHIST_WEB_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      server: { condition: service_healthy }
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      SITE_ADDRESS: ${WHIST_DOMAIN:?set WHIST_DOMAIN in .env, such as whist.example.org, or :80 for plain HTTP}
+      WHIST_SERVER_ADDRESS: server:8080
+    volumes: [caddy_data:/data, caddy_config:/config]
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

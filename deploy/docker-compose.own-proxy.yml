@@ -1,0 +1,43 @@
+# Romanian Whist behind your own reverse proxy, which holds TLS and ports 80 and 443.
+# The server serves the page itself on 127.0.0.1:8080; forward everything to it, /ws included.
+# Put this file beside a .env made from .env.example, then: docker compose pull && docker compose up -d
+name: whist
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "5" }
+
+services:
+  page:
+    image: ghcr.io/conectionist/romanian_whist_web:${WHIST_WEB_TAG:-latest}
+    # Copies the built page into the volume the server serves, then exits; it runs again on every
+    # up. Files of an older page stay, so a browser holding its index.html still finds its scripts.
+    entrypoint: ["cp", "-a", "/srv/.", "/page/"]
+    network_mode: none
+    volumes: [page:/page]
+    logging: *logging
+
+  server:
+    image: ghcr.io/conectionist/romanian_whist_server:${WHIST_SERVER_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      page: { condition: service_completed_successfully }
+    ports: ["${WHIST_LISTEN:-127.0.0.1:8080}:8080"]
+    volumes:
+      - type: volume
+        source: page
+        target: /opt/whist/www
+        read_only: true
+        # The page service fills the volume; the image's debug page must not.
+        volume: { nocopy: true }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    stop_grace_period: 30s
+    logging: *logging
+
+volumes:
+  page:
