@@ -1,10 +1,10 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 5 are complete (2026-11-09). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 6 are complete (2026-11-10). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
-> are phase 5. Phase 6 has begun: its fixture tool, this repository's part (§10.5), is complete
-> (PR #9). The page's part of phase 6, and phases 7 to 11, are not built yet.**
+> are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
+> `romanian_whist_web` (its PR #3). Phases 7 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -24,7 +24,7 @@
 > [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
 > Their places here keep their numbers and point there. The links point at that repository's
 > `master`. Until the page's work reaches it, the current page plan is on the web repository's
-> parent branch. Phase 6 creates that branch, and its name is written here then. The same day,
+> parent branch, `ccr-209c0806-o444sp`, which phase 6 created. The same day,
 > this file was renamed from `docs/web-client-plan.md` to `docs/server-plan.md`.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
@@ -1650,12 +1650,17 @@ engine's parent branch, then into master as `ff223ef`, which is tagged `v5.1.0`)
   - **CI** is green at `77a6abf` and `95b2ba2` (runs 24 and 25, started by hand).
   - **The owner approved** the phase on 2026-11-09.
 
-### Phase 6: the table page — L
+### Phase 6: the table page — L ✅ COMPLETE
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-6-the-table-page--l).
 In this repository it first builds the fixture tool (§10.5), on a phase branch of its own off this
 repository's parent branch. That branch is reviewed like any phase's, and merged with a merge
 commit before the page needs the fixtures. The page's submodule then moves to that merge.
+
+**The table page — ✅ COMPLETE,** in `romanian_whist_web`: PR #3, merged into that repository's
+parent branch `ccr-209c0806-o444sp`. Its outcome is under phase 6 in
+[the page's plan on that branch](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-6-the-table-page--l--complete).
+The owner approved it on 2026-11-10.
 
 **The fixture tool — ✅ COMPLETE.**
 
