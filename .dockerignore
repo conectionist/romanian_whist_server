@@ -1,6 +1,10 @@
 .git
 **/.git
 .github
+.env
+.cache
+.vscode
+.idea
 build
 build-*
 compile_commands.json

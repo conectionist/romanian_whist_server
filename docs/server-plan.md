@@ -993,8 +993,8 @@ the desktop repository's `CLAUDE.md` goes into this repository's `CLAUDE.md`:
 - builds as `nice -n 19 cmake --build <dir> -j 2`;
 - tests under `nice -n 19`;
 - one heavy command at a time, and long jobs in the background;
-- Docker builds as `nice -n 19 docker build …`, with `JOBS` at most 2 and one image build at a
-  time;
+- Docker builds as `docker build --build-arg JOBS=2 …` (or `docker compose build`), one image build
+  at a time, in the background;
 - timing runs, sanitizer builds, the chaos test and the load test only when the owner asks.
 
 The first build of each preset compiles Drogon too, which takes several minutes at `-j 2`, so run
@@ -1081,20 +1081,25 @@ to `ubuntu:24.04` with `libjsoncpp25`, and recording the failing log.
   Catch2, and builds the `whist_server` target only. The runtime stage holds the stripped binary,
   `server/www`, the configuration and the licence, and runs as an unprivileged user (uid 10001).
 - **`JOBS`** is the number of compile jobs: 2 unless told otherwise, so that a build on a desktop
-  leaves it usable. CI says 4. A ccache cache mount makes a local rebuild quick, and CI's layer cache
-  does the same there.
+  leaves it usable. CI says 4. A ccache cache mount makes a local rebuild quick. In CI, the layer
+  cache does not keep the C++ compile from one commit to the next, because `COPY . .` and
+  `WHIST_COMMIT` change with every commit, and ccache's directory is not kept there. `mode=max`
+  lets the `publish` job reuse what the `docker` job built in the same run.
 - **`WHIST_COMMIT`** is the commit the server reports in its `welcome`. A Docker build context has
   no `.git`, so the build is told, through the CMake option `WHIST_SERVER_COMMIT`, and the smoke
   test checks it.
-- **`.dockerignore`** keeps `.git`, build trees, docs, tests, fixtures, the tools and the deploy
-  files out of the context, so editing them does not rebuild the image.
+- **`.dockerignore`** keeps `.git`, build trees, editor folders, `.env` files, `docs`, the markdown
+  files in the root, the tests, the fixtures, `tools/chaos`, `tools/smoke` and the deploy files out
+  of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
+  adds it.
 - **Configuration.** `server/app/config.json` listens on `127.0.0.1`, which does not work inside a
   container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"` and
   `"document_root": "/opt/whist/www"`, and is the image's `/etc/whist/config.json`. A test
   (`[options]`) fails when the two differ in anything else, or when the image's cannot be loaded.
   Settings have no environment overrides: to change one, mount a file over
-  `/etc/whist/config.json`. The address and port 8080 must stay, since the health check uses them;
-  the port is remapped in `ports:`.
+  `/etc/whist/config.json`. The address and port 8080 must stay, since the health check uses them.
+  The port on the host is `WHIST_LISTEN`, in the own-proxy compose file; the full stack's server
+  publishes none.
 - **Stopping.** `STOPSIGNAL SIGTERM`: the server's handlers only set a flag, and a timer on the main
   loop then ends the games and exits with 0 within about 5 s ([§4.6](#46-threads-and-locks), and
   `ShutdownTests`), so it is safe as PID 1. The compose files allow 30 s. CI checks that
@@ -1122,6 +1127,10 @@ is [§12.1.1](#1211-behind-your-own-proxy). `compose.yaml` builds the server fro
 - **`publish`:** needs the three jobs above, and runs only on a push to `master` or to a version
   tag, or when a manual run asks for it, which tags the image `sha-<commit>` and with the branch's
   name, never `latest`. A pull request never publishes.
+
+**The first publish.** GitHub makes a new package private. After the first run that pushes, set
+both packages, `romanian_whist_server` and `romanian_whist_web`, to Public once, in each package's
+settings, and check an anonymous pull (`docker logout ghcr.io`, then `docker pull` of each image).
 
 **Versioning.** Each repository is versioned on its own. The contract between the two images is the
 protocol number, which is a label on both, `io.github.conectionist.whist.protocol`; the server
@@ -1170,20 +1179,21 @@ That is acceptable without a server change now: the examples carry the headers u
   are a file of their own because a location's `add_header` drops the ones it inherits. The cache
   rules apply to successful answers only, so that a 404 or a 502 is not cached for long. The game
   needs a host of its own: a sub-path is not supported, since the page's links start at the root.
-  The CSP string is the page's, and the page's CI compares every copy of it against one constant.
+  The CSP string is the page's. The page's CI is to compare every copy of it against one constant;
+  that check is planned for the page's pull request.
 - **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
   Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
   whist_page`.
-- **Coverage:** the page's CI runs this setup directly, through the Caddy example, and through the
-  nginx example.
+- **Coverage:** nothing here runs the setup in CI. The page's CI is to run it directly, through the
+  Caddy example and through the nginx example; that is planned for the page's pull request.
 
 #### What phase 9 changes here
 
 - `/health` for the health check, and `stop_grace_period: 16m` for the drain.
 - `X-Forwarded-For`, trusted only from the proxy, ours or the user's.
 - The Drogon CSP, identical to the Caddyfile's. Once the server sends the CSP and the caching
-  headers, the examples' header lines are redundant. Keep them identical, or drop them; the smoke
-  test's server profile then checks the headers too.
+  headers, the examples' header lines are redundant. Keep them identical, or drop them; the page's
+  planned smoke test then checks the server's own headers too.
 - Dot-folders refused in Drogon.
 - The page's commit from a build argument.
 

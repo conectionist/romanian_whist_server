@@ -53,8 +53,8 @@ docker compose pull
 docker compose up -d
 ```
 
-- **Updating:** `docker compose pull && docker compose up -d`. This restarts the server, which ends
-  the games that are running.
+- **Updating:** `docker compose pull && docker compose up -d`. A service whose image is new is
+  restarted; the server's restart ends the games that are running.
 - **Logs:** `docker compose logs -f server`, or `web`.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
 - **Stopping the server** takes a few seconds: on SIGTERM it ends every game and closes every
@@ -66,8 +66,8 @@ docker compose up -d
   ```
   docker run --rm --entrypoint cat ghcr.io/conectionist/romanian_whist_server /etc/whist/config.json > config.json
   ```
-  Keep `"address": "0.0.0.0"` and `"port": 8080`: the container's health check uses that port.
-  To listen on another one, change the `ports:` of the compose file.
+  Keep `"address": "0.0.0.0"` and `"port": 8080`: the container's health check and the page's
+  Caddy use them. Behind your own proxy, the port on the host is `WHIST_LISTEN` in `.env`.
 - **Pairing:** the page and the server speak the same protocol only when their versions match. Each
   image carries the version as the label `io.github.conectionist.whist.protocol`:
   ```
@@ -135,6 +135,10 @@ server {
 }
 ```
 
+The locations of `whist.conf` set their own `add_header` lines, and nginx then drops the ones of the
+`server` block, such as HSTS. Put your own headers in `whist-headers.conf`, which every location but
+`/ws` includes.
+
 **Another proxy.** Forward everything to `127.0.0.1:8080`, pass `/ws` on as a WebSocket (the
 `Upgrade` and `Connection` headers), and add the headers of
 [`whist-headers.conf`](deploy/examples/nginx/whist-headers.conf) and the cache rules of
@@ -166,8 +170,9 @@ and the examples set them for your proxy, with the same values, so the page beha
 the server sends them, the lines in the examples become redundant.
 
 - **Updating:** `docker compose pull && docker compose up -d` runs `page` again, which copies the
-  new page over the old one, and restarts the server. The files of the older page stay, so a tab
-  open on it still finds its scripts. To clear them: `docker compose down && docker volume rm whist_page`.
+  files that changed. The server restarts only when its own image is new, which ends the games that
+  are running. The files of the older page stay, so a tab open on it still finds its scripts. To
+  clear them: `docker compose down && docker volume rm whist_page`.
 - **Not for the public internet yet**, for the reason given above.
 
 ## Getting the code
@@ -255,6 +260,19 @@ nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --m
 
 It passes when every table finishes a game after the last disruption, no table stalled, and no
 snapshot or prompt carried a hand its viewer may not see.
+
+The smoke test plays the first moments of a solo game against a running server, to see that an image
+or a deployment works end to end: the server answers on its page, upgrades `/ws`, greets a new member
+with the commit it was built from, and starts a game that asks the player for a bet. A proxy in front
+is fine if it passes `/ws` on. It needs Node 22 or later and no packages, and exits 0 on a pass and 1
+otherwise:
+
+```
+node tools/smoke/smoke.mjs --url http://127.0.0.1:8080 --commit a31743d
+```
+
+`--timeout` is the seconds to wait for the server to answer, and again for the game to ask for a
+bet; it defaults to 10. Without `--commit` the welcome's commit is not checked.
 
 ## The look fixtures
 

@@ -66,7 +66,7 @@ target_compile_options(whist_session PRIVATE ${WHIST_SERVER_WARNINGS})
 # Recorded when CMake configures, so it can lag behind a later commit until the next configure.
 # A build with no git history to ask, such as the Docker image's, is told the commit instead.
 set(WHIST_SERVER_COMMIT "" CACHE STRING "The commit to report, instead of asking git")
-# Compared as a string: a bare if() reads a hash made only of zeros as false.
+# A value given with -D stays in this build directory's cache, so a later configure keeps it.
 if(WHIST_SERVER_COMMIT STREQUAL "")
     execute_process(
         COMMAND git rev-parse --short HEAD

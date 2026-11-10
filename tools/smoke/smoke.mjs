@@ -1,14 +1,6 @@
 #!/usr/bin/env node
-// Plays the first moments of a solo game against a running server, to see that an image or an
-// install works end to end: the server answers on its page, upgrades /ws, greets a new member
-// with the commit it was built from, and starts a game that asks the player for a bet.
-//
-//   node tools/smoke/smoke.mjs --url http://127.0.0.1:8080 --commit a31743d
-//
-// --timeout is the seconds to wait for the server to answer, and again for the game to ask for a
-// bet; it defaults to 10. Without --commit the welcome's commit is not checked. A proxy in front of
-// the server is fine, if it passes /ws on. Node 22 or later, no packages. The exit status is 0 on
-// a pass and 1 otherwise.
+// Plays the first moments of a solo game against a running server, to see that it works end to end.
+// Usage and options: the README, under Tests.
 
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -17,7 +9,6 @@ const protocol = 1;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// One connection, read a message at a time.
 class Connection {
   inbox = [];
   wake = null;
@@ -46,7 +37,6 @@ class Connection {
     wake?.();
   }
 
-  // Waits for something to happen: a message, the end of the connection, or the deadline.
   async happening(deadline) {
     const left = deadline - Date.now();
     if (left <= 0) {
@@ -77,7 +67,6 @@ class Connection {
     this.socket.send(JSON.stringify(message));
   }
 
-  // The next message, which must be JSON. A server's error is thrown, with what it says.
   async receive(deadline, what) {
     while (this.inbox.length === 0) {
       if (this.ended) {
@@ -106,7 +95,6 @@ class Connection {
   }
 }
 
-// Polls GET / until the server answers with a page.
 export async function waitForPage(baseUrl, { timeoutMs = 10000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let last = "no answer";
@@ -140,8 +128,6 @@ const soloGame = {
   },
 };
 
-// Says hello at /ws, and starts a solo game that asks for a prompt. When `commit` is given, the
-// welcome must carry it. Resolves with what was seen, and rejects with what went wrong.
 export async function smokeGame(baseUrl, { commit, timeoutMs = 10000 } = {}) {
   const url = new URL("/ws", baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

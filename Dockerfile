@@ -35,7 +35,8 @@ COPY deploy/docker-config.json /etc/whist/config.json
 COPY LICENSE /usr/share/doc/romanian_whist_server/LICENSE
 # Fails the build when the packages above miss a library the server links.
 RUN ! ldd /usr/local/bin/whist_server | grep "not found"
-USER whist
+# A number, so that a runtime can check it is not root; no :gid, because the group is whist's own.
+USER 10001
 WORKDIR /opt/whist
 EXPOSE 8080
 STOPSIGNAL SIGTERM
