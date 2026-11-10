@@ -1,0 +1,17 @@
+.git
+**/.git
+.github
+build
+build-*
+compile_commands.json
+docs
+*.md
+server/tests
+tools/chaos
+tools/smoke
+protocol/fixtures
+protocol/look
+compose.yaml
+deploy/docker-compose*.yml
+deploy/examples
+deploy/.env*
