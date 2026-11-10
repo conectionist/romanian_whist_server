@@ -6,9 +6,19 @@ header {
 	X-Content-Type-Options nosniff
 	Referrer-Policy no-referrer
 }
+# The caching headers go on successful answers only, so that an error is never cached for long.
 @whist_hashed path /assets/*
-header @whist_hashed Cache-Control "public, max-age=31536000, immutable"
+header @whist_hashed {
+	Cache-Control "public, max-age=31536000, immutable"
+	match status 2xx 304
+}
 @whist_page path / /index.html /t/*
-header @whist_page Cache-Control no-cache
+header @whist_page {
+	Cache-Control no-cache
+	match status 2xx 304
+}
 @whist_other not path /assets/* / /index.html /t/* /ws
-header @whist_other Cache-Control "public, max-age=3600"
+header @whist_other {
+	Cache-Control "public, max-age=3600"
+	match status 2xx 304
+}

@@ -138,7 +138,8 @@ server {
 **Another proxy.** Forward everything to `127.0.0.1:8080`, pass `/ws` on as a WebSocket (the
 `Upgrade` and `Connection` headers), and add the headers of
 [`whist-headers.conf`](deploy/examples/nginx/whist-headers.conf) and the cache rules of
-[`whist.caddy`](deploy/examples/whist.caddy).
+[`whist.caddy`](deploy/examples/whist.caddy), on successful answers only: an error cached for a
+year would outlive the fault.
 
 **A proxy in a container** reaches the server over a Docker network, not over the host's port. Put
 this in `docker-compose.override.yml` beside the compose file (it needs Compose 2.24 or later), set
