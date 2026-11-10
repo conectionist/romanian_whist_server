@@ -1184,8 +1184,8 @@ That is acceptable without a server change now: the examples carry the headers u
   `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
   `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
   headers, which puts the cache rules on error answers too. The headers are a file of their own
-  because a location's `add_header` drops the ones it inherits. The cache rules apply to successful
-  answers only, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
+  because a location's `add_header` drops the ones it inherits. The cache rules are kept off error
+  answers, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
   sub-path is not supported, since the page's links start at the root. The CSP string is the page's.
   The page's CI is to compare every copy of it against one constant; that check is planned for the
   page's pull request.
@@ -2051,7 +2051,7 @@ is merged before the page's part needs it.
 | Drogon behaves differently from what this plan assumes | Phase 1's spikes, before anything depends on them |
 | An image is deployed publicly before the limits exist | Every deployment in the README says it is not for the public internet until phase 9 |
 | The image's toolchain is newer than the owner's machine's | The Ubuntu 26.04 CI job builds and tests the server on it ([§12.1](#121-with-docker-recommended)) |
-| `publish` builds the image again instead of pushing the one `docker` tested | Accepted. The same run's `docker` job writes the layer cache, so the rebuild is the same build; it would differ only after a cache-read failure and a package change within minutes |
+| `publish` builds the image again instead of pushing the one `docker` tested | Accepted. The same run's `docker` job writes the layer cache, so the rebuild is normally the same build. It differs only if `publish` cannot read the cache, or `ubuntu:26.04` moves between the jobs; then its packages can be newer than the tested image's |
 
 The page's own risks, about its look, are in [its plan's §16](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#16-risks).
 

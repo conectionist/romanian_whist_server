@@ -144,7 +144,7 @@ The locations of `whist.conf` set their own `add_header` lines, and nginx then d
 **Another proxy.** Forward everything to `127.0.0.1:8080`, pass `/ws` on as a WebSocket (the
 `Upgrade` and `Connection` headers), and add the headers of
 [`whist-headers.conf`](deploy/examples/nginx/whist-headers.conf) and the cache rules of
-[`whist.caddy`](deploy/examples/whist.caddy), on successful answers only: an error cached for a
+[`whist.caddy`](deploy/examples/whist.caddy), but not on error answers: an error cached for a
 year would outlive the fault.
 
 **A proxy in a container** reaches the server over a Docker network, not over the host's port. Put
@@ -221,7 +221,7 @@ WHIST_COMMIT=$(git rev-parse --short HEAD) docker compose up --build
 Then open http://127.0.0.1:8080. Or build the image alone:
 
 ```
-nice -n 19 docker build --build-arg JOBS=2 --build-arg WHIST_COMMIT=$(git rev-parse --short HEAD) \
+docker build --build-arg JOBS=2 --build-arg WHIST_COMMIT=$(git rev-parse --short HEAD) \
     -t romanian_whist_server .
 ```
 
