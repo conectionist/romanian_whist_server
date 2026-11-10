@@ -1332,8 +1332,7 @@ deprecation notice from trantor's `cmake_minimum_required`. The first job's tool
 review were pushed one after another, so the next push cancelled the runs of the first three, and
 the run on `2d8e25b` passed in full: `build`, in the `ubuntu:24.04` container with g++ 13.3.0 and
 CMake 3.28.3, 161 of 161 tests; `build-ubuntu-26`; and `docker`. `publish` is skipped on a pull
-request. A push that changes only markdown files does not start CI, so this outcome's commit has no
-run of its own.
+request. The commits after it change only this plan.
 
 **What the page's pull request must still do:**
 
