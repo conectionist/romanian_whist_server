@@ -1,15 +1,27 @@
 name: CI
 
-# A pull request is built by its pull_request run, so push builds only master.
+# A pull request is built by its pull_request run, so push builds only master and the version tags.
 on:
   push:
     branches: [master]
+    tags: ['v*.*.*']
     paths-ignore:
       - '**/*.md'
   pull_request:
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the image to ghcr.io, tagged sha-<commit> and with the branch's name
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/conectionist/romanian_whist_server
 
 # A new push to a PR cancels that PR's older run. Runs on master are never cancelled.
 concurrency:
@@ -39,3 +51,155 @@ jobs:
       # --no-tests=error, so that a build with its tests switched off cannot pass.
       - name: Test the server
         run: ctest --preset release --output-on-failure --no-tests=error
+
+  # The image's toolchain is newer than the one above, so the server is built and tested on it too.
+  # Warnings are not errors here: a newer compiler may warn about code the first job accepts.
+  build-ubuntu-26:
+    name: Build (Ubuntu 26.04, as the image)
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+
+    steps:
+      # git comes before the checkout, so that the checkout brings the submodules.
+      - name: Install the build's packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential cmake git ca-certificates \
+              libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release --parallel 4
+
+      - name: Test the server
+        run: ctest --preset release --output-on-failure --no-tests=error
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.info.outputs.commit }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Find the commit and the protocol version
+        id: info
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          protocol=$(sed -n 's/.*protocolVersion = \([0-9][0-9]*\);.*/\1/p' server/core/Protocol.h)
+          test -n "$protocol"
+          echo "protocol=$protocol" >> "$GITHUB_OUTPUT"
+
+      - name: A tag must be the version in CMakeLists.txt
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)
+          test -n "$version"
+          test "$TAG" = "v$version"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Name the image's tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha
+          labels: |
+            org.opencontainers.image.title=Romanian Whist server
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+            io.github.conectionist.whist.protocol=${{ steps.info.outputs.protocol }}
+
+      # A fixed job count keeps the runner from running out of memory.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:ci
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            JOBS=4
+            WHIST_COMMIT=${{ steps.info.outputs.commit }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      # The hardening flags are the ones the compose files set.
+      - name: Run the image, play a game against it, and stop it
+        env:
+          COMMIT: ${{ steps.info.outputs.commit }}
+        run: |
+          docker run -d --name whist --read-only --tmpfs /tmp --cap-drop ALL \
+              --security-opt no-new-privileges -p 127.0.0.1:8080:8080 "$IMAGE:ci"
+          timeout 60 sh -c 'until [ "$(docker inspect -f "{{.State.Health.Status}}" whist)" = healthy ]; do sleep 1; done'
+          node tools/smoke/smoke.mjs --url http://127.0.0.1:8080 --commit "$COMMIT"
+          docker stop -t 30 whist
+          test "$(docker inspect -f '{{.State.ExitCode}}' whist)" = 0
+
+      - name: Check the image's size against its budget
+        run: |
+          bytes=$(docker image inspect "$IMAGE:ci" --format '{{.Size}}')
+          echo "The image is $((bytes / 1000000)) MB, of a budget of 120 MB." | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$bytes" -le 120000000
+
+      - name: The server's log
+        if: failure()
+        run: docker logs whist || true
+
+  # Only master, a version tag, or a manual run that asks for it. A pull request never publishes.
+  publish:
+    name: Publish the image
+    needs: [build, build-ubuntu-26, docker]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ needs.docker.outputs.tags }}
+          labels: ${{ needs.docker.outputs.labels }}
+          build-args: |
+            JOBS=4
+            WHIST_COMMIT=${{ needs.docker.outputs.commit }}
+          cache-from: type=gha,scope=server
