@@ -13,6 +13,8 @@ and that is worse than any wait. **Slower is always acceptable; a frozen desktop
 - **One heavy command at a time.** Never build or test several presets in one command or back to
   back without being asked. Build and test the other presets (`release`, `clang`) only when the
   owner asks, or once before a PR, one preset per command.
+- **Docker builds:** `docker build --build-arg JOBS=2 …` (or `docker compose build`), one image
+  build at a time, in the background.
 - **Sanitizer builds (`asan`, `tsan`), the chaos test and the load test** only when the owner asks,
   one run per command. Don't loop them.
 - **Long jobs go in the background** (`run_in_background`), still under `nice` and `-j 2`, so the

@@ -26,6 +26,9 @@
 > `master`. Until the page's work reaches it, the current page plan is on the web repository's
 > parent branch, `ccr-209c0806-o444sp`, which phase 6 created. The same day,
 > this file was renamed from `docs/web-client-plan.md` to `docs/server-plan.md`.
+>
+> The server's Docker image, its compose files and its CI are built outside the numbered phases,
+> and are recorded in §12.1 and §12.1.1.
 
 This plan is for whoever builds it: the owner, or an agent picking the work up cold. It says what
 to build, which existing code each part comes from, in what order, and how to tell each phase is
@@ -347,8 +350,13 @@ romanian_whist_server/              AGPL-3.0-or-later, like the engine
 │   ├── PROTOCOL.md                 every message, kept beside the code
 │   ├── fixtures/                   sample messages written by server tests, read by clients' tests
 │   └── look/                       the fixture tool's snapshots, for the page's comparisons (§10.5)
-├── tools/                          the fixture tool for the page's screenshots (§10.5)
-├── deploy/                         Caddyfile, systemd unit
+├── tools/                          the fixture tool for the page's screenshots (§10.5), and smoke/:
+│                                   the smoke test of a running server (§12.1)
+├── Dockerfile, .dockerignore       the server's image (§12.1)
+├── compose.yaml                    the server built from this checkout
+├── deploy/                         the compose files for the images, their .env.example, the image's
+│                                   config.json and the proxy examples (§12.1); phase 9's Caddyfile
+│                                   and systemd unit (§12.2)
 ├── docs/
 └── CLAUDE.md                       the owner's machine rules (§11)
 ```
@@ -985,6 +993,8 @@ the desktop repository's `CLAUDE.md` goes into this repository's `CLAUDE.md`:
 - builds as `nice -n 19 cmake --build <dir> -j 2`;
 - tests under `nice -n 19`;
 - one heavy command at a time, and long jobs in the background;
+- Docker builds as `docker build --build-arg JOBS=2 …` (or `docker compose build`), one image build
+  at a time, in the background;
 - timing runs, sanitizer builds, the chaos test and the load test only when the owner asks.
 
 The first build of each preset compiles Drogon too, which takes several minutes at `-j 2`, so run
@@ -996,7 +1006,7 @@ it in the background.
 | Present | Missing |
 |---|---|
 | g++ 13.3, clang 18 | Emscripten (phase 10 only) |
-| CMake 3.28 | Caddy (deployment only) |
+| CMake 3.28 | Caddy (only for deploying by hand, §12.2) |
 | Node 24, npm 11 | |
 
 Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-not-do).
@@ -1009,8 +1019,13 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 - **File types:** only html, js, css, svg, webp, png, ico, woff2, txt and json are served, from
   anywhere under `document_root`, so keep the configuration file outside it. The list is `fileTypes`
   in `server/app/Server.cpp`.
-- **CI:** one Linux job, which builds the server with a fixed job count (as the desktop client's CI
-  does, never an unlimited `-j`) and runs its tests. The page has a CI job of its own.
+- **Docker:** `docker compose up --build` runs the server from the checkout (`compose.yaml`), on
+  http://127.0.0.1:8080. The first build compiles Drogon too, so run it in the background.
+- **CI:** the Linux job builds the server with a fixed job count (as the desktop client's CI does,
+  never an unlimited `-j`) and runs its tests, in an Ubuntu 24.04 container: the owner's machine's
+  g++ 13.3 and CMake 3.28. A second job does the same on Ubuntu 26.04, the toolchain of the image.
+  The `docker` job builds the image, plays a game against it and checks the compose files, and the
+  `publish` job pushes it ([§12.1](#121-with-docker-recommended)). The page has CI jobs of its own.
 - **Pull requests:** change a PR's title or description with
   `gh api -X PATCH repos/<owner>/<repo>/pulls/<N> -F body=@<file>`. `gh pr edit` fails on the
   owner's repositories with a "Projects (classic)" GraphQL error.
@@ -1018,6 +1033,322 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 ---
 
 ## 12. Deployment and operations
+
+There are three ways to deploy. Docker is the recommended one: the image carries the server with
+the libraries it was built against. Behind the user's own proxy is a variant of it. Deploying by
+hand stays possible.
+
+### 12.1 With Docker (recommended)
+
+**Two images**, for linux/amd64 only, on GitHub's registry, published from `master` and from
+version tags:
+
+- `ghcr.io/conectionist/romanian_whist_server`: `whist_server` alone, on Ubuntu 26.04 LTS. Built
+  here, from the `Dockerfile`.
+- `ghcr.io/conectionist/romanian_whist_web`: Caddy serving the page's built `dist/`, with automatic
+  HTTPS. It proxies `/ws` and `/version` to the server, and serves `index.html` for `/t/{code}`.
+  Built in `romanian_whist_web`, with Node 26.
+
+**Three setups:** the full stack with our Caddy (recommended); behind the user's own proxy, with
+no Caddy of ours ([§12.1.1](#1211-behind-your-own-proxy)); and the page pointed at any server,
+which is the web repository's compose file.
+
+**The versions,** which were the latest stable ones when they were chosen on 2026-11-10:
+
+| Item | Pinned | Why |
+|---|---|---|
+| Server base, build and runtime | `ubuntu:26.04` | The 26.04 LTS is supported until 2031. 26.10 is an interim release with nine months of support |
+| 26.04 build packages | `build-essential` (g++ 15.2), `cmake` 4.2.3, `ccache`, `libjsoncpp-dev` 1.9.6, `uuid-dev`, `zlib1g-dev`, `libssl-dev` 3.5 | What the archive has |
+| 26.04 runtime packages | `libjsoncpp26`, `libssl3t64`, `libuuid1`, `zlib1g` | The `-dev` packages' runtime dependencies. jsoncpp's was `libjsoncpp25` on 24.04. The `ldd` line in the `Dockerfile` fails the build if one is missing |
+| Page build stage | `node:26.13.0-trixie-slim` | Node 26 is Active LTS. Debian, not Alpine: TypeScript 7 ships a glibc binary only |
+| `caddy` | `2.11.9-alpine` | The latest release |
+| nginx, only to check the example | `nginx:1.30.6-alpine` | The stable branch, which is what users' distributions run |
+| The docker actions, checkout, setup-node | `setup-buildx-action@v4`, `login-action@v4`, `metadata-action@v6`, `build-push-action@v7`, `checkout@v7`, `setup-node@v7` | The latest majors |
+| Submodules: Drogon v1.9.14, the engine, utf8proc | unchanged | Pinned by [D3](#15-decisions-with-defaults). Bumping them is separate work |
+
+The existing web `build` job and the owner's machine stay on Node 24, where the lockfile is made.
+The runner of the new jobs is `ubuntu-latest`: the runner's OS never reaches an image, and the
+toolchain job runs in an `ubuntu:26.04` container. The server's existing `build` job runs in an
+`ubuntu:24.04` container: `ubuntu-latest` is Ubuntu 26.04, and the 24.04 runner's image brings a
+CMake (3.31) newer than the 3.28 of the owner's machine, so a runner label would not test it. If a
+toolchain change breaks the build, a failure in our own code is fixed in a small pull request of
+its own. A failure in a submodule (Drogon, trantor or utf8proc) means falling back to `ubuntu:24.04`
+with `libjsoncpp25`, and recording the failing log.
+
+**The server's image**
+
+- **Two stages on the same base,** so that the runtime has the libraries the build linked. The
+  build uses the `release` preset with `-DWHIST_SERVER_BUILD_TESTS=OFF`, which needs no network for
+  Catch2, and builds the `whist_server` target only. The runtime stage holds the stripped binary,
+  `server/www`, the configuration and the licence, and runs as an unprivileged user (uid 10001).
+- **`JOBS`** is the number of compile jobs: 2 unless told otherwise, so that a build on a desktop
+  leaves it usable. CI says 4. A ccache cache mount makes a local rebuild quick. In CI, the layer
+  cache does not keep the C++ compile from one commit to the next, because `COPY . .` and
+  `WHIST_COMMIT` change with every commit, and ccache's directory is not kept there. `mode=max`
+  lets the `publish` job reuse what the `docker` job built in the same run.
+- **`WHIST_COMMIT`** is the commit the server reports in its `welcome`. A Docker build context has
+  no `.git`, so the build is told, through the CMake option `WHIST_SERVER_COMMIT`, and the smoke
+  test checks it.
+- **`.dockerignore`** keeps `.git`, build trees, editor folders, `.env` files, `docs`, the markdown
+  files in the root, the tests, the fixtures, `tools/chaos`, `tools/smoke` and the deploy files out
+  of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
+  adds it.
+- **Configuration.** `server/app/config.json` listens on `127.0.0.1`, which does not work inside a
+  container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"` and
+  `"document_root": "/opt/whist/www"`, and is the image's `/etc/whist/config.json`. A test
+  (`[options]`) fails when the two differ in anything else, or when the image's cannot be loaded.
+  Settings have no environment overrides: to change one, mount a file over
+  `/etc/whist/config.json`. The address and port 8080 must stay, since the health check uses them.
+  The port on the host is `WHIST_LISTEN`, in the own-proxy compose file; the full stack's server
+  publishes none.
+- **Stopping.** `STOPSIGNAL SIGTERM`: the server's handlers only set a flag, and a timer on the main
+  loop then ends the games and exits with 0 within about 5 s ([§4.6](#46-threads-and-locks), and
+  `ShutdownTests`), so it is safe as PID 1. The compose files allow 30 s. CI checks that
+  `docker stop -t 30` gives exit code 0.
+- **Health** is a TCP check on the port, because the server has no health route yet.
+- **Hardening** in the compose files: a read-only root with a tmpfs on `/tmp` (Drogon's upload
+  folder is under it), all capabilities dropped, `no-new-privileges`, and 65536 open files.
+- **Size:** CI fails the build above 150 MB, counted as the sum of the layers. The Ubuntu base is
+  117 MB of that.
+
+**The compose files.** `deploy/docker-compose.yml` is the full stack, with Caddy requiring
+`WHIST_DOMAIN` (a domain name for HTTPS, or `:80` for a trial). `deploy/docker-compose.own-proxy.yml`
+is [§12.1.1](#1211-behind-your-own-proxy). `compose.yaml` builds the server from the checkout.
+`deploy/.env.example` names every variable and which file uses it.
+
+**CI** (`.github/workflows/ci.yml`):
+
+- **`build`:** the Linux job, in an `ubuntu:24.04` container (g++ 13.3, CMake 3.28), with warnings
+  as errors.
+- **`build-ubuntu-26`:** the same build and tests inside an `ubuntu:26.04` container, on the
+  image's toolchain (g++ 15, CMake 4.2), which is newer than the first job's. Warnings are not
+  errors there.
+- **`docker`:** builds the image, runs it with the hardening flags, plays a game with
+  `tools/smoke/smoke.mjs`, checks `docker stop -t 30` and the compose files, and holds the size to
+  its budget. A tag must equal the `VERSION` in `CMakeLists.txt`.
+- **`publish`:** needs the three jobs above, and runs only on a push to `master` or to a version
+  tag, or when a manual run asks for it, which tags the image `sha-<commit>` and with the branch's
+  name, never `latest`. A pull request never publishes.
+
+**The first publish.** GitHub makes a new package private. After the first run that pushes, set
+both packages, `romanian_whist_server` and `romanian_whist_web`, to Public once, in each package's
+settings, and check an anonymous pull (`docker logout ghcr.io`, then `docker pull` of each image).
+
+**Versioning.** Each repository is versioned on its own. The contract between the two images is the
+protocol number, which is a label on both, `io.github.conectionist.whist.protocol`; the server
+refuses a `hello` with another number ([§6.8](#68-errors-and-versions)). The web image also carries
+`io.github.conectionist.whist.server-revision`, the server it was tested with. To pair them, match
+the labels and pin both tags in production. When the protocol changes, release the server first,
+then a page whose submodule points at it, and deploy both together.
+
+#### 12.1.1 Behind your own proxy
+
+**The need:** the user's proxy terminates TLS and owns ports 80 and 443, so no Caddy of ours
+should claim ports or fetch certificates.
+
+| | How it works | For | Against |
+|---|---|---|---|
+| **(a) The server serves the page** (chosen) | A one-shot `page` service, from the web image, copies `/srv` into a named volume. The server mounts it read-only as its `document_root`. The user's proxy forwards everything to `127.0.0.1:8080` | No Caddy of ours at all. Only the two published images, so the protocol labels still pair them. The server already serves `document_root`, `/t/{code}`, `.webp` and `.json`, and gzips text. The proxy rule is one line | Until phase 9 the server sends no CSP, `nosniff`, `Referrer-Policy` or `Cache-Control`, so the proxy adds them, from the examples |
+| (b) Our Caddy over HTTP on loopback | `SITE_ADDRESS=:80` on `127.0.0.1:8000`, and the user's proxy forwards to it | All our headers, no server change | Still a second Caddy container, which these users want to avoid |
+| (c) A bundle image | A third image: the server with `dist/` built in | One container | A third image, and confusing versioning |
+| (d) An image mount | The server mounts the web image's `/srv` directly | No copy step | Unverified syntax and update behaviour |
+| (e) The user's proxy serves the files | Files taken out of the web image by hand | Native | A manual step on every upgrade |
+
+**What (a) lacks today,** compared with the full stack:
+
+| | Full stack (our Caddy) | Own proxy, today | After phase 9 |
+|---|---|---|---|
+| TLS, ports 80 and 443 | our Caddy | the user's proxy | same |
+| `/ws` upgrade | Caddy | the user's proxy (nginx needs the `Upgrade` and `Connection` lines) | same |
+| `/t/{code}` | Caddy's rewrite | the server | same |
+| MIME types | Caddy | Drogon (`woff2` as `application/font-woff2`, which browsers accept) | same |
+| Compression | zstd and gzip | Drogon's gzip | same |
+| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server |
+| `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server |
+| Dotfiles | hidden | `dist/` has none | refused by the server |
+
+That is acceptable without a server change now: the examples carry the headers until phase 9.
+
+- **The compose file** is `deploy/docker-compose.own-proxy.yml`. `page` copies `/srv` into the
+  volume with no network, and exits. It writes each file under a temporary name and renames it into
+  place, which is atomic, so the server reads a file whole or not at all; it skips a file that is
+  already there and the same, and does `index.html` last, after the scripts it names. A folder where
+  a file now goes, or a page with no `assets`, fails the service. The server waits for `page` to
+  complete, and mounts the volume with `nocopy`, so the image's debug page does not land in it. It
+  listens on `${WHIST_LISTEN:-127.0.0.1:8080}`. A proxy in a container joins the server to its
+  network with a `docker-compose.override.yml`, which the README gives.
+- **One limit of the copy:** Drogon sends a file over 200 KB with sendfile. It fixes the length when
+  it makes the response, opens the file by name when it sends, and keeps the response for 5 s. A
+  file of that size that changes can therefore be served cut short, or fail, for up to 5 s after
+  the rename. Hashed files never change, and the page's largest file is under 100 KB. Phase 9
+  closes it (below).
+- **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
+  `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
+  `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
+  headers, which puts the cache rules on error answers too. The headers are a file of their own
+  because a location's `add_header` drops the ones it inherits. The cache rules are kept off error
+  answers, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
+  sub-path is not supported, since the page's links start at the root. The CSP string is the page's.
+  The page's CI is to compare every copy of it against one constant; that check is planned for the
+  page's pull request.
+- **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
+  Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
+  whist_page`.
+- **Coverage:** nothing here runs the setup in CI. The page's CI is to run it directly, through the
+  Caddy example and through the nginx example; that is planned for the page's pull request.
+
+#### What phase 9 changes here
+
+- `/health` for the health check, and `stop_grace_period: 16m` for the drain.
+- `X-Forwarded-For`, trusted only from the proxy, ours or the user's.
+- The Drogon CSP, identical to the Caddyfile's. Once the server sends the CSP and the caching
+  headers, the examples' header lines are redundant. Keep them identical, or drop them; the page's
+  planned smoke test then checks the server's own headers too.
+- Dot-folders refused in Drogon.
+- Static files sent without sendfile (`enableSendfile(false)`, or an equivalent), so that a large
+  file that changes is never served cut short.
+- The page's commit from a build argument.
+
+#### Outcome
+
+Branch `web/docker`, off `ccr-c8ac042f-e6e18n`, PR #13, "The server's Docker image". Commits:
+
+- **The build:** `f543aa5`, `c4f82b3`, `7b057e3`, `5a00cdc`, `2ba4441`, `e06788c`, `f44b807`,
+  `4978e0d` and `e2b220e`, then `b853211` (the machine rule) and `1df0178` (the size budget).
+- **After the first review:** `03f348a`, `83baebd`, `a14a3ce`, `ea2d331`, `785492f` and `f01710a`.
+- **After the second review:** `ed3e86c`, `6337246`, `ef524a1` and `2d8e25b`.
+- **This outcome,** in a commit of its own.
+
+**The owner's choices** (2026-11-10):
+
+- **The four from the start:** Caddy in the web image, serving the page and passing `/ws` on; the
+  registry ghcr.io; publishing from `master` and version tags; amd64 only.
+- **Two requests:** the latest stable versions (Ubuntu 26.04 LTS, Node 26 for the page's image, and
+  a CI job on the image's toolchain), and a deployment without a Caddy of ours, which is
+  [§12.1.1](#1211-behind-your-own-proxy).
+- **The plan's 22 open questions,** all at their recommended defaults.
+- **After the first review** (17 findings, none above severity 3): fix all but one, the rebuild in
+  `publish`, which is an accepted risk in [§14](#14-risks); `CLAUDE.md`'s Docker rule worded as the
+  implementer proposed; and a second review.
+- **After the second review** (10 findings, none above severity 3): fix all, as the implementer
+  recommended. Of the shell findings only `set -o pipefail`, and the sendfile limit by wording,
+  with an item for phase 9 in place of a change to the server. No third review.
+
+**Built:**
+
+- **The image.** `Dockerfile`: two stages on `ubuntu:26.04`. The first builds the `release` preset
+  with `JOBS` compile jobs (2 unless told otherwise) and the commit it is given. The second holds
+  the stripped binary, the debug page, the configuration and the licence, runs as uid 10001, stops
+  on SIGTERM, and is healthy once it accepts connections on its port. The build fails when the
+  runtime packages miss a library the server links. It is 120 MB by its layers, 117 MB of that the
+  base, and 44 MB compressed.
+- **The commit.** `-DWHIST_SERVER_COMMIT=<hash>` tells a build with no `.git` which commit to
+  report, and an empty value keeps asking git.
+- **A test,** `[options]`, that `deploy/docker-config.json` equals `server/app/config.json` in
+  everything but the address and the document root, and that it loads.
+- **`tools/smoke/smoke.mjs`,** which plays the first moments of a solo game against a running server
+  and exports `smokeGame()` and `waitForPage()` for the page's repository.
+- **Compose files:** `deploy/docker-compose.yml` (the full stack, with Caddy),
+  `deploy/docker-compose.own-proxy.yml` (the server serving the page from a volume),
+  `compose.yaml` (the server from a checkout), and `deploy/.env.example`.
+- **Proxy examples** in `deploy/examples/`, for Caddy (2.9.1 or later) and nginx.
+- **CI:** `build` in an `ubuntu:24.04` container (g++ 13.3, CMake 3.28) with warnings as errors,
+  `build-ubuntu-26` on the image's toolchain, `docker` (build, run with the hardening flags, smoke
+  test, `docker stop -t 30` exit code, compose files, size budget), and `publish`, which a pull
+  request never runs.
+- **Docs:** the README's deployment sections, this plan, and a Docker rule in `CLAUDE.md`.
+
+**Versions.** Ubuntu 26.04 built the server unchanged: GCC 15.2, CMake 4.2.3 and `libjsoncpp26`,
+with no fallback to 24.04. The only warnings are Drogon's own deprecation notices and a CMake
+deprecation notice from trantor's `cmake_minimum_required`. The first job's toolchain is Ubuntu
+24.04's own, the owner's machine's, so the server is built and tested on both.
+
+**Tests and checks,** on the machine this was written on, with a local Docker daemon:
+
+- **Presets:** one new test, so CTest runs 161, and all pass in `default` and in `release` with
+  `-DWHIST_SERVER_WARNINGS_AS_ERRORS=ON`, with no warnings in our code.
+- **The image,** run with `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges`:
+  healthy in seconds, `uid=10001(whist) gid=999(whist)`, the smoke test passes with the commit the
+  image was built with, and `docker stop -t 30` gives exit code 0. The dev `compose.yaml` runs with
+  the same hardening.
+- **Behind your own proxy,** with a stand-in for the page's image, built on the Caddy image the real
+  one uses: the first `up -d` copies the page and the debug page is not served; a second leaves
+  every file as it was; an update brings the new assets first and `index.html` last, adds new
+  folders and keeps the old files; the volume is read-only for the server; and the server is not
+  restarted when only the page changes. This sandbox cannot raise the file limit to 65536, so those
+  runs used 20000.
+- **The race test:** a reader fetches a file in a loop for 45 s while the page alternates between
+  two versions. With the copy now in use, and a `data.json` of 120000 bytes in one version and
+  180000 in the other, all 8272 reads were whole. `cp -a` gave 5 short reads in 8482. An earlier
+  run with two files of 8 MB of the same length also gave whole reads, but equal lengths hide the
+  limit below, so it does not count.
+- **The limit:** Drogon sends a file over 200 KB with sendfile, fixes its length when it makes the
+  response, and keeps the response for 5 s. Replacing such a file by rename gave 8 of 8 reads of
+  the old length holding the start of the new file, and with a shorter new file, 2 of 8 failed. The
+  page's largest file is under 100 KB, so nothing is affected today; phase 9 closes it.
+- **The proxy examples,** in front of a local server: Caddy and nginx pass the smoke test, WebSocket
+  included. A 200 and a 304 get the `Cache-Control` of their rule; a 404 and a 502 get none, where
+  the first examples gave a 404 the year-long one. nginx sends `X-Forwarded-For` and
+  `X-Forwarded-Proto` from every location, and adds the header to a redirect but not to a 500.
+- **Caddy versions:** 2.6.2 accepts `whist.caddy` and reads its `match` lines as headers, which
+  puts the year-long rule on a 404 again. 2.9.1 and 2.11.9 behave as intended. 2.9.0 could not be
+  pulled (Docker Hub's rate limit), so the threshold, 2.9.1, is the review's.
+- **The copy's edge cases,** in busybox: a nested `index.html` is copied, and a file over a folder,
+  a folder over a file and an image with no `assets` each fail the service.
+
+**Where the build departs from the plan:**
+
+- **The size budget is 150 MB, not 120 MB,** counted as the sum of the layers from `docker history`.
+  The plan's figure came from an estimate for a smaller base; Ubuntu 26.04 is 117 MB by itself, and
+  `docker image inspect` reports another size under the containerd image store.
+- **The copy skips with `cmp`.** The plan had `cp -a`, and the first review's fix `cp -an` for the
+  assets. The build copies each file under a temporary name, renames it into place, skips a file that
+  is already there and the same, and does `index.html` last. A half-copied asset from a killed run is
+  then replaced, where `cp -an` would keep it.
+- **The smoke script** waits for `GET /` to give a page and then plays the game; `--timeout` (10 s)
+  applies to each of the two, so a run can take twice as long. It checks the welcome's commit and the
+  sync that follows it. It does not check headers, types or `/t/` links: those are the page's smoke
+  test, still to come.
+- **The first job runs in a container.** The plan left `build` on `ubuntu-latest`, which it took for
+  24.04 and which is 26.04 now. The 24.04 runner's image brings CMake 3.31, so only a container
+  gives the owner's 3.28.
+- **Several claims of this plan were corrected after review:** what CI's layer cache keeps (not the
+  C++ compile), what `.dockerignore` leaves out, the port (`WHIST_LISTEN`), the update (the server
+  restarts only when its own image is new), the reasoning for accepting the rebuild in `publish`,
+  and that the page's CI checks are planned, not present.
+
+**The reviews,** each by a cold reviewer:
+
+- **The first,** 17 findings, none above severity 3: the toolchain of `build`, the tags of a manual
+  run, the cache headers on errors, the non-atomic copy, the GHCR visibility step, the nginx
+  header inheritance, and the smaller items. All fixed but the rebuild in `publish`, and the
+  optional Drogon layer split, `**/*.md` in `.dockerignore` and a CI job for the examples, which
+  were left.
+- **The second,** 10 findings, none above severity 3: the Caddy version, the sendfile limit, the
+  folder case of `mv`, the nested `index.html`, the reasoning for the accepted risk, CMake 3.28, the
+  shell's robustness, and three wordings. All fixed as recommended.
+
+**CI.** The runs on `1df0178` and on each fix of the first review passed. The commits of the second
+review were pushed one after another, so the next push cancelled the runs of the first three, and
+the run on `2d8e25b` passed in full: `build`, in the `ubuntu:24.04` container with g++ 13.3.0 and
+CMake 3.28.3, 161 of 161 tests; `build-ubuntu-26`; and `docker`. `publish` is skipped on a pull
+request. The commits after it change only this plan.
+
+**What the page's pull request must still do:**
+
+- **Move `deploy/Caddyfile`'s caching rules** to the block form with `match status 2xx 304`, as in
+  `whist.caddy`, so that an error is never cached for long.
+- **Add the web repository's `CLAUDE.md` rule** that `docker compose build server` comes before the
+  page, which this repository's rule no longer holds.
+- **Add the page's smoke test** (`tools/smoke.mjs`, with its profiles) and the browser check, and
+  run every setup in CI: the full stack, the own-proxy setup directly, and through the Caddy and
+  nginx examples.
+- **Compare every copy of the CSP** (`deploy/Caddyfile`, `whist.caddy`, `whist-headers.conf`)
+  against one constant.
+- **Build the page's image,** with Node 26, and move the web repository's submodule to this
+  merge.
+
+### 12.2 By hand
 
 - **A small Linux server:** 2 vCPUs and 2–4 GB, Debian or Ubuntu LTS. The server runs as a release
   build, with the page's built `dist/` as Drogon's document root, and one configuration file. The
@@ -1029,6 +1360,9 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
   through as they are. Drogon listens on localhost only.
 - **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
   journal.
+
+### 12.3 Either way
+
 - **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only set a
   flag, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log line
   inside the signal handler, which can allocate memory, and so hang. A timer on the main loop sees
@@ -1814,7 +2148,8 @@ In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/bl
     dot-folders too (a build's `.vite/`, for example), and nothing refuses them yet;
   - the drain, `/health`, and `/version`, which the page's source links read;
   - the load test;
-  - the server, Caddy, systemd, a domain;
+  - a domain, deployed with the Docker images (§12.1), with our Caddy or behind the user's proxy
+    (§12.1.1), and the by-hand Caddyfile and systemd unit (§12.2);
   - the page's share, in `romanian_whist_web`: the footer's source links and the About page
     ([the page's plan, §12](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#12-security)),
     and the page built and deployed as §12 says.
@@ -1855,6 +2190,9 @@ is merged before the page's part needs it.
 | Silent disconnects | Detection by pong, checked in phase 1 |
 | Names that spoof or inject | Text-only rendering, the Content-Security-Policy, the name rules of [§7.3](#73-names-genders-and-portraits) |
 | Drogon behaves differently from what this plan assumes | Phase 1's spikes, before anything depends on them |
+| An image is deployed publicly before the limits exist | Every deployment in the README says it is not for the public internet until phase 9 |
+| The image's toolchain is newer than the owner's machine's | The Ubuntu 26.04 CI job builds and tests the server on it ([§12.1](#121-with-docker-recommended)) |
+| `publish` builds the image again instead of pushing the one `docker` tested | Accepted. The same run's `docker` job writes the layer cache, so the rebuild is normally the same build. It differs only if `publish` cannot read the cache, or `ubuntu:26.04` moves between the jobs; then its packages can be newer than the tested image's |
 
 The page's own risks, about its look, are in [its plan's §16](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#16-risks).
 
@@ -1885,7 +2223,7 @@ The plan assumes each default until the owner decides otherwise.
 | D17 | A solo player who goes away? | The game holds for up to 30 minutes |
 | D18 | Which look? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D19 | Chat? | None |
-| D20 | Hosting? | One small server, with Caddy and systemd |
+| D20 | Hosting? | **Decided by the owner, 2026-11-10:** Docker Compose with the two images (recommended), with Caddy in the page's image, or behind the user's own proxy with the server serving the page; by hand with Caddy and systemd stays possible |
 
 ---
 
@@ -1928,5 +2266,15 @@ The plan assumes each default until the owner decides otherwise.
   [configuration](https://github.com/drogonframework/drogon/wiki/ENG-11-Configuration-File),
   [`HttpAppFramework.h`](https://github.com/drogonframework/drogon/blob/master/lib/inc/drogon/HttpAppFramework.h),
   [trantor's cross-thread `send()`](https://github.com/an-tao/trantor/blob/master/trantor/net/inner/TcpConnectionImpl.cc).
+- Docker: [Dockerfile reference](https://docs.docker.com/reference/dockerfile/),
+  [Compose file reference](https://docs.docker.com/reference/compose-file/), and the actions CI
+  uses: [setup-buildx](https://github.com/docker/setup-buildx-action),
+  [login](https://github.com/docker/login-action),
+  [metadata](https://github.com/docker/metadata-action) and
+  [build-push](https://github.com/docker/build-push-action).
+- Caddy: [`reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) and
+  [its image](https://hub.docker.com/_/caddy). nginx:
+  [proxying WebSockets](https://nginx.org/en/docs/http/websocket.html) and
+  [`add_header`](https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header).
 - Emscripten: [asynchronous code, JSPI and Asyncify](https://emscripten.org/docs/porting/asyncify.html).
 - [caniuse: WebAssembly JSPI](https://caniuse.com/wf-wasm-jspi).

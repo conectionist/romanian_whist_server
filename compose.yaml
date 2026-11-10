@@ -1,0 +1,14 @@
+# The server built from this checkout: docker compose up --build, then http://127.0.0.1:8080
+services:
+  server:
+    build:
+      context: .
+      args:
+        JOBS: ${WHIST_JOBS:-2}
+        WHIST_COMMIT: ${WHIST_COMMIT:-}
+    ports: ["127.0.0.1:8080:8080"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s

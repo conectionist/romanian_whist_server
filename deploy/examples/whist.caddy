@@ -1,0 +1,25 @@
+# Romanian Whist behind your own Caddy: import this inside the site block for its host.
+# Caddy passes the WebSocket at /ws through by itself.
+# Needs Caddy 2.9.1 or later: an older one reads the match lines as headers, and caches errors too.
+reverse_proxy 127.0.0.1:8080
+header {
+	Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	X-Content-Type-Options nosniff
+	Referrer-Policy no-referrer
+}
+# The caching headers go on successful answers only, so that an error is never cached for long.
+@whist_hashed path /assets/*
+header @whist_hashed {
+	Cache-Control "public, max-age=31536000, immutable"
+	match status 2xx 304
+}
+@whist_page path / /index.html /t/*
+header @whist_page {
+	Cache-Control no-cache
+	match status 2xx 304
+}
+@whist_other not path /assets/* / /index.html /t/* /ws
+header @whist_other {
+	Cache-Control "public, max-age=3600"
+	match status 2xx 304
+}

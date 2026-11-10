@@ -74,6 +74,7 @@ add_executable(app_tests
 )
 target_compile_options(app_tests PRIVATE ${WHIST_SERVER_WARNINGS})
 target_link_libraries(app_tests PRIVATE whist_app Catch2::Catch2WithMain)
-target_compile_definitions(app_tests PRIVATE WHIST_SERVER_PATH="$<TARGET_FILE:whist_server>")
+target_compile_definitions(app_tests PRIVATE WHIST_SERVER_PATH="$<TARGET_FILE:whist_server>"
+                                             WHIST_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_dependencies(app_tests whist_server)
 catch_discover_tests(app_tests)

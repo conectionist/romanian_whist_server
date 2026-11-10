@@ -3,10 +3,30 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <json/json.h>
+
+#include <fstream>
 #include <stdexcept>
+#include <string>
 
 using whist::parseOptions;
 using Catch::Matchers::ContainsSubstring;
+
+namespace
+{
+
+Json::Value readJsonFile(const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    REQUIRE(file);
+
+    Json::Value root;
+    std::string errors;
+    REQUIRE(Json::parseFromStream(Json::CharReaderBuilder(), file, &root, &errors));
+    return root;
+}
+
+} // namespace
 
 TEST_CASE("An empty config keeps every default", "[options]")
 {
@@ -85,4 +105,24 @@ TEST_CASE("A config is refused for what is wrong with it", "[options]")
     CHECK_THROWS_WITH(parseOptions("{"), ContainsSubstring("not valid JSON"));
     CHECK_THROWS_WITH(parseOptions(R"({"port": 1, "port": 2})"), ContainsSubstring("not valid JSON"));
     CHECK_THROWS_AS(whist::loadOptions("/nonexistent/whist.json"), std::invalid_argument);
+}
+
+TEST_CASE("The Docker image's settings are server/app/config.json's, listening on every address", "[options]")
+{
+    const std::string imagePath = std::string(WHIST_SOURCE_DIR) + "/deploy/docker-config.json";
+    Json::Value local = readJsonFile(std::string(WHIST_SOURCE_DIR) + "/server/app/config.json");
+    Json::Value image = readJsonFile(imagePath);
+
+    CHECK(image["address"].asString() == "0.0.0.0");
+    CHECK(image["document_root"].asString() == "/opt/whist/www");
+
+    // Whatever else one file sets, the other must too, so a new setting reaches the image.
+    for(const char* key : {"address", "document_root"})
+    {
+        local.removeMember(key);
+        image.removeMember(key);
+    }
+    CHECK(image == local);
+
+    CHECK_NOTHROW(whist::loadOptions(imagePath));
 }

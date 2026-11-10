@@ -2,3 +2,6 @@
 /build/
 /build-*/
 compile_commands.json
+
+# The settings a deployment is made with.
+/deploy/.env
