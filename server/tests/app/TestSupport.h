@@ -1,6 +1,7 @@
 #ifndef WHIST_TESTS_TESTSUPPORT_H
 #define WHIST_TESTS_TESTSUPPORT_H
 
+#include <drogon/HttpTypes.h>
 #include <drogon/WebSocketClient.h>
 #include <json/value.h>
 #include <trantor/net/EventLoopThread.h>
@@ -37,7 +38,7 @@ private:
 
 // The server main() runs, started in this process on first use, on a free port. Drogon allows one
 // app() per process, so every test in the process shares it. Its document root holds an index.html
-// containing indexMarker.
+// containing indexMarker, servedFiles() and unservedFiles().
 struct TestServer
 {
     std::uint16_t port = 0;
@@ -45,6 +46,20 @@ struct TestServer
 };
 
 inline constexpr const char* indexMarker = "whist-test-index";
+
+// One file of each type the server serves, and the content type it answers with.
+struct ServedFile
+{
+    std::string path;
+    std::string contents;
+    drogon::ContentType type;
+};
+
+const std::vector<ServedFile>& servedFiles();
+
+// Files of types Drogon serves by default and the server does not. Each holds sourceMarker.
+inline constexpr const char* sourceMarker = "whist-test-source";
+const std::vector<std::string>& unservedFiles();
 
 const TestServer& testServer();
 

@@ -13,6 +13,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <unistd.h>
 
@@ -146,6 +147,10 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     const std::filesystem::path uploads = std::filesystem::temp_directory_path()
                                         / ("whist_server-uploads-" + std::to_string(::getuid()));
 
+    // Drogon serves only the file types on its list, from anywhere under the document root. png and
+    // ico are for a favicon.
+    const std::vector<std::string> fileTypes{"html", "js", "css", "svg", "webp", "png", "ico", "woff2", "txt", "json"};
+
     ServiceOptions serviceOptions;
     serviceOptions.registry.table.instantFloor = options.instantFloor;
     serviceOptions.pongTimeout = options.pongTimeout;
@@ -160,6 +165,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .addListener(options.address, options.port)
         .setDocumentRoot(options.documentRoot)
         .setHomePage("index.html")
+        .setFileTypes(fileTypes)
         .setUploadPath(uploads.string())
         .setClientMaxMemoryBodySize(maxRequestBody)
         .setClientMaxBodySize(maxRequestBody)

@@ -41,6 +41,7 @@ TempDir::~TempDir()
 
 void TempDir::write(const std::string& name, const std::string& contents) const
 {
+    std::filesystem::create_directories((path_ / name).parent_path());
     std::ofstream(path_ / name, std::ios::binary) << contents;
 }
 
@@ -125,6 +126,30 @@ std::uint16_t freePort()
     return ntohs(address.sin_port);
 }
 
+const std::vector<ServedFile>& servedFiles()
+{
+    // The binary contents hold NUL bytes, which a body must carry through.
+    static const std::vector<ServedFile> files{
+        {"pages/x.html", "<!doctype html><title>x</title>\n", drogon::CT_TEXT_HTML},
+        {"assets/x.js", "export {};\n", drogon::CT_TEXT_JAVASCRIPT},
+        {"assets/x.css", "body {}\n", drogon::CT_TEXT_CSS},
+        {"assets/x.svg", R"(<svg xmlns="http://www.w3.org/2000/svg"/>)", drogon::CT_IMAGE_SVG_XML},
+        {"cards/AS.webp", std::string("RIFF\0\0\0\0WEBPtest", 16), drogon::CT_IMAGE_WEBP},
+        {"assets/x.png", std::string("\x89PNG\r\n\x1a\n\0\0", 10), drogon::CT_IMAGE_PNG},
+        {"assets/x.ico", std::string("\0\0\1\0\0\0", 6), drogon::CT_IMAGE_XICON},
+        {"fonts/x.woff2", "wOF2", drogon::CT_APPLICATION_FONT_WOFF2},
+        {"fonts/OFL.txt", "licence\n", drogon::CT_TEXT_PLAIN},
+        {"avatars.json", "[]\n", drogon::CT_APPLICATION_JSON},
+    };
+    return files;
+}
+
+const std::vector<std::string>& unservedFiles()
+{
+    static const std::vector<std::string> paths{"photos/x.jpg", "data/x.xml"};
+    return paths;
+}
+
 const TestServer& testServer()
 {
     std::unique_ptr<RunningServer>& server = runningServer();
@@ -137,6 +162,10 @@ const TestServer& testServer()
     server = std::make_unique<RunningServer>();
     server->documentRoot.write("index.html",
         std::string("<!doctype html><title>test</title><p>") + indexMarker + "</p>\n");
+    for(const ServedFile& file : servedFiles())
+        server->documentRoot.write(file.path, file.contents);
+    for(const std::string& path : unservedFiles())
+        server->documentRoot.write(path, sourceMarker);
 
     ServerOptions options;
     options.port = freePort();
