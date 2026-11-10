@@ -1810,6 +1810,8 @@ In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/bl
 
 - **Work:**
   - the limits and rate limits, the Content-Security-Policy;
+  - refusing paths with a segment that starts with `.`: Drogon serves files of the listed types from
+    dot-folders too (a build's `.vite/`, for example), and nothing refuses them yet;
   - the drain, `/health`, and `/version`, which the page's source links read;
   - the load test;
   - the server, Caddy, systemd, a domain;
