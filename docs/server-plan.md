@@ -1022,10 +1022,10 @@ Drogon's system packages are listed in [§4.2](#42-why-drogon-and-what-it-does-n
 - **Docker:** `docker compose up --build` runs the server from the checkout (`compose.yaml`), on
   http://127.0.0.1:8080. The first build compiles Drogon too, so run it in the background.
 - **CI:** the Linux job builds the server with a fixed job count (as the desktop client's CI does,
-  never an unlimited `-j`) and runs its tests. A second job does the same on Ubuntu 26.04, the
-  toolchain of the image. The `docker` job builds the image, plays a game against it and checks the
-  compose files, and the `publish` job pushes it ([§12.1](#121-with-docker-recommended)). The page
-  has CI jobs of its own.
+  never an unlimited `-j`) and runs its tests, on Ubuntu 24.04, the owner's machine's base. A second
+  job does the same on Ubuntu 26.04, the toolchain of the image. The `docker` job builds the image,
+  plays a game against it and checks the compose files, and the `publish` job pushes it
+  ([§12.1](#121-with-docker-recommended)). The page has CI jobs of its own.
 - **Pull requests:** change a PR's title or description with
   `gh api -X PATCH repos/<owner>/<repo>/pulls/<N> -F body=@<file>`. `gh pr edit` fails on the
   owner's repositories with a "Projects (classic)" GraphQL error.
@@ -1068,10 +1068,11 @@ which is the web repository's compose file.
 
 The existing web `build` job and the owner's machine stay on Node 24, where the lockfile is made.
 The runner of the new jobs is `ubuntu-latest`: the runner's OS never reaches an image, and the
-toolchain job runs in an `ubuntu:26.04` container. If a toolchain change breaks the build, a
-failure in our own code is fixed in a small pull request of its own. A failure in a submodule
-(Drogon, trantor or utf8proc) means falling back to `ubuntu:24.04` with `libjsoncpp25`, and
-recording the failing log.
+toolchain job runs in an `ubuntu:26.04` container. The server's existing `build` job is pinned to
+`ubuntu-24.04`, because `ubuntu-latest` is Ubuntu 26.04 and both jobs would otherwise test the same
+toolchain. If a toolchain change breaks the build, a failure in our own code is fixed in a small
+pull request of its own. A failure in a submodule (Drogon, trantor or utf8proc) means falling back
+to `ubuntu:24.04` with `libjsoncpp25`, and recording the failing log.
 
 **The server's image**
 
@@ -1111,9 +1112,10 @@ is [§12.1.1](#1211-behind-your-own-proxy). `compose.yaml` builds the server fro
 
 **CI** (`.github/workflows/ci.yml`):
 
-- **`build`:** the Linux job, unchanged.
+- **`build`:** the Linux job, on `ubuntu-24.04` (g++ 13), with warnings as errors.
 - **`build-ubuntu-26`:** the same build and tests inside an `ubuntu:26.04` container, on the
-  image's toolchain, which is newer than the first job's. Warnings are not errors there.
+  image's toolchain (g++ 15, CMake 4.2), which is newer than the first job's. Warnings are not
+  errors there.
 - **`docker`:** builds the image, runs it with the hardening flags, plays a game with
   `tools/smoke/smoke.mjs`, checks `docker stop -t 30` and the compose files, and holds the size to
   its budget. A tag must equal the `VERSION` in `CMakeLists.txt`.

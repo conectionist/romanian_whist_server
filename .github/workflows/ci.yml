@@ -29,9 +29,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Ubuntu 24.04, the owner's machine's base, so that g++ 13 builds the server with warnings as errors.
+  # ubuntu-latest is newer, and the next job already covers the newer toolchain.
   build:
     name: Build (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -52,8 +54,8 @@ jobs:
       - name: Test the server
         run: ctest --preset release --output-on-failure --no-tests=error
 
-  # The image's toolchain is newer than the one above, so the server is built and tested on it too.
-  # Warnings are not errors here: a newer compiler may warn about code the first job accepts.
+  # The image's toolchain (g++ 15) is newer than the first job's (g++ 13), so the server is built and
+  # tested on it too. Warnings are not errors here: a newer compiler may warn about code g++ 13 accepts.
   build-ubuntu-26:
     name: Build (Ubuntu 26.04, as the image)
     runs-on: ubuntu-latest
