@@ -29,19 +29,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Ubuntu 24.04, the owner's machine's base, so that g++ 13 builds the server with warnings as errors.
-  # ubuntu-latest is newer, and the next job already covers the newer toolchain.
+  # Ubuntu 24.04's own g++ 13.3 and CMake 3.28, the owner's machine's, with warnings as errors. The
+  # runner's image brings a newer CMake, so the job runs in a container.
   build:
     name: Build (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
 
     steps:
+      # git comes before the checkout, so that the checkout brings the submodules.
+      - name: Install the build's packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential cmake git ca-certificates \
+              libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
-      - name: Install Drogon's packages
-        run: sudo apt-get update && sudo apt-get install -y libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev
 
       - name: Configure
         run: cmake --preset release -DWHIST_SERVER_WARNINGS_AS_ERRORS=ON
@@ -54,8 +59,9 @@ jobs:
       - name: Test the server
         run: ctest --preset release --output-on-failure --no-tests=error
 
-  # The image's toolchain (g++ 15) is newer than the first job's (g++ 13), so the server is built and
-  # tested on it too. Warnings are not errors here: a newer compiler may warn about code g++ 13 accepts.
+  # The image's toolchain (g++ 15, CMake 4.2) is newer than the first job's (g++ 13, CMake 3.28), so
+  # the server is built and tested on it too. Warnings are not errors here: a newer compiler may
+  # warn about code g++ 13 accepts.
   build-ubuntu-26:
     name: Build (Ubuntu 26.04, as the image)
     runs-on: ubuntu-latest
