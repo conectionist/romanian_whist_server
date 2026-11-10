@@ -1209,6 +1209,146 @@ That is acceptable without a server change now: the examples carry the headers u
   file that changes is never served cut short.
 - The page's commit from a build argument.
 
+#### Outcome
+
+Branch `web/docker`, off `ccr-c8ac042f-e6e18n`, PR #13, "The server's Docker image". Commits:
+
+- **The build:** `f543aa5`, `c4f82b3`, `7b057e3`, `5a00cdc`, `2ba4441`, `e06788c`, `f44b807`,
+  `4978e0d` and `e2b220e`, then `b853211` (the machine rule) and `1df0178` (the size budget).
+- **After the first review:** `03f348a`, `83baebd`, `a14a3ce`, `ea2d331`, `785492f` and `f01710a`.
+- **After the second review:** `ed3e86c`, `6337246`, `ef524a1` and `2d8e25b`.
+- **This outcome,** in a commit of its own.
+
+**The owner's choices** (2026-11-10):
+
+- **The four from the start:** Caddy in the web image, serving the page and passing `/ws` on; the
+  registry ghcr.io; publishing from `master` and version tags; amd64 only.
+- **Two requests:** the latest stable versions (Ubuntu 26.04 LTS, Node 26 for the page's image, and
+  a CI job on the image's toolchain), and a deployment without a Caddy of ours, which is
+  [§12.1.1](#1211-behind-your-own-proxy).
+- **The plan's 22 open questions,** all at their recommended defaults.
+- **After the first review** (17 findings, none above severity 3): fix all but one, the rebuild in
+  `publish`, which is an accepted risk in [§14](#14-risks); `CLAUDE.md`'s Docker rule worded as the
+  implementer proposed; and a second review.
+- **After the second review** (10 findings, none above severity 3): fix all, as the implementer
+  recommended. Of the shell findings only `set -o pipefail`, and the sendfile limit by wording,
+  with an item for phase 9 in place of a change to the server. No third review.
+
+**Built:**
+
+- **The image.** `Dockerfile`: two stages on `ubuntu:26.04`. The first builds the `release` preset
+  with `JOBS` compile jobs (2 unless told otherwise) and the commit it is given. The second holds
+  the stripped binary, the debug page, the configuration and the licence, runs as uid 10001, stops
+  on SIGTERM, and is healthy once it accepts connections on its port. The build fails when the
+  runtime packages miss a library the server links. It is 120 MB by its layers, 117 MB of that the
+  base, and 44 MB compressed.
+- **The commit.** `-DWHIST_SERVER_COMMIT=<hash>` tells a build with no `.git` which commit to
+  report, and an empty value keeps asking git.
+- **A test,** `[options]`, that `deploy/docker-config.json` equals `server/app/config.json` in
+  everything but the address and the document root, and that it loads.
+- **`tools/smoke/smoke.mjs`,** which plays the first moments of a solo game against a running server
+  and exports `smokeGame()` and `waitForPage()` for the page's repository.
+- **Compose files:** `deploy/docker-compose.yml` (the full stack, with Caddy),
+  `deploy/docker-compose.own-proxy.yml` (the server serving the page from a volume),
+  `compose.yaml` (the server from a checkout), and `deploy/.env.example`.
+- **Proxy examples** in `deploy/examples/`, for Caddy (2.9.1 or later) and nginx.
+- **CI:** `build` in an `ubuntu:24.04` container (g++ 13.3, CMake 3.28) with warnings as errors,
+  `build-ubuntu-26` on the image's toolchain, `docker` (build, run with the hardening flags, smoke
+  test, `docker stop -t 30` exit code, compose files, size budget), and `publish`, which a pull
+  request never runs.
+- **Docs:** the README's deployment sections, this plan, and a Docker rule in `CLAUDE.md`.
+
+**Versions.** Ubuntu 26.04 built the server unchanged: GCC 15.2, CMake 4.2.3 and `libjsoncpp26`,
+with no fallback to 24.04. The only warnings are Drogon's own deprecation notices and a CMake
+deprecation notice from trantor's `cmake_minimum_required`. The first job's toolchain is Ubuntu
+24.04's own, the owner's machine's, so the server is built and tested on both.
+
+**Tests and checks,** on the machine this was written on, with a local Docker daemon:
+
+- **Presets:** one new test, so CTest runs 161, and all pass in `default` and in `release` with
+  `-DWHIST_SERVER_WARNINGS_AS_ERRORS=ON`, with no warnings in our code.
+- **The image,** run with `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges`:
+  healthy in seconds, `uid=10001(whist) gid=999(whist)`, the smoke test passes with the commit the
+  image was built with, and `docker stop -t 30` gives exit code 0. The dev `compose.yaml` runs with
+  the same hardening.
+- **Behind your own proxy,** with a stand-in for the page's image, built on the Caddy image the real
+  one uses: the first `up -d` copies the page and the debug page is not served; a second leaves
+  every file as it was; an update brings the new assets first and `index.html` last, adds new
+  folders and keeps the old files; the volume is read-only for the server; and the server is not
+  restarted when only the page changes. This sandbox cannot raise the file limit to 65536, so those
+  runs used 20000.
+- **The race test:** a reader fetches a file in a loop for 45 s while the page alternates between
+  two versions. With the copy now in use, and a `data.json` of 120000 bytes in one version and
+  180000 in the other, all 8272 reads were whole. `cp -a` gave 5 short reads in 8482. An earlier
+  run with two files of 8 MB of the same length also gave whole reads, but equal lengths hide the
+  limit below, so it does not count.
+- **The limit:** Drogon sends a file over 200 KB with sendfile, fixes its length when it makes the
+  response, and keeps the response for 5 s. Replacing such a file by rename gave 8 of 8 reads of
+  the old length holding the start of the new file, and with a shorter new file, 2 of 8 failed. The
+  page's largest file is under 100 KB, so nothing is affected today; phase 9 closes it.
+- **The proxy examples,** in front of a local server: Caddy and nginx pass the smoke test, WebSocket
+  included. A 200 and a 304 get the `Cache-Control` of their rule; a 404 and a 502 get none, where
+  the first examples gave a 404 the year-long one. nginx sends `X-Forwarded-For` and
+  `X-Forwarded-Proto` from every location, and adds the header to a redirect but not to a 500.
+- **Caddy versions:** 2.6.2 accepts `whist.caddy` and reads its `match` lines as headers, which
+  puts the year-long rule on a 404 again. 2.9.1 and 2.11.9 behave as intended. 2.9.0 could not be
+  pulled (Docker Hub's rate limit), so the threshold, 2.9.1, is the review's.
+- **The copy's edge cases,** in busybox: a nested `index.html` is copied, and a file over a folder,
+  a folder over a file and an image with no `assets` each fail the service.
+
+**Where the build departs from the plan:**
+
+- **The size budget is 150 MB, not 120 MB,** counted as the sum of the layers from `docker history`.
+  The plan's figure came from an estimate for a smaller base; Ubuntu 26.04 is 117 MB by itself, and
+  `docker image inspect` reports another size under the containerd image store.
+- **The copy skips with `cmp`.** The plan had `cp -a`, and the first review's fix `cp -an` for the
+  assets. The build copies each file under a temporary name, renames it into place, skips a file that
+  is already there and the same, and does `index.html` last. A half-copied asset from a killed run is
+  then replaced, where `cp -an` would keep it.
+- **The smoke script** waits for `GET /` to give a page and then plays the game; `--timeout` (10 s)
+  applies to each of the two, so a run can take twice as long. It checks the welcome's commit and the
+  sync that follows it. It does not check headers, types or `/t/` links: those are the page's smoke
+  test, still to come.
+- **The first job runs in a container.** The plan left `build` on `ubuntu-latest`, which it took for
+  24.04 and which is 26.04 now. The 24.04 runner's image brings CMake 3.31, so only a container
+  gives the owner's 3.28.
+- **Several claims of this plan were corrected after review:** what CI's layer cache keeps (not the
+  C++ compile), what `.dockerignore` leaves out, the port (`WHIST_LISTEN`), the update (the server
+  restarts only when its own image is new), the reasoning for accepting the rebuild in `publish`,
+  and that the page's CI checks are planned, not present.
+
+**The reviews,** each by a cold reviewer:
+
+- **The first,** 17 findings, none above severity 3: the toolchain of `build`, the tags of a manual
+  run, the cache headers on errors, the non-atomic copy, the GHCR visibility step, the nginx
+  header inheritance, and the smaller items. All fixed but the rebuild in `publish`, and the
+  optional Drogon layer split, `**/*.md` in `.dockerignore` and a CI job for the examples, which
+  were left.
+- **The second,** 10 findings, none above severity 3: the Caddy version, the sendfile limit, the
+  folder case of `mv`, the nested `index.html`, the reasoning for the accepted risk, CMake 3.28, the
+  shell's robustness, and three wordings. All fixed as recommended.
+
+**CI.** The runs on `1df0178` and on each fix of the first review passed. The commits of the second
+review were pushed one after another, so the next push cancelled the runs of the first three, and
+the run on `2d8e25b` passed in full: `build`, in the `ubuntu:24.04` container with g++ 13.3.0 and
+CMake 3.28.3, 161 of 161 tests; `build-ubuntu-26`; and `docker`. `publish` is skipped on a pull
+request. A push that changes only markdown files does not start CI, so this outcome's commit has no
+run of its own.
+
+**What the page's pull request must still do:**
+
+- **Move `deploy/Caddyfile`'s caching rules** to the block form with `match status 2xx 304`, as in
+  `whist.caddy`, so that an error is never cached for long.
+- **Add the web repository's `CLAUDE.md` rule** that `docker compose build server` comes before the
+  page, which this repository's rule no longer holds.
+- **Add the page's smoke test** (`tools/smoke.mjs`, with its profiles) and the browser check, and
+  run every setup in CI: the full stack, the own-proxy setup directly, and through the Caddy and
+  nginx examples.
+- **Compare every copy of the CSP** (`deploy/Caddyfile`, `whist.caddy`, `whist-headers.conf`)
+  against one constant.
+- **Build the page's image,** with Node 26, and move the web repository's submodule to this
+  merge.
+
 ### 12.2 By hand
 
 - **A small Linux server:** 2 vCPUs and 2–4 GB, Debian or Ubuntu LTS. The server runs as a release
