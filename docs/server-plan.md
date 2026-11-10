@@ -1101,7 +1101,8 @@ recording the failing log.
 - **Health** is a TCP check on the port, because the server has no health route yet.
 - **Hardening** in the compose files: a read-only root with a tmpfs on `/tmp` (Drogon's upload
   folder is under it), all capabilities dropped, `no-new-privileges`, and 65536 open files.
-- **Size:** CI fails the build above 120 MB.
+- **Size:** CI fails the build above 150 MB, counted as the sum of the layers. The Ubuntu base is
+  117 MB of that.
 
 **The compose files.** `deploy/docker-compose.yml` is the full stack, with Caddy requiring
 `WHIST_DOMAIN` (a domain name for HTTPS, or `:80` for a trial). `deploy/docker-compose.own-proxy.yml`
