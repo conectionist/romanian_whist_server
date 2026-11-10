@@ -1,0 +1,14 @@
+# Romanian Whist behind your own Caddy: import this inside the site block for its host.
+# Caddy passes the WebSocket at /ws through by itself.
+reverse_proxy 127.0.0.1:8080
+header {
+	Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	X-Content-Type-Options nosniff
+	Referrer-Policy no-referrer
+}
+@whist_hashed path /assets/*
+header @whist_hashed Cache-Control "public, max-age=31536000, immutable"
+@whist_page path / /index.html /t/*
+header @whist_page Cache-Control no-cache
+@whist_other not path /assets/* / /index.html /t/* /ws
+header @whist_other Cache-Control "public, max-age=3600"
