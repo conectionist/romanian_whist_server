@@ -37,7 +37,7 @@ private:
 
 // The server main() runs, started in this process on first use, on a free port. Drogon allows one
 // app() per process, so every test in the process shares it. Its document root holds an index.html
-// containing indexMarker.
+// containing indexMarker, cards/AS.webp, fonts/x.woff2, avatars.json and secret.cpp.
 struct TestServer
 {
     std::uint16_t port = 0;
@@ -45,6 +45,10 @@ struct TestServer
 };
 
 inline constexpr const char* indexMarker = "whist-test-index";
+
+// The contents of cards/AS.webp, and what secret.cpp says: a type the server does not serve.
+inline const std::string pictureBytes("RIFF\0\0\0\0WEBPtest", 16);
+inline constexpr const char* sourceMarker = "whist-test-source";
 
 const TestServer& testServer();
 

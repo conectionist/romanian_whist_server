@@ -41,6 +41,7 @@ TempDir::~TempDir()
 
 void TempDir::write(const std::string& name, const std::string& contents) const
 {
+    std::filesystem::create_directories((path_ / name).parent_path());
     std::ofstream(path_ / name, std::ios::binary) << contents;
 }
 
@@ -137,6 +138,10 @@ const TestServer& testServer()
     server = std::make_unique<RunningServer>();
     server->documentRoot.write("index.html",
         std::string("<!doctype html><title>test</title><p>") + indexMarker + "</p>\n");
+    server->documentRoot.write("cards/AS.webp", pictureBytes);
+    server->documentRoot.write("fonts/x.woff2", "wOF2");
+    server->documentRoot.write("avatars.json", "[]\n");
+    server->documentRoot.write("secret.cpp", std::string("// ") + sourceMarker + "\n");
 
     ServerOptions options;
     options.port = freePort();
