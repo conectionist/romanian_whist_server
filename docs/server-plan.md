@@ -1208,6 +1208,10 @@ That is acceptable without a server change now: the examples carry the headers u
 - Static files sent without sendfile (`enableSendfile(false)`, or an equivalent), so that a large
   file that changes is never served cut short.
 - The page's commit from a build argument.
+- `/version` kept out of the proxy examples' caching rules, as the page's Caddyfile keeps it, so a
+  new server's version shows at once.
+- The policy headers on the nginx example's `/ws` location too, so the page's smoke test can check
+  them there.
 
 #### Outcome
 
