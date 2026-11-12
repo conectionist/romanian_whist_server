@@ -1,10 +1,11 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 6 are complete (2026-11-10). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 7 are complete (2026-11-12). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
 > are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
-> `romanian_whist_web` (its PR #3). Phases 7 to 11 are not built yet.**
+> `romanian_whist_web` (its PR #3). Phase 7, the sheets, the menus and online tables, is the
+> page's (its PR #7). Phases 8 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -2136,9 +2137,16 @@ The owner approved it on 2026-11-10.
   - **CI** is green at `83d40c8` too (run 34), after the same failed start twice.
   - **The owner approved** the fixture tool on 2026-11-09.
 
-### Phase 7: sheets and menus — L
+### Phase 7: sheets and menus — L ✅ COMPLETE
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-7-sheets-and-menus--l).
+It changes nothing in this repository: the page's submodule moved to `df37bd8`, whose protocol
+already had every message the sheets, the menus and online tables need.
+
+**Complete,** in `romanian_whist_web`: PR #7, merged into that repository's parent branch
+`ccr-209c0806-o444sp`. Its outcome is under phase 7 in
+[the page's plan on that branch](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-7-sheets-and-menus--l--complete).
+The owner approved it on 2026-11-12.
 
 ### Phase 8: Romanian, keyboard, touch — M
 
