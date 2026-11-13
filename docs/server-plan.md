@@ -1,16 +1,17 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 7 are complete (2026-11-12). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 8 are complete (2026-11-13). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
 > are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
 > `romanian_whist_web` (its PR #3). Phase 7, the sheets, the menus and online tables, is the
-> page's (its PR #7). Phases 8 to 11 are not built yet.**
+> page's (its PR #7), and so is phase 8, its Romanian, keyboard, screen readers and touch (its
+> PR #8). Phase 8b, the page's phone layout, and phases 9 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
 > 9 and 11 build this repository, `romanian_whist_server`, which takes the engine as a submodule,
-> the way the terminal and desktop clients do. Phases 6 to 8 and 10 build the page, in
+> the way the terminal and desktop clients do. Phases 6 to 8b and 10 build the page, in
 > [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web). Phases 6 and 10
 > change this repository too: phase 6 builds the fixture tool (§10.5), and phase 10 compiles
 > `server/core` for the browser. Phase 9 changes the page's repository too: its footer's source
@@ -21,7 +22,7 @@
 > `romanian_whist_server`, because the Android app, and later other clients, will use the same
 > server ([D2](#15-decisions-with-defaults)). The page moved to a new repository,
 > `romanian_whist_web`, and so did its part of this plan: §8, the page's tests, and phases 6, 7, 8
-> and 10. That part is the web repository's
+> and 10, and since 2026-11-13 phase 8b. That part is the web repository's
 > [`docs/page-plan.md`](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md).
 > Their places here keep their numbers and point there. The links point at that repository's
 > `master`. Until the page's work reaches it, the current page plan is on the web repository's
@@ -112,9 +113,9 @@ it may show, and what the player may do, come from the server.
 
 **Order of work.** The engine first (phase 0). Then the server and a plain debug page, until solo
 play, online play, drops and reconnection all work (phases 1–5). Then the desktop client's look
-(phases 6–8), then deployment (phase 9). An offline solo mode and game records are optional extras
-(phases 10–11). [Section 13](#13-phases) has the phases; the page's, 6 to 8 and 10, are in its
-own plan.
+(phases 6–8), the page's layout for a phone (phase 8b), then deployment (phase 9). An offline solo
+mode and game records are optional extras (phases 10–11). [Section 13](#13-phases) has the phases;
+the page's, 6 to 8b and 10, are in its own plan.
 
 ---
 
@@ -867,7 +868,7 @@ This section's parts are that plan's sections:
 | 8.9 Languages | [§10](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#10-languages) |
 | 8.10 Keyboard, screen readers, touch and small screens | [§11](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#11-keyboard-screen-readers-touch-and-small-screens) |
 
-The page's tests, its phases (6, 7, 8 and 10), its risks and its decisions (D5, D14 and D18) are
+The page's tests, its phases (6, 7, 8, 8b and 10), its risks and its decisions (D5, D14 and D18) are
 there too.
 
 ---
@@ -1426,7 +1427,7 @@ M, L.
 6. **A phase's outcome is written after its review**, and the checkouts sit on their parent
    branches while a reviewer reads, so a reviewer never sees the implementer's account.
 
-After phase 3, the page (phases 6–8, in its own plan) can be built against fixtures while phases 4
+After phase 3, the page (phases 6–8b, in its own plan) can be built against fixtures while phases 4
 and 5 go on in the server. Phase 6 starts in the server, with the fixture tool (§10.5).
 
 ### Phase 0: engine groundwork (the engine repository) — M ✅ COMPLETE
@@ -2148,9 +2149,22 @@ already had every message the sheets, the menus and online tables need.
 [the page's plan on that branch](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-7-sheets-and-menus--l--complete).
 The owner approved it on 2026-11-12.
 
-### Phase 8: Romanian, keyboard, touch — M
+### Phase 8: Romanian, keyboard, touch — M ✅ COMPLETE
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-8-romanian-keyboard-touch--m).
+It changes nothing in this repository: the page's submodule stays at `df37bd8`.
+
+**Complete,** in `romanian_whist_web`: PR #8, merged into that repository's parent branch
+`ccr-209c0806-o444sp`. Its outcome is under phase 8 in
+[the page's plan on that branch](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-8-romanian-keyboard-touch--m--complete).
+The owner approved it on 2026-11-13. One of its three ends moved on: "a phone held sideways
+finishes a game" is phase 8b's.
+
+### Phase 8b: the phone layout — L
+
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-8b-the-phone-layout--l).
+The owner added it on 2026-11-13: scaled as the desktop's table is, the page cannot be read on a
+phone, so a small window gets the Android mock-up's layout. It changes nothing in this repository.
 
 ### Phase 9: hardening and deployment — M
 
