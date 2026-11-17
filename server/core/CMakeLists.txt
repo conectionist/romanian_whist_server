@@ -8,6 +8,8 @@ add_library(whist_session STATIC
     Catalogue.h
     Catalogue.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp
+    ClientAddress.h
+    ClientAddress.cpp
     Codec.h
     Codec.cpp
     ComputerPlayer.h
