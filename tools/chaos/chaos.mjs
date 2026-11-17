@@ -6,8 +6,10 @@
 //   nice -n 19 node tools/chaos/chaos.mjs --url ws://127.0.0.1:8080/ws --minutes 5
 //
 // With --server it starts that program with a configuration of its own (short grace, ping and
-// pong timeouts) and stops it at the end. With --url the server is yours, and its grace period
-// should be short too, and its pong timeout under 10 s. Node 22 or later, no packages.
+// pong timeouts, and no limits to speak of) and stops it at the end. With --url the server is
+// yours: its grace period should be short too, its pong timeout under 10 s, and its per-address
+// limits (connections, tables, joins and messages) high enough for every person to come from one
+// address. Node 22 or later, no packages.
 //
 // It passes when, after the last disruption, every table finishes a game, and:
 //   - no table went without progress for longer than any wait of the server's allows;
@@ -578,6 +580,9 @@ async function startServer(program) {
     ping_interval_ms: 1000, pong_timeout_ms: 5000, reap_interval_ms: 250,
     grace_period_ms: 2000, online_idle_ms: 30000, solo_idle_ms: 60000,
     instant_floor_ms: 10, log_level: "info",
+    // Everyone connects from 127.0.0.1, makes tables again and again, and answers as fast as the game asks.
+    messages_per_second: 10000, message_burst: 10000, max_connections_per_ip: 10000,
+    tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000,
   }));
 
   const child = spawn(program, ["--config", join(directory, "config.json")], { stdio: ["ignore", "pipe", "inherit"] });
