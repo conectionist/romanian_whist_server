@@ -2,6 +2,8 @@
 #include "ServerProcess.h"
 #include "TestSupport.h"
 
+#include "core/Protocol.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
@@ -109,7 +111,7 @@ TEST_CASE("A player whose tab closes is away, and a new tab with the same token 
 
     TestClient again(testServer().port, "/ws");
     Json::Value hello = typed("hello");
-    hello["protocol"] = 1;
+    hello["protocol"] = whist::protocolVersion;
     hello["lang"] = "en";
     hello["token"] = token;
     again.sendJson(hello);

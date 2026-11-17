@@ -1,5 +1,7 @@
 #include "TestSupport.h"
 
+#include "core/Protocol.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <drogon/HttpClient.h>
@@ -34,7 +36,7 @@ Json::Value profile(const std::string& name, const std::string& gender)
 void greet(TestClient& client)
 {
     Json::Value hello = typed("hello");
-    hello["protocol"] = 1;
+    hello["protocol"] = whist::protocolVersion;
     hello["lang"] = "en";
     client.sendJson(hello);
     REQUIRE(client.waitFor([](const Json::Value& m) { return m["type"] == "sync"; }, 5s));
