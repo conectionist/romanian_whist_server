@@ -49,6 +49,13 @@ export function latencyOf(samples) {
   };
 }
 
+// Which memory a reading is, since the two do not compare: the status line says the most the server
+// has held since it started, and /proc and docker stats say what it holds now.
+export const MEMORY_KINDS = {
+  peak: { column: "peak MB", note: "peak resident memory since the server started, from its status line" },
+  current: { column: "cur MB", note: "resident memory when read, from /proc or docker stats" },
+};
+
 // A status line of the server's log: "status connections=3 tables_playing=1 ...", with the words
 // that follow it ignored. Null for a line that is not one.
 export function parseStatusLine(text) {
@@ -71,6 +78,7 @@ export function parseStatusLine(text) {
     gameThreads: pairs.game_threads ?? null,
     cpuCores: pairs.cpu_percent / 100,
     memoryMb: pairs.peak_memory_mb ?? null,
+    memoryKind: "peak_memory_mb" in pairs ? "peak" : null,
   };
 }
 
@@ -81,24 +89,28 @@ export function parseDockerStats(text) {
     return null;
   }
   const unit = { KB: 1 / 1000, KiB: 1 / 1024, MB: 1, MiB: 1.048576, GB: 1000, GiB: 1073.741824 }[match[3]];
-  return { cpuCores: Number(match[1]) / 100, memoryMb: Math.round(Number(match[2]) * unit) };
+  return { cpuCores: Number(match[1]) / 100, memoryMb: Math.round(Number(match[2]) * unit), memoryKind: "current" };
 }
 
-// The largest step that is quick enough and leaves the machine enough room, with every step before
-// it as good, rounded down to a multiple of 10. Steps with no CPU reading cannot be judged.
+// A step is good when it is quick enough, leaves the machine enough room, and went without an error
+// from the server, a connection that closed, or a table that would not start.
 export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7 } = {}) {
   let cap = null;
   for (const step of steps) {
     if (step.cpuShare === null || step.cpuShare === undefined) {
       return { cap, why: "the server's CPU was not read, so no step can be judged" };
     }
-    if (step.latency.p99 === null || step.latency.p99 >= p99Ms || step.cpuShare >= cpuShare) {
+    if (step.latency.p99 === null || step.latency.p99 >= p99Ms || step.cpuShare >= cpuShare
+      || (step.errors ?? 0) > 0 || (step.drops ?? 0) > 0 || (step.failedToStart ?? 0) > 0) {
       break;
     }
     cap = step.tables;
   }
   if (cap === null) {
-    return { cap: null, why: `not even the first step had p99 under ${p99Ms} ms and the CPU under ${Math.round(cpuShare * 100)}%` };
+    return {
+      cap: null,
+      why: `not even the first step had p99 under ${p99Ms} ms, the CPU under ${Math.round(cpuShare * 100)}%, and no errors, drops or tables that failed to start`,
+    };
   }
   const rounded = Math.floor(cap / 10) * 10;
   return rounded > 0
@@ -109,10 +121,16 @@ export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7 } = {}) {
 const pad = (value, width) => String(value).padStart(width);
 const ms = (value) => (value === null ? "-" : `${Math.round(value)}`);
 
+// The name of the memory the steps read, or "mem MB" where they read none or two kinds.
+function memoryColumn(steps) {
+  const kinds = new Set(steps.map((step) => step.memoryKind).filter(Boolean));
+  return kinds.size === 1 ? MEMORY_KINDS[[...kinds][0]].column : "mem MB";
+}
+
 export function summaryTable(kindName, steps, { cores, hold }) {
   const lines = [
     `${kindName}: ${hold} s held at each step, on ${cores} core${cores === 1 ? "" : "s"}`,
-    "tables  conns  threads  answers   p50   p95   p99   max   cpu%   cores  mem MB  games  errors  drops",
+    `tables  conns  threads  answers   p50   p95   p99   max   cpu%   cores  ${memoryColumn(steps)}  games  errors  drops`,
   ];
   for (const step of steps) {
     const cpu = step.cpuShare === null ? "-" : (step.cpuShare * 100).toFixed(0);
@@ -122,6 +140,10 @@ export function summaryTable(kindName, steps, { cores, hold }) {
       pad(ms(step.latency.p50), 5), pad(ms(step.latency.p95), 5), pad(ms(step.latency.p99), 5), pad(ms(step.latency.max), 5),
       pad(cpu, 6), pad(used, 7), pad(step.memoryMb ?? "-", 7), pad(step.gamesFinished, 6), pad(step.errors, 7), pad(step.drops, 6),
     ].join(" "));
+  }
+  const kinds = [...new Set(steps.map((step) => step.memoryKind).filter(Boolean))];
+  for (const kind of kinds) {
+    lines.push(`${kinds.length === 1 ? "memory" : MEMORY_KINDS[kind].column}: ${MEMORY_KINDS[kind].note}`);
   }
   return lines.join("\n");
 }
@@ -346,12 +368,13 @@ class StatusSamples {
   over(from, to) {
     const inside = this.between(from, to);
     if (inside.length === 0) {
-      return { cpuCores: null, memoryMb: null, gameThreads: null, connections: null };
+      return { cpuCores: null, memoryMb: null, memoryKind: null, gameThreads: null, connections: null };
     }
     const last = inside[inside.length - 1];
     return {
       cpuCores: inside.reduce((sum, sample) => sum + sample.cpuCores, 0) / inside.length,
       memoryMb: last.memoryMb,
+      memoryKind: last.memoryMb === null || last.memoryMb === undefined ? null : (last.memoryKind ?? null),
       gameThreads: last.gameThreads ?? null,
       connections: last.connections ?? null,
     };
@@ -417,7 +440,7 @@ function followProcess(pid, samples) {
   const timer = setInterval(() => {
     try {
       const now = { at: Date.now(), cpu: cpuTime() };
-      samples.add({ cpuCores: (now.cpu - before.cpu) / ((now.at - before.at) / 1000), memoryMb: Math.round(memory()) });
+      samples.add({ cpuCores: (now.cpu - before.cpu) / ((now.at - before.at) / 1000), memoryMb: Math.round(memory()), memoryKind: "current" });
       before = now;
     } catch {
       // The process is gone; the run says so by its answers stopping.
@@ -609,6 +632,7 @@ async function main() {
     }
 
     for (const target of steps) {
+      const failedBefore = run.failedToStart;
       await run.growTo(target);
       await sleep(settle * 1000);
 
@@ -620,22 +644,25 @@ async function main() {
       const to = Date.now();
       run.measuring = false;
 
-      const reading = watching ? samples.over(from, to) : { cpuCores: null, memoryMb: null, gameThreads: null, connections: null };
+      const reading = watching ? samples.over(from, to) : { cpuCores: null, memoryMb: null, memoryKind: null, gameThreads: null, connections: null };
       const step = {
         tables: run.tables.length,
         latency: latencyOf(run.latencies),
         cpuCores: reading.cpuCores,
         cpuShare: reading.cpuCores === null ? null : reading.cpuCores / cores,
         memoryMb: reading.memoryMb,
+        memoryKind: reading.memoryKind,
         gameThreads: reading.gameThreads,
         connections: reading.connections,
         gamesFinished: run.gamesFinished - before.games,
         errors: run.errorCount() - before.errors,
         drops: run.drops - before.drops,
+        failedToStart: run.failedToStart - failedBefore,
       };
       results.push(step);
       console.log(`${pad(step.tables, 4)} tables: p50 ${ms(step.latency.p50)} ms, p95 ${ms(step.latency.p95)} ms, p99 ${ms(step.latency.p99)} ms`
-        + `, cpu ${step.cpuShare === null ? "-" : `${(step.cpuShare * 100).toFixed(0)}%`}, ${step.errors} errors, ${step.drops} drops`);
+        + `, cpu ${step.cpuShare === null ? "-" : `${(step.cpuShare * 100).toFixed(0)}%`}, ${step.errors} errors, ${step.drops} drops`
+        + (step.failedToStart > 0 ? `, ${step.failedToStart} tables that failed to start` : ""));
 
       if (step.latency.count === 0) {
         run.note("no answer was timed at this step: the games are not moving");

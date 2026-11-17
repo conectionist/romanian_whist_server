@@ -441,8 +441,7 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 
 `max_running_games` is how many games someone is at that the server runs at once before it answers
 `busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
-holds the games nobody is at. The number
-is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
+holds the games nobody is at. The number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
 ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
 packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is
 the Docker image's configuration with every limit per address lifted (the script plays from one
@@ -461,13 +460,16 @@ For each step it prints the time from an answer sent to the echo of the move com
 p99 and the largest, in milliseconds), the server's CPU and memory, the game threads, and what went
 wrong. The echo waits for the server's own pacing, so an idle server gives about 40 ms: what load
 adds to it is what counts. At the end it prints a table of the steps, and the cap: **the largest
-step whose p99 is under 250 ms and whose CPU is under 70% of the machine's cores** (`--p99`, `--cpu`
-and `--cores` change them), with every step before it as good, rounded down to a multiple of 10.
-The ramp stops by itself at a step with p99 over a second or CPU over 95%. `--json <file>` keeps
-the numbers.
+step whose p99 is under 250 ms and whose CPU is under 70% of the machine's cores, and that went
+without an error from the server, a connection that closed, or a table that would not start**
+(`--p99`, `--cpu` and `--cores` change the first two), with every step before it as good, rounded
+down to a multiple of 10. The ramp stops by itself at a step with p99 over a second, CPU over 95%,
+or a table that would not start. `--json <file>` keeps the numbers.
 
 The CPU and memory come from the server's own status lines, or are read from `/proc` or `docker
-stats`:
+stats`. The memory is not the same in each: the status lines give the most the server has held since
+it started (`peak MB` in the table), and `/proc` and `docker stats` what it holds when read (`cur
+MB`). The table says which under it.
 
 | Option | Where the server is |
 |---|---|

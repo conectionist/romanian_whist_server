@@ -25,16 +25,16 @@ test("latency is summed up from samples in any order", () => {
 test("a status line of the server's log is read, whatever comes before and after it", () => {
   const line = "20261117 14:19:40.774784 UTC 5490 INFO  status connections=12 tables_lobby=1 tables_playing=2 tables_finished=0 "
     + "game_threads=2 stand_in_moves=17 cpu_percent=71.5 cpu_seconds=123.4 peak_memory_mb=45 - Server.cpp:107";
-  assert.deepEqual(parseStatusLine(line), { connections: 12, gameThreads: 2, cpuCores: 0.715, memoryMb: 45 });
+  assert.deepEqual(parseStatusLine(line), { connections: 12, gameThreads: 2, cpuCores: 0.715, memoryMb: 45, memoryKind: "peak" });
   assert.deepEqual(parseStatusLine("server-1  | status connections=0 cpu_percent=0.1 game_threads=0"),
-    { connections: 0, gameThreads: 0, cpuCores: 0.001, memoryMb: null });
+    { connections: 0, gameThreads: 0, cpuCores: 0.001, memoryMb: null, memoryKind: null });
   assert.equal(parseStatusLine("20261117 INFO  listening on 127.0.0.1:8080"), null);
   assert.equal(parseStatusLine("status connections=1"), null);
 });
 
-test("docker stats is read in cores and megabytes", () => {
-  assert.deepEqual(parseDockerStats("12.34%|45.6MiB / 1.9GiB"), { cpuCores: 0.1234, memoryMb: 48 });
-  assert.deepEqual(parseDockerStats("151.00%|1.2GiB / 1.9GiB"), { cpuCores: 1.51, memoryMb: 1288 });
+test("docker stats is read in cores and megabytes, and its memory is the current one", () => {
+  assert.deepEqual(parseDockerStats("12.34%|45.6MiB / 1.9GiB"), { cpuCores: 0.1234, memoryMb: 48, memoryKind: "current" });
+  assert.deepEqual(parseDockerStats("151.00%|1.2GiB / 1.9GiB"), { cpuCores: 1.51, memoryMb: 1288, memoryKind: "current" });
   assert.equal(parseDockerStats("--"), null);
 });
 
@@ -60,6 +60,17 @@ test("with no step good enough, or no CPU reading, there is no cap and the reaso
   assert.equal(suggestCap([]).cap, null);
 });
 
+test("a step with an error, a closed connection or a table that would not start is not good, however quick", () => {
+  const faulty = (tables, change) => ({ ...step(tables, 20, 0.1), errors: 0, drops: 0, failedToStart: 0, ...change });
+  assert.equal(suggestCap([faulty(10, {}), faulty(20, {})]).cap, 20);
+  assert.equal(suggestCap([faulty(10, {}), faulty(20, { errors: 1 }), faulty(40, {})]).cap, 10);
+  assert.equal(suggestCap([faulty(10, {}), faulty(20, { drops: 2 }), faulty(40, {})]).cap, 10);
+  assert.equal(suggestCap([faulty(10, {}), faulty(20, { failedToStart: 1 }), faulty(40, {})]).cap, 10);
+  const none = suggestCap([faulty(10, { errors: 3 })]);
+  assert.equal(none.cap, null);
+  assert.match(none.why, /errors, drops or tables that failed to start/);
+});
+
 test("the limits of the rule can be moved", () => {
   assert.equal(suggestCap([step(10, 100, 0.4), step(20, 150, 0.45)], { p99Ms: 120, cpuShare: 0.5 }).cap, 10);
   assert.equal(suggestCap([step(10, 100, 0.4), step(20, 150, 0.45)], { p99Ms: 200, cpuShare: 0.4 }).cap, null);
@@ -76,6 +87,20 @@ test("the summary has a row for each step, and dashes where nothing was read", (
   assert.match(rows[0], /180 s held at each step, on 2 cores/);
   assert.match(rows[2], /^\s*10\s+10\s+10\s+500\s+2\s+10\s+20\s+80\s+25\s+0\.50\s+61\s+0\s+0\s+0$/);
   assert.match(rows[3], /^\s*20\s+-\s+-\s+0\s+-\s+-\s+-\s+-\s+-\s+-\s+-\s+1\s+2\s+1$/);
+});
+
+test("the memory column says whose memory it is, and a note under the table says what that is", () => {
+  const rows = (kind) => summaryTable("solo", [
+    { tables: 10, latency: { count: 5, p50: 1, p95: 1, p99: 1, max: 1 }, cpuShare: 0.1, cpuCores: 0.2, memoryMb: 61, memoryKind: kind, gamesFinished: 0, errors: 0, drops: 0 },
+  ], { cores: 2, hold: 180 }).split("\n");
+  assert.match(rows("peak")[1], /cores {2}peak MB {2}games/);
+  assert.match(rows("peak")[3], /^memory: peak resident memory since the server started, from its status line$/);
+  assert.match(rows("current")[1], /cores {2}cur MB {2}games/);
+  assert.match(rows("current")[3], /^memory: resident memory when read, from \/proc or docker stats$/);
+  // Nothing read, so nothing to say about it.
+  const unread = summaryTable("solo", [{ tables: 10, latency: { count: 0, p50: null, p95: null, p99: null, max: null }, cpuShare: null, cpuCores: null, memoryMb: null, memoryKind: null, gamesFinished: 0, errors: 0, drops: 0 }], { cores: 2, hold: 180 });
+  assert.match(unread, /cores {2}mem MB {2}games/);
+  assert.equal(unread.split("\n").length, 3);
 });
 
 test("a person bids the first bid that is allowed, and plays the first card that is legal", () => {
