@@ -62,8 +62,11 @@ docker compose up -d
   processor time and peak memory.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
 - **Stopping the server** is a drain. On SIGTERM it takes no new tables or games, tells everyone it
-  is restarting, and waits for the games that are running to end, for at most `drain_ms` (15
-  minutes). It then ends the games that are left, closes every connection and exits with code 0. A
+  is restarting, and waits for the games that someone is at to end, for at most `drain_ms` (15
+  minutes). A game is attended while a member of its table is connected, and for `grace_period_ms`
+  (30 s) after the last one went; a game nobody is at cannot go on, so it is not waited for. When no
+  attended game is left, or the time is up, it ends the games that remain, closes every connection
+  and exits with code 0. A player who comes back during the drain makes their game count again. A
   second SIGTERM, or Ctrl-C, ends the games at once. The compose files give the container 16 minutes
   to stop, which is longer than `drain_ms`; keep it so if you change either, or Docker kills the
   server in the middle of the drain. The log says each step, and `GET /health` answers 503 from the
@@ -333,8 +336,8 @@ set `document_root` to its built `dist/` folder.
 The server answers two small questions about itself. `GET /version` gives the version, the commit
 and the protocol number, as `{"commit": "…", "protocol": 1, "version": "…"}`. `GET /health` gives 200
 `{"status":"ok"}` while it runs, and 503 `{"status":"draining"}` once it has been asked to stop: that
-is the address for an uptime monitor. Ctrl-C asks it to stop, which waits for the games that are
-running, up to `drain_ms`; Ctrl-C again stops it at once.
+is the address for an uptime monitor. Ctrl-C asks it to stop, which waits for the games that
+someone is at, up to `drain_ms`; Ctrl-C again stops it at once.
 
 ## Building the image yourself
 

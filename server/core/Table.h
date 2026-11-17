@@ -118,6 +118,11 @@ public:
 
     TableView viewFor(MemberId member) const;
 
+    // Whether the game this table runs is one someone is there for: a member is connected, or the
+    // last to be left within the grace period. False when no game is running. A game nobody is at
+    // holds, and cannot go on until someone comes back.
+    bool attended(Clock::time_point now) const;
+
     // Ends the game, if one is running, and tells everyone the table is closed. That is the last
     // message anyone gets from this table.
     void close();

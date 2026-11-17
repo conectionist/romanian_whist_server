@@ -67,8 +67,9 @@ trantor::Logger::LogLevel toLogLevel(const std::string& name)
     return trantor::Logger::kInfo;
 }
 
-// The first stop signal starts the drain: no new games, everyone told, and the games that are running
-// go on until the last is over or `drainTime` has passed. A second signal ends them at once.
+// The first stop signal starts the drain: no new games, everyone told, and the games that are
+// running go on until the last that someone is at is over, or `drainTime` has passed. A game nobody
+// is at holds, and cannot end, so it is ended with the rest. A second signal ends them at once.
 void watchForStop(std::chrono::milliseconds drainTime)
 {
     drogon::app().getLoop()->runEvery(std::chrono::milliseconds(100),
@@ -79,22 +80,27 @@ void watchForStop(std::chrono::milliseconds drainTime)
             return;
 
         const Clock::time_point now = Clock::now();
+        const std::size_t running = service()->registry().runningGames();
+        const std::size_t attended = service()->registry().attendedGames(now);
         if(!deadline)
         {
             deadline = now + drainTime;
             service()->beginDrain(*deadline);
-            LOG_INFO << "stop asked for: no new games, " << service()->registry().runningGames()
-                     << " running may finish within " << std::chrono::duration_cast<std::chrono::seconds>(drainTime).count()
+            LOG_INFO << "stop asked for: no new games, " << running << " running, " << attended
+                     << " attended, may finish within " << std::chrono::duration_cast<std::chrono::seconds>(drainTime).count()
                      << " s";
         }
 
-        const std::size_t running = service()->registry().runningGames();
-        if(running == 0)
-            LOG_INFO << "drained: no game is running";
+        if(attended == 0)
+        {
+            LOG_INFO << "drained: no attended game is running";
+            if(running > 0)
+                LOG_INFO << "ending " << running << " unattended running game(s) with the rest";
+        }
         else if(signals > 1)
             LOG_INFO << "stop asked for again: ending " << running << " running game(s) now";
         else if(now >= *deadline)
-            LOG_INFO << "drain time is up: ending " << running << " running game(s)";
+            LOG_INFO << "drain time is up: ending " << running << " running game(s), " << attended << " attended";
         else
             return;
 

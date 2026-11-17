@@ -1,5 +1,6 @@
 #include "core/Registry.h"
 
+#include <algorithm>
 #include <array>
 #include <random>
 #include <utility>
@@ -320,6 +321,22 @@ std::size_t Registry::runningGames() const
 std::uint64_t Registry::standInMoves() const
 {
     return standInMoves_->load();
+}
+
+std::size_t Registry::attendedGames(Clock::time_point now) const
+{
+    std::vector<std::shared_ptr<Table>> tables;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [code, table] : tables_)
+            tables.push_back(table);
+    }
+
+    // Each table is read under its own lock, which this one is not held for.
+    return static_cast<std::size_t>(std::ranges::count_if(tables, [now](const std::shared_ptr<Table>& table)
+    {
+        return table->attended(now);
+    }));
 }
 
 Registry::TableCounts Registry::tableCounts() const

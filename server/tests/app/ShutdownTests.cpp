@@ -53,6 +53,12 @@ const std::string watchedGame =
     R"({"kind":"computer","level":"cyborg","name":"Ana","gender":"female","avatar":"woman-long-red-hair"},)"
     R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"man-dark-hair-beard"}]}})";
 
+// Two computer players at normal speed, a game that goes on for minutes.
+const std::string slowWatchedGame =
+    R"({"type":"createSolo","settings":{"structure":"1-8-1","botSpeed":2,"seats":[)"
+    R"({"kind":"computer","level":"cyborg","name":"Ana","gender":"female","avatar":"woman-long-red-hair"},)"
+    R"({"kind":"computer","level":"cyborg","name":"Bogdan","gender":"male","avatar":"man-dark-hair-beard"}]}})";
+
 const std::string onlineTable =
     R"({"type":"createTable","profile":{"name":"Ana","gender":"female","avatar":"woman-long-red-hair"},"settings":{)"
     R"("structure":"1-8-1","seats":[{"kind":"open"},{"kind":"open"},)"
@@ -85,8 +91,8 @@ TEST_CASE("With no game running, a stop quits at once, whatever the drain time",
 
     const auto asked = Clock::now();
     server.process->signal(SIGTERM);
-    CHECK(server.process->waitForLine("stop asked for: no new games, 0 running may finish within 60 s", 5s));
-    CHECK(server.process->waitForLine("drained: no game is running", 5s));
+    CHECK(server.process->waitForLine("stop asked for: no new games, 0 running, 0 attended, may finish within 60 s", 5s));
+    CHECK(server.process->waitForLine("drained: no attended game is running", 5s));
     CHECK(server.process->waitForLine("shutting down", 5s));
     CHECK(server.process->waitForExit(5s) == 0);
     INFO(server.process->log());
@@ -105,7 +111,7 @@ TEST_CASE("A game that ends before the deadline is waited for, and the server qu
 
     const auto asked = Clock::now();
     server.process->signal(SIGTERM);
-    CHECK(server.process->waitForLine("stop asked for: no new games, 1 running may finish within 30 s", 5s));
+    CHECK(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 30 s", 5s));
 
     // The watcher is told, and sees the game through to its end.
     const auto told = watcher.waitFor([](const Json::Value& m) { return isType(m, "restarting"); }, 5s);
@@ -117,7 +123,7 @@ TEST_CASE("A game that ends before the deadline is waited for, and the server qu
     }, 20s));
 
     // It quit when the game did, which is long before the thirty seconds.
-    CHECK(server.process->waitForLine("drained: no game is running", 20s));
+    CHECK(server.process->waitForLine("drained: no attended game is running", 20s));
     CHECK(server.process->waitForExit(5s) == 0);
     INFO(server.process->log());
     CHECK(since(asked) < 20s);
@@ -147,7 +153,7 @@ TEST_CASE("A game still running at the deadline is ended, and the server quits w
 
     const auto asked = Clock::now();
     server.process->signal(SIGTERM);
-    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running may finish within 3 s", 5s));
+    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 3 s", 5s));
 
     // Everyone who was connected is told, with what is left.
     const auto first = player.waitFor([](const Json::Value& m) { return isType(m, "restarting"); }, 5s);
@@ -216,7 +222,7 @@ TEST_CASE("A second stop signal ends the games at once", "[drain][process]")
     REQUIRE(player.waitFor([](const Json::Value& m) { return isType(m, "prompt"); }, 5s));
 
     server.process->signal(SIGTERM);
-    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running may finish within 600 s", 5s));
+    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 600 s", 5s));
 
     // Draining, and the game goes on: nothing has ended it after a good while.
     CHECK_FALSE(server.process->waitForLine("shutting down", 500ms));
@@ -245,4 +251,115 @@ TEST_CASE("A drain of no time ends the games the moment the stop is asked for", 
     CHECK(server.process->waitForLine("drain time is up: ending 1 running game(s)", 5s));
     CHECK(server.process->waitForExit(5s) == 0);
     CHECK(player.waitForClose(5s));
+}
+
+TEST_CASE("A game nobody is at is not waited for: the server quits at once", "[drain][attended][process]")
+{
+    // The grace period is short, so that the player is gone for longer than it before the stop.
+    Server server(R"(, "drain_ms": 60000, "grace_period_ms": 300)");
+
+    {
+        TestClient player(server.port, "/ws");
+        greet(player);
+        player.send(humanGame);
+        REQUIRE(player.waitFor([](const Json::Value& m) { return isType(m, "prompt"); }, 5s));
+        player.close();
+        REQUIRE(player.waitForClose(5s));
+    }
+    std::this_thread::sleep_for(700ms);
+
+    // The game is still running, parked on its player, as a smoke test leaves one.
+    const auto asked = Clock::now();
+    server.process->signal(SIGTERM);
+    CHECK(server.process->waitForLine("stop asked for: no new games, 1 running, 0 attended, may finish within 60 s", 5s));
+    CHECK(server.process->waitForLine("drained: no attended game is running", 5s));
+    CHECK(server.process->waitForLine("ending 1 unattended running game(s) with the rest", 5s));
+    CHECK(server.process->waitForExit(5s) == 0);
+    INFO(server.process->log());
+    CHECK(since(asked) < 4s);
+}
+
+TEST_CASE("A game whose player drops during the drain is waited for until the grace period passes", "[drain][attended][process]")
+{
+    Server server(R"(, "drain_ms": 60000, "grace_period_ms": 1500)");
+
+    TestClient player(server.port, "/ws");
+    greet(player);
+    player.send(humanGame);
+    REQUIRE(player.waitFor([](const Json::Value& m) { return isType(m, "prompt"); }, 5s));
+
+    server.process->signal(SIGTERM);
+    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 60 s", 5s));
+
+    // Still attended, and nothing ends it.
+    CHECK_FALSE(server.process->waitForLine("drained", 500ms));
+
+    const auto dropped = Clock::now();
+    player.close();
+    CHECK(server.process->waitForLine("drained: no attended game is running", 10s));
+    CHECK(server.process->waitForExit(5s) == 0);
+    INFO(server.process->log());
+
+    // The grace period counts from when the connection went, and the deadline is a minute off.
+    CHECK(since(dropped) >= 1200ms);
+    CHECK(since(dropped) < 8s);
+    CHECK(server.process->log().find("drain time is up") == std::string::npos);
+}
+
+TEST_CASE("A player who comes back during the drain makes the game count again", "[drain][attended][process]")
+{
+    Server server(R"(, "drain_ms": 12000, "grace_period_ms": 1500)");
+
+    auto player = std::make_unique<TestClient>(server.port, "/ws");
+    greet(*player);
+    const std::string token = player->json()[0]["token"].asString();
+    player->send(humanGame);
+    REQUIRE(player->waitFor([](const Json::Value& m) { return isType(m, "prompt"); }, 5s));
+
+    server.process->signal(SIGTERM);
+    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 12 s", 5s));
+
+    // The connection goes, and comes back within the grace period, to the table it had.
+    player->close();
+    REQUIRE(player->waitForClose(5s));
+    player.reset();
+    std::this_thread::sleep_for(400ms);
+
+    TestClient back(server.port, "/ws");
+    back.send(R"({"type":"hello","protocol":2,"token":")" + token + R"(","lang":"en"})");
+    const auto synced = back.waitFor([](const Json::Value& m) { return isType(m, "sync") && m["table"].isObject(); }, 5s);
+    REQUIRE(synced);
+    CHECK(back.json()[*synced]["table"]["mode"] == "solo");
+    CHECK(back.waitFor([](const Json::Value& m) { return isType(m, "restarting"); }, 5s));
+
+    // The first grace period would be over by now, and the game is attended again, so nothing ends.
+    CHECK_FALSE(server.process->waitForLine("drained", 2500ms));
+    CHECK_FALSE(server.process->waitForExit(200ms));
+
+    // Gone again for good: it is waited for once more, for the grace period, and then not.
+    const auto dropped = Clock::now();
+    back.close();
+    CHECK(server.process->waitForLine("drained: no attended game is running", 10s));
+    CHECK(server.process->waitForExit(5s) == 0);
+    INFO(server.process->log());
+    CHECK(since(dropped) >= 1200ms);
+    CHECK(server.process->log().find("drain time is up") == std::string::npos);
+}
+
+TEST_CASE("A watched game of computer players counts while its watcher is connected", "[drain][attended][process]")
+{
+    // At normal speed the game outlasts the whole test.
+    Server server(R"(, "drain_ms": 3000, "grace_period_ms": 300)");
+
+    TestClient watcher(server.port, "/ws");
+    greet(watcher);
+    watcher.send(slowWatchedGame);
+    REQUIRE(watcher.waitFor([](const Json::Value& m) { return isType(m, "game"); }, 5s));
+
+    server.process->signal(SIGTERM);
+    REQUIRE(server.process->waitForLine("stop asked for: no new games, 1 running, 1 attended, may finish within 3 s", 5s));
+
+    // Nobody plays, and somebody watches: it goes on to the deadline.
+    CHECK(server.process->waitForLine("drain time is up: ending 1 running game(s), 1 attended", 10s));
+    CHECK(server.process->waitForExit(5s) == 0);
 }

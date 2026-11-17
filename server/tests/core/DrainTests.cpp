@@ -280,3 +280,148 @@ TEST_CASE("A game that is running when the drain begins goes on, and the server 
     service->shutdown();
     CHECK(registry.runningGames() == 0);
 }
+
+namespace
+{
+
+// A service whose tables wait this long, in real time, for a member who has gone.
+std::shared_ptr<Service> graceService(milliseconds grace)
+{
+    ServiceOptions options;
+    options.registry.table.instantFloor = milliseconds(0);
+    options.registry.table.threadNiceness = 0;
+    options.registry.table.gracePeriod = grace;
+    return std::make_shared<Service>(std::move(options));
+}
+
+constexpr auto grace = milliseconds(250 * test::slowdown);
+
+// Longer than the grace period, with room.
+void waitOutGrace()
+{
+    std::this_thread::sleep_for(grace * 2);
+}
+
+} // namespace
+
+TEST_CASE("A game counts as attended while its player is connected, and for the grace period after", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace);
+    Registry& registry = service->registry();
+
+    // No game, nothing to wait for, even with a person at a table.
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    const std::string token = ana->hello()["token"].asString();
+    CHECK(registry.runningGames() == 0);
+    CHECK(registry.attendedGames(Clock::now()) == 0);
+
+    ana->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    REQUIRE(registry.runningGames() == 1);
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+
+    // The connection goes: the game is attended for the grace period, and then it is not. It still
+    // runs, parked on its player.
+    ana->drop();
+    ana.reset();
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+    waitOutGrace();
+    CHECK(registry.attendedGames(Clock::now()) == 0);
+    CHECK(registry.runningGames() == 1);
+
+    // Someone comes back to it, and it counts again, for as long as they are there.
+    test::Client back(service, recorder, 2);
+    back.hello(token);
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+    waitOutGrace();
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+}
+
+TEST_CASE("A player who comes back within the grace period was never away from the drain's point of view", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace * 4);
+    Registry& registry = service->registry();
+
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    const std::string token = ana->hello()["token"].asString();
+    ana->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    ana->drop();
+    ana.reset();
+    std::this_thread::sleep_for(grace);
+
+    test::Client back(service, recorder, 2);
+    back.hello(token);
+    std::this_thread::sleep_for(grace * 4);
+
+    // Well past the first time it went, and it has not been unattended since.
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+}
+
+TEST_CASE("A watched game of computer players is attended by its watcher", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace);
+    Registry& registry = service->registry();
+
+    // At normal speed it goes on for minutes.
+    Settings settings = test::tableSettings(3, {}, Level::Cyborg);
+    settings.botSpeed = 2;
+    auto watcher = std::make_unique<test::Client>(service, recorder, 1);
+    watcher->hello();
+    watcher->send(createSolo(settings));
+    REQUIRE(registry.runningGames() == 1);
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+
+    watcher->drop();
+    watcher.reset();
+    waitOutGrace();
+    CHECK(registry.attendedGames(Clock::now()) == 0);
+    CHECK(registry.runningGames() == 1);
+}
+
+TEST_CASE("A table with a game is attended while any one of its members is connected", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace);
+    Registry& registry = service->registry();
+
+    auto host = std::make_unique<test::Client>(service, recorder, 1);
+    auto guest = std::make_unique<test::Client>(service, recorder, 2);
+    host->hello();
+    guest->hello();
+    host->send(createTable("Host", test::onlineSettings(2, 2)));
+    const std::string code = tableCode(recorder, 1);
+    guest->send(joinTable(code, "Guest"));
+    REQUIRE(registry.tableOf(*guest->member()));
+    host->send(test::typed("startGame"));
+    REQUIRE(registry.runningGames() == 1);
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+
+    // One of the two goes, and the other is there.
+    host->drop();
+    host.reset();
+    waitOutGrace();
+    CHECK(registry.attendedGames(Clock::now()) == 1);
+
+    guest->drop();
+    guest.reset();
+    waitOutGrace();
+    CHECK(registry.attendedGames(Clock::now()) == 0);
+}
+
+TEST_CASE("A game that has ended is not attended, whoever is there", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace);
+    Registry& registry = service->registry();
+
+    // Computer players only, at the fastest speed: over in moments.
+    test::Client watcher(service, recorder, 1);
+    watcher.hello();
+    watcher.send(createSolo(test::tableSettings(3, {})));
+    const std::shared_ptr<Table> table = registry.tableOf(*watcher.member());
+    REQUIRE(table);
+    REQUIRE(waitUntil([&] { return registry.runningGames() == 0; }));
+    CHECK(registry.attendedGames(Clock::now()) == 0);
+}

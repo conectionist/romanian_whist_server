@@ -1409,13 +1409,21 @@ request. The commits after it change only this plan.
   2. tell everyone the server is restarting, with `restarting {deadline}`: every connection now,
      and each that says hello later, right after its welcome, with the time left then, which counts
      down from the stop;
-  3. wait until no game runs, or until `drain_ms` (15 minutes) has passed, then abandon and join
-     any still running ([§4.6](#46-threads-and-locks), rule 7);
+  3. wait until no *attended* game runs, or until `drain_ms` (15 minutes) has passed, then abandon
+     and join any still running ([§4.6](#46-threads-and-locks), rule 7). A game is attended while a
+     member of its table is connected (a watcher of a game of computer players counts), and for the
+     grace period (D8, 30 s) after the last one went. A game nobody is at holds, and cannot end, so
+     waiting for it only costs the deploy its time; it is ended with the rest. A player who comes
+     back during the drain makes their game count again, until it ends or the deadline;
   4. quit, with exit code 0.
 
-  A second SIGTERM or SIGINT ends the games at once. The first line of each step is logged, so the
-  journal shows how long a drain took and how many games it cut. The container's stop grace period
-  has to outlast `drain_ms`. Deploys wait for a quiet moment.
+  This departs from the first plan, which waited until no game ran at all: a smoke test or a closed
+  tab leaves a parked game, and every deploy would then have waited the whole 15 minutes.
+
+  A second SIGTERM or SIGINT ends the games at once. The first line of each step is logged, with
+  how many games run and how many are attended, so the journal shows how long a drain took and how
+  many games it cut. The container's stop grace period has to outlast `drain_ms`. Deploys wait for
+  a quiet moment.
 - **Health:**
   - `GET /health` (`app().registerHandler`), for uptime monitoring: 200 `{"status":"ok"}`, and 503
     `{"status":"draining"}` from the moment the server is asked to stop. `GET /version` gives

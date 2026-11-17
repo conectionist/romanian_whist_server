@@ -499,6 +499,14 @@ bool Table::reap(Clock::time_point now)
     return false;
 }
 
+bool Table::attended(Clock::time_point now) const
+{
+    std::lock_guard lock(mutex_);
+    if(!run_ || run_->finished())
+        return false;
+    return !idleSince_ || now - *idleSince_ < options_.gracePeriod;
+}
+
 void Table::close()
 {
     std::unique_ptr<GameRun> run;

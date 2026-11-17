@@ -88,6 +88,10 @@ public:
     // How many game threads are running now.
     std::size_t runningGames() const;
 
+    // How many of the running games are attended, as Table::attended says: the ones a drain waits
+    // for, since a game nobody is at cannot go on.
+    std::size_t attendedGames(Clock::time_point now) const;
+
     // How many moves computer players have made for members, since the Registry was made.
     std::uint64_t standInMoves() const;
 

@@ -401,8 +401,10 @@ The server has been asked to stop, usually for an update, and drains.
   back to one.
 - `deadline`: the milliseconds left, when it was sent, until the server ends the games that still
   run and quits. Count down from when you received it. It is the time left, not a new time: a
-  connection that comes later is sent what is left then. The server quits sooner when the last game
-  ends, so the games may end before it.
+  connection that comes later is sent what is left then. The server quits sooner when no game is
+  left that someone is at: a game nobody is at cannot go on, and is ended with the rest. So the
+  games may end before the deadline, and a game whose player is gone for longer than the server's
+  grace period (30 s) may be cut at once.
 - It is about the server, not a table, so a `sync` does not make it old. Everyone is sent it once.
 - The connection closes when the server quits. A client may reconnect as it does after any drop;
   the new server has the `welcome` of a member it does not know.
