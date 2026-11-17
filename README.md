@@ -238,8 +238,9 @@ port or fetches a certificate. `.env` can set `WHIST_SERVER_TAG`, `WHIST_WEB_TAG
 `0.0.0.0:8080` only for a proxy on another host, over a private network, and never where the open
 internet or a network of strangers can reach it. The server believes `X-Forwarded-For` from the
 private ranges (`trusted_proxies` in its configuration), so anyone who reaches the port from one
-could write any address they like and slip the limits per address. Your proxy must send the header:
-the nginx example does, and Caddy's `reverse_proxy` does by itself.
+could write any address they like and slip the limits per address. Your proxy must send the header,
+once: the nginx example does, and Caddy's `reverse_proxy` does by itself. Under "Another proxy" is
+why one line matters.
 
 Give the game a host of its own, such as `whist.example.org`. A sub-path such as
 `example.org/whist` does not work, because the page's links start at the root.
@@ -270,8 +271,10 @@ set them.
 
 **Another proxy.** Forward everything to `127.0.0.1:8080`, `/health` and `/version` included, pass
 `/ws` on as a WebSocket (the `Upgrade` and `Connection` headers), and send `X-Forwarded-For`, which
-is how the server tells its clients apart. Add no headers and no cache rules: the server sends
-them.
+is how the server tells its clients apart. Send one `X-Forwarded-For` header, that the proxy sets or
+extends: Drogon reads the first line only, so a proxy that adds a second line lets each client write
+the address the server counts. HAProxy needs `http-request set-header X-Forwarded-For %[src]`. Add
+no other headers and no cache rules: the server sends them.
 
 **A proxy in a container** reaches the server over a Docker network, not over the host's port. Put
 this in `docker-compose.override.yml` beside the compose file (it needs Compose 2.24 or later), set
