@@ -151,9 +151,11 @@ Docker publishes the ports a compose file names whatever `ufw` says, which is wh
 publishes only 80 and 443.
 
 **3. The domain:** make an `A` record for `whist.example.org` that points at the machine's IPv4
-address (and an `AAAA` record for its IPv6 one, if it has one), and wait until
-`dig +short whist.example.org` shows it. Caddy asks for the certificate when it starts, and cannot
-get it before the name resolves.
+address, and wait until `dig +short whist.example.org` shows it. Caddy asks for the certificate when
+it starts, and cannot get it before the name resolves. Do not add an `AAAA` record: the compose
+network is IPv4 only, and Docker's userland proxy hands an IPv6 client to Caddy from the bridge's
+gateway, which `trusted_proxies` trusts, so every IPv6 client would count as one address. IPv6 needs
+`enable_ipv6` on the network and `trusted_proxies` for its range, which this stack does not set up.
 
 **4. The stack:**
 
