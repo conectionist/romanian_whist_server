@@ -5,12 +5,13 @@ The game server for Romanian Whist's online tables, built on the
 [Drogon](https://github.com/drogonframework/drogon). Its clients are the browser page, in
 [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and the Android app.
 
-**Status:** solo and online games can be played end to end: the server runs them at `/ws`, and a
-plain debug page in `server/www/` plays them in a browser, reloads included. People who go away are
-replaced by a computer player, and take their seat back when they return. Tables nobody is at are
-closed. It runs from Docker images, below. Not yet: limits on connections and tables, so it is not
-for the public internet. [`docs/server-plan.md`](docs/server-plan.md) is the plan for the rest. The
-page's part of it is in `romanian_whist_web`.
+**Status:** version 1.0.0. Solo and online games are played end to end: the server runs them at
+`/ws`, and a plain debug page in `server/www/` plays them in a browser, reloads included. People who
+go away are replaced by a computer player, and take their seat back when they return. Tables nobody
+is at are closed. It limits connections, tables, joins and message rates per address, and drains
+before it stops, so a deploy lets the games that are running end. It runs from Docker images, on a
+VPS or behind your own proxy, or by hand. [`docs/server-plan.md`](docs/server-plan.md) is the plan.
+The page's part of it is in `romanian_whist_web`.
 
 ## The protocol
 
@@ -26,12 +27,10 @@ Two images, for linux/amd64, are published on GitHub's registry:
   and passing `/ws` on to the server. It is built in
   [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web).
 
-Their tags are `latest` (the newest `master`), a release such as `0.1.0` or `0.1`, and
-`sha-<commit>`.
+Their tags are `latest` (the newest `master`), a release such as `1.0.0` or `1.0`, and
+`sha-<commit>`. Pin both in production.
 
-**Not for the public internet yet.** The server has no limits on connections, tables or message
-rates, which come with phase 9 of [the plan](docs/server-plan.md). Try it on a machine you can
-reach, or behind something that limits who connects.
+For a VPS from nothing, see [On a VPS, step by step](#on-a-vps-step-by-step).
 
 ### The full stack
 
@@ -55,7 +54,8 @@ docker compose up -d
 
 - **Updating:** `docker compose pull && docker compose up -d`. A service whose image is new is
   restarted; the server drains first (see Stopping), so the games that are running get a chance to
-  end. A quiet hour is the time for it.
+  end, and `up -d` waits for it: up to `drain_ms`, 15 minutes. A quiet hour is the time for it, and
+  `tmux` or `nohup` keeps the command alive if your connection drops.
 - **Logs:** `docker compose logs -f server`, or `web`. The server writes a line that starts with
   `status` once a minute (`status_log_interval_ms`): connections, tables by state, game threads,
   moves made for players who went away, the share of a core it used since the last line, and its
@@ -64,9 +64,14 @@ docker compose up -d
 - **Stopping the server** is a drain. On SIGTERM it takes no new tables or games, tells everyone it
   is restarting, and waits for the games that are running to end, for at most `drain_ms` (15
   minutes). It then ends the games that are left, closes every connection and exits with code 0. A
-  second SIGTERM, or Ctrl-C, ends the games at once. The container's stop grace period must be
-  longer than `drain_ms`, or Docker kills the server in the middle of the drain. The log says each
-  step, and `GET /health` answers 503 from the first.
+  second SIGTERM, or Ctrl-C, ends the games at once. The compose files give the container 16 minutes
+  to stop, which is longer than `drain_ms`; keep it so if you change either, or Docker kills the
+  server in the middle of the drain. The log says each step, and `GET /health` answers 503 from the
+  first.
+- **Health:** the image checks itself, with `whist_server --health-check`, which asks `GET /health`
+  on the server's own address and port and passes on 200 and on 503, since a server that drains is
+  alive. `docker compose ps` shows the result. Your own uptime monitor is another matter: see
+  [Watching it](#watching-it).
 - **Settings:** the image holds `/etc/whist/config.json`, which lists every setting with its
   default, as [`server/app/config.json`](server/app/config.json) does. To change one, take the
   image's file, edit it, and mount it back, with `volumes: [./config.json:/etc/whist/config.json:ro]`
@@ -106,6 +111,104 @@ docker run -d --name whist --restart unless-stopped --read-only --tmpfs /tmp \
 The page's repository, [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web),
 covers the other case: the page alone, pointed at any server.
 
+### On a VPS, step by step
+
+A small Linux machine of your own (2 vCPUs and 2 GB do) running Ubuntu LTS, a domain name you
+control, and a shell on the machine over SSH. `whist.example.org` stands for your domain below.
+
+**1. Docker, from Docker's own apt repository** (these are the steps on
+[docs.docker.com](https://docs.docker.com/engine/install/ubuntu/), which is the place to check them):
+
+```
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+**2. The firewall:** SSH first, so that turning it on does not lock you out, then the web ports.
+HTTPS over HTTP/3 uses UDP, so 443 is opened twice.
+
+```
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 443/udp
+sudo ufw enable
+```
+
+Docker publishes the ports a compose file names whatever `ufw` says, which is why the stack
+publishes only 80 and 443.
+
+**3. The domain:** make an `A` record for `whist.example.org` that points at the machine's IPv4
+address (and an `AAAA` record for its IPv6 one, if it has one), and wait until
+`dig +short whist.example.org` shows it. Caddy asks for the certificate when it starts, and cannot
+get it before the name resolves.
+
+**4. The stack:**
+
+```
+mkdir whist && cd whist
+curl -fsSLO https://raw.githubusercontent.com/conectionist/romanian_whist_server/master/deploy/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/conectionist/romanian_whist_server/master/deploy/.env.example
+```
+
+Edit `.env`:
+
+```
+WHIST_DOMAIN=whist.example.org
+WHIST_SERVER_TAG=sha-<the server's commit>
+WHIST_WEB_TAG=sha-<the page's commit>
+```
+
+Take the two tags from the Packages of each repository on GitHub, and pick a pair whose protocol
+labels are equal (see Pairing above). A tag that names a commit never changes under you, which
+`latest` does.
+
+```
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+`ps` shows both services `running`, and the server `healthy` within a few seconds. Open
+https://whist.example.org, and check it from another machine with the smoke test:
+
+```
+node tools/smoke/smoke.mjs --url https://whist.example.org
+```
+
+**5. Updating,** later: change the two tags in `.env`, then `docker compose pull && docker compose up -d`.
+That replaces the server, which drains first, so the command can wait up to 15 minutes (`drain_ms`)
+for the games that are running to end. Run it in `tmux`, at a quiet hour, and expect the monitor
+below to say "down" while it waits: `/health` answers 503 on purpose from the moment the drain
+begins.
+
+### Watching it
+
+An uptime monitor from outside the machine tells you when the game cannot be reached, which nothing
+on the machine can. Any service that fetches a URL every few minutes will do, UptimeRobot or
+another like it:
+
+1. Make an account, and add a monitor of the type **HTTP(s)**.
+2. The URL is `https://whist.example.org/health`, and the interval is the shortest the plan allows
+   (5 minutes on a free plan). It should expect a 200 answer.
+3. Add yourself as the contact: an email, or a message in the app you use.
+4. If it can, have it check for the keyword `ok` in the answer, so that a proxy that answers 200 on
+   its own is not taken for the game.
+
+`/health` reaches the server through the page's Caddy and through your own proxy, if it forwards
+everything, as the examples below do. It answers `{"status":"ok"}`, or 503 `{"status":"draining"}`
+while a stop is being waited out. Pause the monitor for a deploy, or expect one alert.
+
+On the machine itself, `docker compose logs server` shows a line that starts with `status` every
+minute: connections, tables, game threads and the share of a core the server used.
+
 ## Behind your own reverse proxy
 
 Already running Caddy, nginx or another proxy that holds TLS and ports 80 and 443? Then you do not
@@ -134,10 +237,9 @@ the nginx example does, and Caddy's `reverse_proxy` does by itself.
 Give the game a host of its own, such as `whist.example.org`. A sub-path such as
 `example.org/whist` does not work, because the page's links start at the root.
 
-**Caddy.** This needs Caddy 2.9.1 or later (`caddy version` says which you have): an older one
-accepts the file but reads its `match` lines as headers, and then puts the year-long cache rule on
-error answers too. Copy [`deploy/examples/whist.caddy`](deploy/examples/whist.caddy) to
-`/etc/caddy/whist.caddy`, and import it in the site block:
+**Caddy.** Copy [`deploy/examples/whist.caddy`](deploy/examples/whist.caddy) to
+`/etc/caddy/whist.caddy`, and import it in the site block. It is one line, `reverse_proxy`, which
+passes the WebSocket on by itself:
 
 ```
 whist.example.org {
@@ -145,8 +247,8 @@ whist.example.org {
 }
 ```
 
-**nginx.** Copy both files of [`deploy/examples/nginx/`](deploy/examples/nginx/) to
-`/etc/nginx/snippets/`, and include the first in the `server` block that holds your TLS settings:
+**nginx.** Copy [`deploy/examples/nginx/whist.conf`](deploy/examples/nginx/whist.conf) to
+`/etc/nginx/snippets/`, and include it in the `server` block that holds your TLS settings:
 
 ```
 server {
@@ -156,15 +258,13 @@ server {
 }
 ```
 
-The locations of `whist.conf` set their own `add_header` lines, and nginx then drops the ones of the
-`server` block, such as HSTS. Put your own headers in `whist-headers.conf`, which every location but
-`/ws` includes.
+The file adds no headers of its own, so the ones of the `server` block, such as HSTS, apply as you
+set them.
 
-**Another proxy.** Forward everything to `127.0.0.1:8080`, pass `/ws` on as a WebSocket (the
-`Upgrade` and `Connection` headers), and add the headers of
-[`whist-headers.conf`](deploy/examples/nginx/whist-headers.conf) and the cache rules of
-[`whist.caddy`](deploy/examples/whist.caddy), but not on error answers: an error cached for a
-year would outlive the fault.
+**Another proxy.** Forward everything to `127.0.0.1:8080`, `/health` and `/version` included, pass
+`/ws` on as a WebSocket (the `Upgrade` and `Connection` headers), and send `X-Forwarded-For`, which
+is how the server tells its clients apart. Add no headers and no cache rules: the server sends
+them.
 
 **A proxy in a container** reaches the server over a Docker network, not over the host's port. Put
 this in `docker-compose.override.yml` beside the compose file (it needs Compose 2.24 or later), set
@@ -187,14 +287,15 @@ networks:
 
 **The headers.** The server sends a content-security-policy, `nosniff`, a referrer policy and cache
 rules itself: on every answer but the 400 and 413 that its parser writes, which have no body. The
-cache rules are on successful answers only. The lines in the examples repeat them, with the same
-values, and are redundant; an nginx that includes them sends each header twice, which browsers
-accept.
+cache rules are on successful answers only, and keep `/version` and `/health` out of every cache,
+so a new server shows at once. The examples add nothing, and a proxy that did would send a header
+twice.
 
 - **Updating:** `docker compose pull && docker compose up -d` runs `page` again, which copies the
   files that changed. The server restarts only when its own image is new, and drains first. The files of the older page stay, so a tab open on it still finds its scripts. To
   clear them: `docker compose down && docker volume rm whist_page`.
-- **Not for the public internet yet**, for the reason given above.
+- **Stopping** drains, as for the full stack: the compose file gives the server 16 minutes, and
+  `docker compose up -d` can wait that long when it replaces a running server.
 
 ## Getting the code
 
@@ -256,11 +357,149 @@ reports as its commit, since the build context holds no `.git`.
 
 ## Deploying without Docker
 
-Build the `release` preset as above, set `document_root` in a configuration file to the page's built
-`dist/`, run `whist_server --config <file>` under a service manager that restarts it and raises its
-file limit, and put a proxy in front that holds TLS and passes `/ws` on. A Caddyfile and a systemd
-unit for this come with phase 9; [the plan's §12](docs/server-plan.md#12-deployment-and-operations)
-says what they hold.
+A small Linux machine of your own, as for the Docker steps above (2 vCPUs and 2 to 4 GB, Debian or
+Ubuntu LTS, an `A` record for `whist.example.org`, the firewall open on 22, 80 and 443). The server
+runs from a release build, serves the page's built `dist/` itself, and sits behind Caddy, which
+holds the certificate. [`deploy/manual/whist-server.service`](deploy/manual/whist-server.service)
+and [`deploy/manual/Caddyfile`](deploy/manual/Caddyfile) are the two files this needs.
+
+**1. Build the server,** with the packages of [Building the server](#building-the-server) and the
+`release` preset, and configure it afresh on every deploy. The commit the server reports, and the page's
+source link follows, is recorded when CMake configures, not when it builds: a build that skips the
+configure would report the commit of the last one. Passing it makes it right either way, and it
+stays in the build folder's cache, so pass it every time:
+
+```
+git pull && git submodule update --init --recursive
+cmake --preset release -DWHIST_SERVER_COMMIT=$(git rev-parse --short HEAD)
+nice -n 19 cmake --build --preset release --target whist_server -j 2
+```
+
+**2. Build the page** from the latest commit of
+[`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web) whose submodule points at
+this server's commit (`npm ci && npm run build` gives its `dist/`), so that the two speak the same
+protocol.
+
+**3. Install them,** with a user of their own that can read them and write nothing:
+
+```
+sudo useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin whist
+sudo install -d /opt/whist/bin /opt/whist/www /etc/whist
+sudo install -m 0755 build-release/server/app/whist_server /opt/whist/bin/whist_server
+sudo rsync -a --delete dist/ /opt/whist/www/
+sudo cp server/app/config.json /etc/whist/config.json
+```
+
+In `/etc/whist/config.json` set `"document_root": "/opt/whist/www"`. Leave `"address"` at
+`127.0.0.1`: Caddy is on the same machine, and the server believes `X-Forwarded-For` from the
+loopback only (`trusted_proxies`), so nothing else can write an address for itself.
+
+**4. The service:**
+
+```
+sudo cp deploy/manual/whist-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now whist-server
+journalctl -u whist-server -f
+```
+
+The unit runs it as `whist` with a read-only view of the system, raises the file limit to 65536,
+restarts it if it fails, and gives it 16 minutes to stop: a stop is a drain, which waits for the
+games that are running for up to `drain_ms` (15 minutes), as the Docker stops do. `systemctl restart
+whist-server` and `stop` wait that long too.
+
+**5. Caddy,** from its own apt repository or your distribution's (any 2.x will do). Put the
+Caddyfile in place with your domain in it, check it, and reload:
+
+```
+sudo cp deploy/manual/Caddyfile /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+**6. Check it,** from another machine, and add the monitor of [Watching it](#watching-it):
+
+```
+node tools/smoke/smoke.mjs --url https://whist.example.org
+```
+
+**Updating:** repeat 1 to 3 for the new commit, then `sudo systemctl restart whist-server`. Install
+the binary under a new name and `mv` it over, if the old one is running while you copy.
+
+## Finding the cap on running games
+
+`max_running_games` is how many games the server runs at once before it answers `busy`. The number
+is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
+ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
+packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is
+the Docker image's configuration with every limit per address lifted (the script plays from one
+address), a status line every 5 s and a drain of 5 s.
+
+One run is one kind of table, over the steps `10,20,40,60,80,100` (`--steps`), each held for
+`--hold` seconds (180) after `--settle` seconds (15) to start its tables:
+
+| `--kind` | Each table |
+|---|---|
+| `solo` | One scripted person and five Reckoner Gammas, at normal speed |
+| `instant` | The same, at Instant speed: the most CPU a table can ask for |
+| `online` | Six scripted people, who answer at once |
+
+For each step it prints the time from an answer sent to the echo of the move coming back (p50, p95,
+p99 and the largest, in milliseconds), the server's CPU and memory, the game threads, and what went
+wrong. The echo waits for the server's own pacing, so an idle server gives about 40 ms: what load
+adds to it is what counts. At the end it prints a table of the steps, and the cap: **the largest
+step whose p99 is under 250 ms and whose CPU is under 70% of the machine's cores** (`--p99`, `--cpu`
+and `--cores` change them), with every step before it as good, rounded down to a multiple of 10.
+The ramp stops by itself at a step with p99 over a second or CPU over 95%. `--json <file>` keeps
+the numbers.
+
+The CPU and memory come from the server's own status lines, or are read from `/proc` or `docker
+stats`:
+
+| Option | Where the server is |
+|---|---|
+| `--server <program> --config <file>` | The script starts it, reads its status lines and stops it |
+| `--status-log <file>` | Anywhere: a file that the server's log is written to, read as it grows |
+| `--pid <n>` | A process on this machine |
+| `--container <name>` | A container, read with `docker stats` on this machine |
+
+With none of them the latency is measured and the CPU is not, so no cap is suggested.
+
+**Here, a short try** against a server it starts itself (copy `load-config.json`, point its
+`document_root` at `server/www`, its `address` at `127.0.0.1` and its `status_log_interval_ms` at
+1000):
+
+```
+nice -n 19 node tools/load/load.mjs --server build/server/app/whist_server --config my-load.json \
+    --kind solo --steps 2 --hold 6 --settle 2
+```
+
+**On the VPS,** from the folder of the stack, one run at a time and while nobody plays: a run takes
+the machine's whole CPU on purpose. The server is restarted with the load configuration mounted, the
+script runs in a `node:26` container on the stack's network, under `nice -n 19`, and reads the
+server's log from a file:
+
+```
+mkdir -p tools/load tools/smoke
+base=https://raw.githubusercontent.com/conectionist/romanian_whist_server/master
+curl -fsSL -o tools/load/load.mjs $base/tools/load/load.mjs
+curl -fsSL -o tools/smoke/smoke.mjs $base/tools/smoke/smoke.mjs
+curl -fsSL -o load-config.json $base/deploy/load-config.json
+printf 'services:\n  server:\n    volumes:\n      - ./load-config.json:/etc/whist/config.json:ro\n' > docker-compose.load.yml
+
+docker compose -f docker-compose.yml -f docker-compose.load.yml up -d server
+docker compose -f docker-compose.yml -f docker-compose.load.yml logs -f --no-log-prefix --tail 0 server > server.log &
+
+docker run --rm --network whist_default -v "$PWD/tools:/tools:ro" -v "$PWD/server.log:/server.log:ro" \
+    node:26 nice -n 19 node /tools/load/load.mjs --url http://server:8080 --status-log /server.log \
+    --kind solo --cores 2
+```
+
+Replace `master` with the commit the server runs. Run the last command again with `--kind instant`
+and `--kind online`, then stop the log with `kill %1` and put the stack back with
+`docker compose up -d`. The cap that the three runs agree on, the smallest of them, goes into
+`"max_running_games"` in [`server/app/config.json`](server/app/config.json) and
+[`deploy/docker-config.json`](deploy/docker-config.json).
 
 ## Tests
 
@@ -274,6 +513,9 @@ the difference:
 ```
 WHIST_WRITE_FIXTURES=1 nice -n 19 ./build/server/tests/core_tests "[fixtures]"
 ```
+
+The load test's arithmetic and its scripted people are tested without a server by
+`node --test tools/load/load.test.mjs`.
 
 The browser tests of the page against this server are in `romanian_whist_web`.
 

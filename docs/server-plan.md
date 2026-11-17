@@ -352,13 +352,14 @@ romanian_whist_server/              AGPL-3.0-or-later, like the engine
 │   ├── PROTOCOL.md                 every message, kept beside the code
 │   ├── fixtures/                   sample messages written by server tests, read by clients' tests
 │   └── look/                       the fixture tool's snapshots, for the page's comparisons (§10.5)
-├── tools/                          the fixture tool for the page's screenshots (§10.5), and smoke/:
-│                                   the smoke test of a running server (§12.1)
+├── tools/                          the fixture tool for the page's screenshots (§10.5), and smoke/,
+│                                   chaos/ and load/: the scripts that play against a running server
+│                                   (§12.1, §10.6)
 ├── Dockerfile, .dockerignore       the server's image (§12.1)
 ├── compose.yaml                    the server built from this checkout
 ├── deploy/                         the compose files for the images, their .env.example, the image's
-│                                   config.json and the proxy examples (§12.1); phase 9's Caddyfile
-│                                   and systemd unit (§12.2)
+│                                   config.json, the load test's and the proxy examples (§12.1);
+│                                   manual/: the Caddyfile and the systemd unit (§12.2)
 ├── docs/
 └── CLAUDE.md                       the owner's machine rules (§11)
 ```
@@ -989,9 +990,19 @@ the page's repository.
 
 ### 10.6 Load (phase 9)
 
-- **Tables of six Reckoner Gammas**, at normal speed and at Instant.
-- **Measured:** CPU per table, the time from a prompt being sent to it arriving, and memory.
-- **The result sets the maximum number of running games.**
+`tools/load/load.mjs` does this, on the smoke test's protocol code, against a server running with
+`deploy/load-config.json` (every limit per address lifted).
+
+- **Tables of one scripted human and five Reckoner Gammas**, at normal speed and at Instant, and
+  **online tables of six scripted humans** who answer at once. Ramped in steps (10, 20, 40, 60, 80,
+  100 tables), each held for a few minutes.
+- **Measured:** the server's CPU and memory, from its status line, `/proc` or `docker stats`, and
+  the time from an answer being sent to the echo of its move arriving (betPlaced or cardPlayed),
+  as p50, p95 and p99. The echo waits for the server's own pacing, so an idle server gives about
+  40 ms. Timing from a prompt being sent would need a timestamp on the wire.
+- **The result sets the maximum number of running games:** the largest step whose p99 is under
+  250 ms and whose CPU is under 70% of the machine's cores, with every step before it as good,
+  rounded down to a multiple of 10.
 
 ---
 
@@ -1195,14 +1206,14 @@ That is acceptable without a server change now: the examples carry the headers u
   the rename. Hashed files never change, and the page's largest file is under 100 KB. Phase 9
   closes it (below).
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
-  `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
-  `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
-  headers, which puts the cache rules on error answers too. The headers are a file of their own
-  because a location's `add_header` drops the ones it inherits. The cache rules are kept off error
-  answers, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
-  sub-path is not supported, since the page's links start at the root. The CSP string is the page's.
-  The page's CI is to compare every copy of it against one constant; that check is planned for the
-  page's pull request.
+  `nginx/whist.conf`, to include inside a server block. Each forwards everything, `/health` and
+  `/version` included, passes the WebSocket on, and sends `X-Forwarded-For`. Neither adds a header
+  or a cache rule: the server sends them, on every answer but the two its parser writes, and its
+  rules keep errors and `/version` and `/health` out of every cache. Before the server did, the
+  examples carried the headers, in files of their own because an nginx location's `add_header`
+  drops the ones it inherits. The game needs a host of its own: a sub-path is not supported, since
+  the page's links start at the root. The CSP string is the page's, and the server's copy is
+  `server/app/PageHeaders.h`, which the page's CI reads.
 - **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
   Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
   whist_page`.
@@ -1374,8 +1385,17 @@ request. The commits after it change only this plan.
   left open across a deploy (§6.8).
 - **Caddy in front** gives HTTPS automatically. `reverse_proxy localhost:8080` passes WebSockets
   through as they are. Drogon listens on localhost only.
-- **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
-  journal.
+- **A systemd unit,** `deploy/manual/whist-server.service`, runs the server as a user of its own
+  with `LimitNOFILE=65536`, `KillSignal=SIGTERM`, `TimeoutStopSec=16min` (a stop is a drain, §12.3)
+  and `Restart=on-failure`, which restarts a failure and never a clean stop. It adds the hardening
+  options a server that writes only to `/tmp` allows: a read-only system, no home folders, a
+  private `/tmp` and no devices, no capabilities, and only IP and Unix sockets. It sets no system
+  call filter and no `MemoryDenyWriteExecute`, which nothing here has tried the server under. Logs
+  go to the journal. `deploy/manual/Caddyfile` is the site block: `reverse_proxy` to
+  `127.0.0.1:8080`, and nothing else.
+- **A deploy configures afresh:** the commit the server reports is recorded when CMake configures
+  (`server/core/CMakeLists.txt`), so every deploy runs `cmake --preset release` again, or passes
+  `-DWHIST_SERVER_COMMIT`, or the page's source link would name the commit of the last configure.
 
 ### 12.3 Either way
 
