@@ -98,6 +98,16 @@ export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7 } = {}) {
     : { cap: null, why: `the largest good step, ${cap} tables, is under 10` };
 }
 
+// What each table cost: the memory above the idle server's, shared by the tables of the step. Null
+// where either reading is missing, or they are not the same kind of memory.
+export function memoryPerTable(step, baseline) {
+  if (!baseline || step.memoryMb === null || step.memoryMb === undefined || step.memoryKind !== baseline.memoryKind
+    || !(step.tables > 0)) {
+    return null;
+  }
+  return Math.max(0, step.memoryMb - baseline.memoryMb) / step.tables;
+}
+
 const pad = (value, width) => String(value).padStart(width);
 const ms = (value) => (value === null ? "-" : `${Math.round(value)}`);
 
@@ -107,10 +117,10 @@ function memoryColumn(steps) {
   return kinds.size === 1 ? MEMORY_KINDS[[...kinds][0]].column : "mem MB";
 }
 
-export function summaryTable(kindName, steps, { cores, hold }) {
+export function summaryTable(kindName, steps, { cores, hold, baseline = null }) {
   const lines = [
     `${kindName}: ${hold} s held at each step, on ${cores} core${cores === 1 ? "" : "s"}`,
-    `tables  conns  threads  answers   p50   p95   p99   max   cpu%   cores  ${memoryColumn(steps)}  games  errors  drops`,
+    `tables  conns  threads  answers   p50   p95   p99   max   cpu%   cores  ${memoryColumn(steps)}  MB/tbl  games  errors  drops`,
   ];
   for (const step of steps) {
     const cpu = step.cpuShare === null ? "-" : (step.cpuShare * 100).toFixed(0);
@@ -118,14 +128,28 @@ export function summaryTable(kindName, steps, { cores, hold }) {
     lines.push([
       pad(step.tables, 6), pad(step.connections ?? "-", 6), pad(step.gameThreads ?? "-", 8), pad(step.latency.count, 8),
       pad(ms(step.latency.p50), 5), pad(ms(step.latency.p95), 5), pad(ms(step.latency.p99), 5), pad(ms(step.latency.max), 5),
-      pad(cpu, 6), pad(used, 7), pad(step.memoryMb ?? "-", 7), pad(step.gamesFinished, 6), pad(step.errors, 7), pad(step.drops, 6),
+      pad(cpu, 6), pad(used, 7), pad(step.memoryMb ?? "-", 7), pad(step.memoryPerTableMb === null || step.memoryPerTableMb === undefined ? "-" : step.memoryPerTableMb.toFixed(2), 6),
+      pad(step.gamesFinished, 6), pad(step.errors, 7), pad(step.drops, 6),
     ].join(" "));
   }
   const kinds = [...new Set(steps.map((step) => step.memoryKind).filter(Boolean))];
   for (const kind of kinds) {
     lines.push(`${kinds.length === 1 ? "memory" : MEMORY_KINDS[kind].column}: ${MEMORY_KINDS[kind].note}`);
   }
+  if (baseline && steps.some((step) => step.memoryPerTableMb !== null && step.memoryPerTableMb !== undefined)) {
+    lines.push(`MB/tbl: the memory above the idle server's ${baseline.memoryMb} MB, shared by the tables of the step`);
+  }
   return lines.join("\n");
+}
+
+// What the tables of the biggest step that has a figure say about a cap on tables.
+export function memoryForCap(steps, maxTables) {
+  const known = steps.filter((step) => step.memoryPerTableMb !== null && step.memoryPerTableMb !== undefined);
+  if (known.length === 0) {
+    return null;
+  }
+  const last = known[known.length - 1];
+  return { tables: last.tables, perTableMb: last.memoryPerTableMb, capMb: last.memoryPerTableMb * maxTables, maxTables };
 }
 
 // ---- what a scripted person says ----
@@ -344,6 +368,10 @@ class StatusSamples {
     return this.samples.filter((sample) => sample.at >= from && sample.at <= to);
   }
 
+  latest() {
+    return this.samples.length === 0 ? null : this.samples[this.samples.length - 1];
+  }
+
   // The averages over a stretch of time, and the last of the rest.
   over(from, to) {
     const inside = this.between(from, to);
@@ -539,11 +567,27 @@ class Run {
   }
 }
 
+// The idle server's memory: the first reading with some, waited for as long as the readings take
+// to come, which is as long as the status log's interval.
+async function idleMemory(samples, waitMs = 8000) {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const sample = samples.latest();
+    if (sample && sample.memoryMb !== null && sample.memoryMb !== undefined && sample.memoryKind) {
+      return { memoryMb: sample.memoryMb, memoryKind: sample.memoryKind };
+    }
+    if (Date.now() >= until) {
+      return null;
+    }
+    await sleep(250);
+  }
+}
+
 function usage() {
   return `usage: node tools/load/load.mjs --kind solo|instant|online [--url http://127.0.0.1:8080]
          [--steps 10,20,40,60,80,100] [--hold 180] [--settle 15] [--cores N]
          [--server <program> --config <file> | --status-log <file> | --pid <n> | --container <name>]
-         [--p99 250] [--cpu 70] [--stop-p99 1000] [--stop-cpu 95] [--json <file>]`;
+         [--p99 250] [--cpu 70] [--stop-p99 1000] [--stop-cpu 95] [--max-tables 400] [--json <file>]`;
 }
 
 async function main() {
@@ -554,7 +598,7 @@ async function main() {
       server: { type: "string" }, config: { type: "string" }, "status-log": { type: "string" },
       pid: { type: "string" }, container: { type: "string" }, p99: { type: "string", default: "250" },
       cpu: { type: "string", default: "70" }, "stop-p99": { type: "string", default: "1000" },
-      "stop-cpu": { type: "string", default: "95" }, json: { type: "string" },
+      "stop-cpu": { type: "string", default: "95" }, "max-tables": { type: "string", default: "400" }, json: { type: "string" },
     },
   });
   if (!(values.kind in KINDS) || (values.server && !values.config)) {
@@ -566,6 +610,11 @@ async function main() {
   const settle = Number(values.settle);
   const cores = values.cores ? Number(values.cores) : os.availableParallelism();
   if (steps.some((step) => !(step > 0)) || !(hold > 0) || !(settle >= 0) || !(cores > 0)) {
+    console.error(usage());
+    return 2;
+  }
+  const maxTables = Number(values["max-tables"]);
+  if (!(maxTables > 0)) {
     console.error(usage());
     return 2;
   }
@@ -594,6 +643,7 @@ async function main() {
 
   const run = new Run(url.replace(/^http/, "ws").replace(/\/?$/, "/ws"), values.kind);
   const results = [];
+  let baseline = null;
   let failure = null;
 
   // Ctrl-C leaves nothing behind: the connections close, and a server this script started stops.
@@ -609,6 +659,10 @@ async function main() {
     console.log(`server ${version.version}, commit ${version.commit}, protocol ${version.protocol}; ${KINDS[values.kind].name}`);
     if (version.protocol !== protocol) {
       throw new Error(`the server speaks protocol ${version.protocol} and this script ${protocol}`);
+    }
+
+    if (watching) {
+      baseline = await idleMemory(samples);
     }
 
     for (const target of steps) {
@@ -639,10 +693,12 @@ async function main() {
         drops: run.drops - before.drops,
         failedToStart: run.failedToStart - failedBefore,
       };
+      step.memoryPerTableMb = memoryPerTable(step, baseline);
       results.push(step);
       console.log(`${pad(step.tables, 4)} tables: p50 ${ms(step.latency.p50)} ms, p95 ${ms(step.latency.p95)} ms, p99 ${ms(step.latency.p99)} ms`
         + `, cpu ${step.cpuShare === null ? "-" : `${(step.cpuShare * 100).toFixed(0)}%`}, ${step.errors} errors, ${step.drops} drops`
-        + (step.failedToStart > 0 ? `, ${step.failedToStart} tables that failed to start` : ""));
+        + (step.failedToStart > 0 ? `, ${step.failedToStart} tables that failed to start` : "")
+        + (step.memoryPerTableMb === null ? "" : `, ${step.memoryPerTableMb.toFixed(2)} MB a table`));
 
       if (step.latency.count === 0) {
         run.note("no answer was timed at this step: the games are not moving");
@@ -665,7 +721,12 @@ async function main() {
     console.error(`FAIL ${failure.message}`);
   }
   if (results.length > 0) {
-    console.log(`\n${summaryTable(KINDS[values.kind].name, results, { cores, hold })}`);
+    console.log(`\n${summaryTable(KINDS[values.kind].name, results, { cores, hold, baseline })}`);
+    const memory = memoryForCap(results, maxTables);
+    if (memory) {
+      const note = MEMORY_KINDS[baseline.memoryKind].note;
+      console.log(`\nMemory: ${memory.perTableMb.toFixed(2)} MB a table at ${memory.tables} tables, so ${memory.maxTables} tables (\`max_tables\`) would take about ${Math.round(memory.capMb)} MB more than an idle server. It is ${note}.`);
+    }
     const { cap, why } = suggestCap(results, limits);
     console.log(cap === null
       ? `\nNo cap to suggest: ${why}.`
@@ -674,7 +735,7 @@ async function main() {
       console.log(`The server sent errors: ${JSON.stringify(run.errors)}. Its limits may be in the way: it should run with deploy/load-config.json.`);
     }
     if (values.json) {
-      writeFileSync(values.json, `${JSON.stringify({ kind: values.kind, cores, hold, steps: results, errors: run.errors, cap }, null, 2)}\n`);
+      writeFileSync(values.json, `${JSON.stringify({ kind: values.kind, cores, hold, baseline, steps: results, errors: run.errors, cap, memory }, null, 2)}\n`);
     }
   }
   return failure || run.errorCount() > 0 || run.drops > 0 ? 1 : 0;

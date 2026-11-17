@@ -471,7 +471,11 @@ or a table that would not start. `--json <file>` keeps the numbers.
 The CPU and memory come from the server's own status lines, or are read from `/proc` or `docker
 stats`. The memory is not the same in each: the status lines give the most the server has held since
 it started (`peak MB` in the table), and `/proc` and `docker stats` what it holds when read (`cur
-MB`). The table says which under it.
+MB`). The table says which under it. The `MB/tbl` column is what each table cost: the memory of the
+step above the idle server's, which it reads before the first step, divided by the tables of the
+step. At the end it says what `--max-tables` (400, the server's `max_tables`) tables would take on top
+of an idle server, so the cap can be checked against the machine's memory. Peak memory never comes
+down, so measure on a server that has just started.
 
 | Option | Where the server is |
 |---|---|

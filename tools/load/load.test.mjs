@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  chooseAnswer, latencyOf, onlineTable, parseDockerStats, parseStatusLine, percentile, soloGame, suggestCap, summaryTable,
+  chooseAnswer, latencyOf, memoryForCap, memoryPerTable, onlineTable, parseDockerStats, parseStatusLine, percentile, soloGame, suggestCap,
+  summaryTable,
 } from "./load.mjs";
 
 test("a percentile is the value that this share of the samples do not exceed", () => {
@@ -85,22 +86,53 @@ test("the summary has a row for each step, and dashes where nothing was read", (
   ], { cores: 2, hold: 180 }).split("\n");
   assert.equal(rows.length, 4);
   assert.match(rows[0], /180 s held at each step, on 2 cores/);
-  assert.match(rows[2], /^\s*10\s+10\s+10\s+500\s+2\s+10\s+20\s+80\s+25\s+0\.50\s+61\s+0\s+0\s+0$/);
-  assert.match(rows[3], /^\s*20\s+-\s+-\s+0\s+-\s+-\s+-\s+-\s+-\s+-\s+-\s+1\s+2\s+1$/);
+  assert.match(rows[2], /^\s*10\s+10\s+10\s+500\s+2\s+10\s+20\s+80\s+25\s+0\.50\s+61\s+-\s+0\s+0\s+0$/);
+  assert.match(rows[3], /^\s*20\s+-\s+-\s+0(?:\s+-){8}\s+1\s+2\s+1$/);
 });
 
 test("the memory column says whose memory it is, and a note under the table says what that is", () => {
   const rows = (kind) => summaryTable("solo", [
     { tables: 10, latency: { count: 5, p50: 1, p95: 1, p99: 1, max: 1 }, cpuShare: 0.1, cpuCores: 0.2, memoryMb: 61, memoryKind: kind, gamesFinished: 0, errors: 0, drops: 0 },
   ], { cores: 2, hold: 180 }).split("\n");
-  assert.match(rows("peak")[1], /cores {2}peak MB {2}games/);
+  assert.match(rows("peak")[1], /cores {2}peak MB {2}MB\/tbl {2}games/);
   assert.match(rows("peak")[3], /^memory: peak resident memory since the server started, from its status line$/);
-  assert.match(rows("current")[1], /cores {2}cur MB {2}games/);
+  assert.match(rows("current")[1], /cores {2}cur MB {2}MB\/tbl {2}games/);
   assert.match(rows("current")[3], /^memory: resident memory when read, from \/proc or docker stats$/);
   // Nothing read, so nothing to say about it.
   const unread = summaryTable("solo", [{ tables: 10, latency: { count: 0, p50: null, p95: null, p99: null, max: null }, cpuShare: null, cpuCores: null, memoryMb: null, memoryKind: null, gamesFinished: 0, errors: 0, drops: 0 }], { cores: 2, hold: 180 });
-  assert.match(unread, /cores {2}mem MB {2}games/);
+  assert.match(unread, /cores {2}mem MB {2}MB\/tbl {2}games/);
   assert.equal(unread.split("\n").length, 3);
+});
+
+test("a table's memory is what the step holds above the idle server, shared by its tables, of the same kind of memory", () => {
+  const baseline = { memoryMb: 40, memoryKind: "peak" };
+  assert.equal(memoryPerTable({ tables: 10, memoryMb: 100, memoryKind: "peak" }, baseline), 6);
+  assert.equal(memoryPerTable({ tables: 40, memoryMb: 160, memoryKind: "peak" }, baseline), 3);
+  // Memory that came down below the idle reading is none, not a negative.
+  assert.equal(memoryPerTable({ tables: 10, memoryMb: 38, memoryKind: "peak" }, baseline), 0);
+  // No baseline, no reading, or two kinds of memory: no figure.
+  assert.equal(memoryPerTable({ tables: 10, memoryMb: 100, memoryKind: "peak" }, null), null);
+  assert.equal(memoryPerTable({ tables: 10, memoryMb: null, memoryKind: null }, baseline), null);
+  assert.equal(memoryPerTable({ tables: 10, memoryMb: 100, memoryKind: "current" }, baseline), null);
+  assert.equal(memoryPerTable({ tables: 0, memoryMb: 100, memoryKind: "peak" }, baseline), null);
+});
+
+test("the memory of a cap on tables comes from the biggest step that has a figure", () => {
+  const steps = [{ tables: 10, memoryPerTableMb: 2.5 }, { tables: 20, memoryPerTableMb: 2 }, { tables: 40, memoryPerTableMb: null }];
+  assert.deepEqual(memoryForCap(steps, 400), { tables: 20, perTableMb: 2, capMb: 800, maxTables: 400 });
+  assert.equal(memoryForCap([{ tables: 10, memoryPerTableMb: null }], 400), null);
+  assert.equal(memoryForCap([], 400), null);
+});
+
+test("the summary gives each step's memory a table, and says what it is above", () => {
+  const rows = summaryTable("solo", [
+    { tables: 10, latency: { count: 5, p50: 1, p95: 1, p99: 1, max: 1 }, cpuShare: 0.1, cpuCores: 0.2, memoryMb: 100, memoryKind: "peak", memoryPerTableMb: 6, gamesFinished: 0, errors: 0, drops: 0 },
+    { tables: 20, latency: { count: 5, p50: 1, p95: 1, p99: 1, max: 1 }, cpuShare: 0.1, cpuCores: 0.2, memoryMb: 160, memoryKind: "peak", memoryPerTableMb: 6, gamesFinished: 0, errors: 0, drops: 0 },
+  ], { cores: 2, hold: 180, baseline: { memoryMb: 40, memoryKind: "peak" } }).split("\n");
+  assert.match(rows[1], /peak MB {2}MB\/tbl {2}games/);
+  assert.match(rows[2], /\s100\s+6\.00\s+0\s+0\s+0$/);
+  assert.equal(rows[rows.length - 2], "memory: peak resident memory since the server started, from its status line");
+  assert.equal(rows[rows.length - 1], "MB/tbl: the memory above the idle server's 40 MB, shared by the tables of the step");
 });
 
 test("a person bids the first bid that is allowed, and plays the first card that is legal", () => {

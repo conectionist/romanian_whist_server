@@ -1013,11 +1013,14 @@ the page's repository.
   100 tables), each held for a few minutes.
 - **Measured:** the server's CPU and memory, from its status line, `/proc` or `docker stats`, and
   the time from an answer being sent to the echo of its move arriving (betPlaced or cardPlayed),
-  as p50, p95 and p99. The echo waits for the server's own pacing, so an idle server gives about
+  as p50, p95 and p99. The memory is labelled by what it is, the peak since the server started or
+  the current one, and the memory of each table is what a step holds above the idle server's,
+  shared by its tables, so that `max_tables` can be checked against the machine. The echo waits for the server's own pacing, so an idle server gives about
   40 ms. Timing from a prompt being sent would need a timestamp on the wire.
 - **The result sets the maximum number of running games:** the largest step whose p99 is under
-  250 ms and whose CPU is under 70% of the machine's cores, with every step before it as good,
-  rounded down to a multiple of 10.
+  250 ms, whose CPU is under 70% of the machine's cores, and that went without an error, a closed
+  connection or a table that would not start, with every step before it as good, rounded down to a
+  multiple of 10.
 
 ---
 
