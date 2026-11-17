@@ -163,6 +163,38 @@ TEST_CASE("A config is refused for what is wrong with it", "[options]")
     CHECK_THROWS_AS(whist::loadOptions("/nonexistent/whist.json"), std::invalid_argument);
 }
 
+TEST_CASE("The load test's settings are the Docker image's, with the limits lifted and the stops short", "[options]")
+{
+    const std::string loadPath = std::string(WHIST_SOURCE_DIR) + "/deploy/load-config.json";
+    Json::Value image = readJsonFile(std::string(WHIST_SOURCE_DIR) + "/deploy/docker-config.json");
+    Json::Value load = readJsonFile(loadPath);
+    const whist::ServerOptions options = whist::loadOptions(loadPath);
+
+    // A load test is one address making hundreds of tables and connections, and answering at once.
+    CHECK(options.messagesPerSecond >= 10000);
+    CHECK(options.messageBurst >= 10000);
+    CHECK(options.maxConnections >= 10000);
+    CHECK(options.maxConnectionsPerIp >= 10000);
+    CHECK(options.tablesPerIpPerHour >= 100000);
+    CHECK(options.failedJoinsPerIp >= 10000);
+    CHECK(options.maxRunningGames >= 1000);
+
+    // It reports often, to be read as it goes, and stops quickly, with games still running.
+    CHECK(options.statusLogInterval <= std::chrono::seconds(10));
+    CHECK(options.drainTime <= std::chrono::seconds(30));
+
+    // Everything else is the image's, so the server that is measured is the one that is deployed.
+    for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
+                           "tables_per_ip_per_hour", "failed_joins_per_ip", "max_running_games",
+                           "status_log_interval_ms", "drain_ms"})
+    {
+        CHECK(load.isMember(key));
+        load.removeMember(key);
+        image.removeMember(key);
+    }
+    CHECK(load == image);
+}
+
 TEST_CASE("A limit is refused when it is 0, negative or not a number", "[options]")
 {
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
