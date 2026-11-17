@@ -6,6 +6,7 @@
 #include "support/ManualClock.h"
 #include "support/Online.h"
 #include "support/Recorder.h"
+#include "support/Requests.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -20,24 +21,8 @@ using std::chrono::milliseconds;
 namespace
 {
 
-bool waitUntil(const std::function<bool()>& done)
-{
-    const auto deadline = Clock::now() + test::patience;
-    while(!done())
-    {
-        if(Clock::now() > deadline)
-            return false;
-        std::this_thread::sleep_for(milliseconds(1));
-    }
-    return true;
-}
-
-Json::Value createSolo(const Settings& settings)
-{
-    Json::Value message = test::typed("createSolo");
-    message["settings"] = encodeSettings(settings);
-    return message;
-}
+using test::createSolo;
+using test::waitUntil;
 
 } // namespace
 

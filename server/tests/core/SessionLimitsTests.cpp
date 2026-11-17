@@ -6,6 +6,7 @@
 #include "support/ManualClock.h"
 #include "support/Online.h"
 #include "support/Recorder.h"
+#include "support/Requests.h"
 #include "support/ServerMessages.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -25,82 +26,13 @@ namespace
 const std::string home = "203.0.113.5";
 const std::string elsewhere = "198.51.100.7";
 
-// A test declares its Recorder before the service: game threads post to it until the service is gone.
-std::shared_ptr<Service> limitedService(const std::shared_ptr<test::ManualClock>& clock,
-                                        const std::function<void(ServiceOptions&)>& tweak)
-{
-    ServiceOptions options;
-    options.registry.table.instantFloor = milliseconds(0);
-    options.registry.table.threadNiceness = 0;
-    options.limits = clock->limits();
-    tweak(options);
-    return std::make_shared<Service>(std::move(options));
-}
-
-Json::Value createSolo(const Settings& settings)
-{
-    Json::Value message = test::typed("createSolo");
-    message["settings"] = encodeSettings(settings);
-    return message;
-}
-
-Json::Value createTable(const std::string& name, const Settings& settings = test::onlineSettings(3, 2))
-{
-    Json::Value message = test::typed("createTable");
-    message["settings"] = encodeSettings(settings);
-    message["profile"] = test::profile(name);
-    return message;
-}
-
-Json::Value joinTable(const std::string& code, const std::string& name)
-{
-    Json::Value message = test::typed("joinTable");
-    message["code"] = code;
-    message["profile"] = test::profile(name);
-    return message;
-}
-
-// Game threads send as they please, so only the errors are looked at: those are sent while a
-// message is being handled, before send() returns.
-std::vector<Json::Value> errors(const test::Recorder& recorder, MemberId label)
-{
-    std::vector<Json::Value> found;
-    for(const Json::Value& message : recorder.messagesTo(label))
-    {
-        if(message["type"] == "error")
-            found.push_back(message);
-    }
-    return found;
-}
-
-Json::Value lastError(const test::Recorder& recorder, MemberId label)
-{
-    const std::vector<Json::Value> found = errors(recorder, label);
-    return found.empty() ? Json::Value() : found.back();
-}
-
-bool waitUntil(const std::function<bool()>& done)
-{
-    const auto deadline = Clock::now() + test::patience;
-    while(!done())
-    {
-        if(Clock::now() > deadline)
-            return false;
-        std::this_thread::sleep_for(milliseconds(1));
-    }
-    return true;
-}
-
-std::string tableCode(test::Recorder& recorder, MemberId label)
-{
-    // The maker of an online table is sent a sync, with the table in it.
-    const auto sync = recorder.waitFor(label, [](const Json::Value& m)
-    {
-        return m["type"] == "sync" && m["table"].isObject();
-    }, test::patience);
-    REQUIRE(sync);
-    return (*sync)["table"]["code"].asString();
-}
+using test::createSolo;
+using test::createTable;
+using test::errors;
+using test::joinTable;
+using test::lastError;
+using test::tableCode;
+using test::waitUntil;
 
 } // namespace
 
@@ -108,7 +40,7 @@ TEST_CASE("A connection over its message rate is told once, and closed when it d
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options)
+    const auto service = test::clockedService(clock, [](ServiceOptions& options)
     {
         options.limits.messagesPerSecond = 1;
         options.limits.messageBurst = 4;
@@ -154,7 +86,7 @@ TEST_CASE("An excess long after the last one is only told again", "[limits][sess
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options)
+    const auto service = test::clockedService(clock, [](ServiceOptions& options)
     {
         options.limits.messagesPerSecond = 1;
         options.limits.messageBurst = 2;
@@ -186,7 +118,7 @@ TEST_CASE("A frame that is not text counts against the rate, not as a bad messag
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options)
+    const auto service = test::clockedService(clock, [](ServiceOptions& options)
     {
         options.limits.messagesPerSecond = 1;
         options.limits.messageBurst = 2;
@@ -207,7 +139,7 @@ TEST_CASE("With no limits set, nothing is held back", "[limits][session]")
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions&) {});
+    const auto service = test::clockedService(clock, [](ServiceOptions&) {});
     test::Client client(service, recorder, 1);
 
     client.hello();
@@ -221,7 +153,7 @@ TEST_CASE("Connections from one address are limited, and a closed one makes room
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.limits.connectionsPerAddress = 2; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.limits.connectionsPerAddress = 2; });
 
     test::Client first(service, recorder, 1, home);
     test::Client second(service, recorder, 2, home);
@@ -265,7 +197,7 @@ TEST_CASE("A connection that is gone without being told so still gives its place
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.limits.connectionsPerAddress = 1; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.limits.connectionsPerAddress = 1; });
 
     {
         test::Client gone(service, recorder, 1, home);
@@ -280,7 +212,7 @@ TEST_CASE("Tables made from one address are limited over an hour, solo and onlin
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.limits.tablesPerAddressPerHour = 2; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.limits.tablesPerAddressPerHour = 2; });
 
     test::Client ana(service, recorder, 1, home);
     test::Client bea(service, recorder, 2, home);
@@ -325,7 +257,7 @@ TEST_CASE("A table that was refused does not use up what an address may make", "
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.limits.tablesPerAddressPerHour = 2; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.limits.tablesPerAddressPerHour = 2; });
     test::Client ana(service, recorder, 1, home);
     ana.hello();
 
@@ -352,7 +284,7 @@ TEST_CASE("Joins that find no table are limited, and joins that do are not count
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options)
+    const auto service = test::clockedService(clock, [](ServiceOptions& options)
     {
         options.limits.failedJoinsPerAddress = 3;
         options.limits.failedJoinWindow = std::chrono::minutes(10);
@@ -398,7 +330,7 @@ TEST_CASE("A join that finds its table is no failure", "[limits][session]")
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.limits.failedJoinsPerAddress = 3; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.limits.failedJoinsPerAddress = 3; });
 
     test::Client host(service, recorder, 1, elsewhere);
     host.hello();
@@ -433,7 +365,7 @@ TEST_CASE("No more games run than may, and the one that is refused leaves nothin
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
     Registry& registry = service->registry();
 
     test::Client ana(service, recorder, 1);
@@ -463,7 +395,7 @@ TEST_CASE("A game that has finished has given its place back, though its table i
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
     Registry& registry = service->registry();
 
     test::Client watcher(service, recorder, 1);
@@ -487,7 +419,7 @@ TEST_CASE("A game the host starts is refused when too many are running, and the 
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
-    const auto service = limitedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
+    const auto service = test::clockedService(clock, [](ServiceOptions& options) { options.registry.maxRunningGames = 1; });
     Registry& registry = service->registry();
 
     test::Client host(service, recorder, 1);
