@@ -1120,8 +1120,8 @@ with `libjsoncpp25`, and recording the failing log.
   no `.git`, so the build is told, through the CMake option `WHIST_SERVER_COMMIT`, and the smoke
   test checks it.
 - **`.dockerignore`** keeps `.git`, build trees, editor folders, `.env` files, `docs`, the markdown
-  files in the root, the tests, the fixtures, `tools/chaos`, `tools/smoke` and the deploy files out
-  of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
+  files in the root, the tests, the fixtures, `tools/chaos`, `tools/load`, `tools/smoke` and the deploy
+  files, the load configuration and the by-hand ones included, out of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
   adds it.
 - **Configuration.** `server/app/config.json` listens on `127.0.0.1`, which does not work inside a
   container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"`,

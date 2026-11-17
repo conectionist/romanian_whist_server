@@ -12,10 +12,13 @@ docs
 *.md
 server/tests
 tools/chaos
+tools/load
 tools/smoke
 protocol/fixtures
 protocol/look
 compose.yaml
 deploy/docker-compose*.yml
 deploy/examples
+deploy/manual
+deploy/load-config.json
 deploy/.env*
