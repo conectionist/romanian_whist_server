@@ -88,8 +88,9 @@ docker compose up -d
   and new tables from one address, joins that found no table from one address, connections in all,
   and games running at once that someone is at. Past one the server answers `rateLimited`, or `busy`
   for a game, and the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
-  processor, so it does not count, and a player who comes back to their game is never refused. An address is the client's: when a connection comes from one of
-  `trusted_proxies`, it is the rightmost address in `X-Forwarded-For` that is not in that list. The
+  processor, so it does not count, and a player who comes back to their game is never refused.
+  An address is the client's: when a connection comes from one of `trusted_proxies`, it is the
+  rightmost address in `X-Forwarded-For` that is not in that list, or the leftmost when all are. The
   image trusts the loopback and the private ranges, where Caddy and a proxy on the same host
   connect from, and believes the header from nowhere else.
 - **Pairing:** the page and the server speak the same protocol only when their versions match. Each

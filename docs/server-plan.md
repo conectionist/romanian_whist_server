@@ -921,7 +921,8 @@ found no table per client address, a maximum number of running games someone is 
 per table no more than its seats. Drogon's `setMaxConnectionNumPerIP` counts TCP peers, which behind
 a proxy is the proxy, so the server counts its own. The client's address is the rightmost
 `X-Forwarded-For` entry that is not in `trusted_proxies`, read only when the connection itself comes
-from one of them; with no such entry, the peer's. An IPv6 address counts by its /64.
+from one of them; when every entry is in that list the leftmost is it, as nginx's `real_ip_recursive`
+has it, and with no header, or one that is not an address, the peer's. An IPv6 address counts by its /64.
 
 **The page:**
 

@@ -155,12 +155,23 @@ TEST_CASE("Of several entries the rightmost one that is not trusted is the clien
     CHECK(client("127.0.0.1", "127.0.0.1, 203.0.113.9") == "203.0.113.9");
 }
 
+TEST_CASE("When every entry is one of our own proxies, the leftmost is the client", "[address]")
+{
+    // A client on the private network behind the proxy, as nginx's real_ip_recursive reads it.
+    CHECK(client("127.0.0.1", "10.0.0.1") == "10.0.0.1");
+    CHECK(client("172.18.0.3", "192.168.1.5, 10.0.0.2") == "192.168.1.5");
+    CHECK(client("127.0.0.1", "10.0.0.7, 172.17.0.1, 127.0.0.1") == "10.0.0.7");
+    CHECK(client("127.0.0.1", "10.0.0.7:5000") == "10.0.0.7");
+
+    // Not the peer, whom a Docker bridge makes the same for everyone.
+    CHECK(client("172.18.0.1", "10.0.0.8") != client("172.18.0.1", "10.0.0.9"));
+
+    // An entry that is no address on the way to it stops the search.
+    CHECK(client("127.0.0.1", "10.0.0.7, unknown, 10.0.0.2") == "127.0.0.1");
+}
+
 TEST_CASE("When no entry can be the client, the peer stands for it", "[address]")
 {
-    // Everything in the chain is ours.
-    CHECK(client("127.0.0.1", "10.0.0.1") == "127.0.0.1");
-    CHECK(client("172.18.0.3", "192.168.1.5, 10.0.0.2") == "172.18.0.3");
-
     // An entry that is no address stops the search: whatever stands left of it is no better.
     CHECK(client("127.0.0.1", "unknown") == "127.0.0.1");
     CHECK(client("127.0.0.1", "198.51.100.1, unknown") == "127.0.0.1");

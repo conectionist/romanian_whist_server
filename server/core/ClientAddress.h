@@ -59,8 +59,9 @@ private:
 //
 // An untrusted peer is the client, whatever the header says. A trusted one is a proxy of ours, and
 // the client is the rightmost entry that is not trusted too: whatever stands left of that is the
-// client's own claim. Without such an entry, or past one that is no address, the peer stands for the
-// client, so everyone behind it is counted together, which is too strict rather than too lax.
+// client's own claim. When every entry is trusted the leftmost is the client, as nginx's
+// real_ip_recursive has it. With no header, or past an entry that is no address, the peer stands
+// for the client, so everyone behind it is counted together, which is too strict rather than too lax.
 std::string clientKey(std::string_view peer, std::string_view forwardedFor, const TrustedProxies& trusted);
 
 } // namespace whist

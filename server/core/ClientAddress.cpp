@@ -188,10 +188,8 @@ std::string clientKey(std::string_view peer, std::string_view forwardedFor, cons
             IpAddress::parse(comma == std::string_view::npos ? rest : rest.substr(comma + 1));
         if(!entry)
             break;
-        if(!trusted.contains(*entry))
+        if(!trusted.contains(*entry) || comma == std::string_view::npos)
             return entry->key();
-        if(comma == std::string_view::npos)
-            break;
         rest = rest.substr(0, comma);
     }
     return peerAddress->key();
