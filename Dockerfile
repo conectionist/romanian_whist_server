@@ -40,8 +40,9 @@ USER 10001
 WORKDIR /opt/whist
 EXPOSE 8080
 STOPSIGNAL SIGTERM
-# The server has no health route, so this checks that it accepts connections on its port.
+# The server asks itself: GET /health on its configured port. A server that drains answers 503 and
+# is alive, so it passes too, which keeps a container that is stopping from being replaced.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --start-interval=1s --retries=3 \
-    CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+    CMD ["/usr/local/bin/whist_server", "--health-check", "--config", "/etc/whist/config.json"]
 ENTRYPOINT ["/usr/local/bin/whist_server"]
 CMD ["--config", "/etc/whist/config.json"]

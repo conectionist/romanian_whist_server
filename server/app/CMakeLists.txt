@@ -6,6 +6,8 @@ add_library(whist_app STATIC
     Server.cpp
     GameController.h
     GameController.cpp
+    HealthCheck.h
+    HealthCheck.cpp
     Http.h
     Http.cpp
     PageHeaders.h
