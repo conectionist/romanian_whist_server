@@ -206,13 +206,26 @@ TEST_CASE("A server that does not answer is unhealthy before the runtime gives u
     CHECK(std::chrono::steady_clock::now() - started < 3s);
 }
 
-TEST_CASE("The health check refuses what it does not understand", "[health-check][process]")
+TEST_CASE("The health check refuses what it does not understand with 1, which Docker reads as unhealthy, never 2", "[health-check][process]")
 {
-    const RunResult result = runServer({"--health-check", "--frobnicate"});
-    CHECK(result.status == 2);
+    // The flag may stand before or after the one it does not know, and the config may be bad.
+    CHECK(runServer({"--health-check", "--frobnicate"}).status == 1);
+    CHECK(runServer({"--frobnicate", "--health-check"}).status == 1);
+    CHECK(runServer({"--health-check", "--config"}).status == 1);
 
     TempDir dir;
     dir.write("config.json", R"({"port": "http"})");
     const RunResult bad = runServer({"--health-check", "--config", (dir.path() / "config.json").string()});
-    CHECK(bad.status == 2);
+    CHECK(bad.status == 1);
+
+    CHECK(runServer({"--health-check", "--config", (dir.path() / "missing.json").string()}).status == 1);
+}
+
+TEST_CASE("The server itself still refuses a bad flag or configuration with 2", "[health-check][process]")
+{
+    CHECK(runServer({"--frobnicate"}).status == 2);
+
+    TempDir dir;
+    dir.write("config.json", R"({"port": "http"})");
+    CHECK(runServer({"--config", (dir.path() / "config.json").string()}).status == 2);
 }

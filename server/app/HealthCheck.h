@@ -25,7 +25,7 @@ Health healthOf(std::string_view answer);
 // What a container runtime runs to ask whether the server is alive: a GET /health to the address
 // and port `options` has the server listen on, which a server on any address is asked at the
 // loopback. Prints ok, draining or what went wrong, and returns the exit status: 0 for a server
-// that is ok or draining, 1 for anything else.
+// that is ok or draining, 1 for anything else. A flag or a configuration it cannot read is 1 too.
 int healthCheck(const ServerOptions& options);
 
 } // namespace whist

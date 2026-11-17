@@ -15,16 +15,19 @@ int main(int argc, char* argv[])
     const char* configPath = nullptr;
     bool healthCheck = false;
     for(int i = 1 ; i < argc ; i++)
+        healthCheck = healthCheck || std::string_view(argv[i]) == "--health-check";
+
+    // Docker reserves the status 2 of a health check, so a check that cannot run says 1.
+    const int failure = healthCheck ? 1 : 2;
+    for(int i = 1 ; i < argc ; i++)
     {
         const std::string_view arg = argv[i];
         if(arg == "--config" && i + 1 < argc)
             configPath = argv[++i];
-        else if(arg == "--health-check")
-            healthCheck = true;
-        else
+        else if(arg != "--health-check")
         {
             std::fprintf(stderr, "usage: whist_server [--config <file>] [--health-check]\n");
-            return 2;
+            return failure;
         }
     }
 
@@ -41,7 +44,7 @@ int main(int argc, char* argv[])
     catch(const std::exception& error)
     {
         std::fprintf(stderr, "whist_server: %s\n", error.what());
-        return 2;
+        return failure;
     }
 
     drogon::app().run();
