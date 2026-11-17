@@ -47,12 +47,12 @@ const std::string& Service::commit() const
     return commit_;
 }
 
-void Service::beginDrain(Clock::time_point deadline)
+Service::DrainCounts Service::beginDrain(Clock::time_point deadline)
 {
-    if(!registry_.beginDrain())
-        return;
+    if(registry_.beginDrain())
+        outbox_.announce([this, deadline] { return restartingMessage(deadline, limits_.now()); });
 
-    outbox_.announce([this, deadline] { return restartingMessage(deadline, limits_.now()); });
+    return {registry_.runningGames(), registry_.attendedGames(Clock::now())};
 }
 
 bool Service::draining() const

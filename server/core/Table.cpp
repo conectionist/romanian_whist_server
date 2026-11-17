@@ -172,8 +172,8 @@ std::optional<Refusal> Table::startGame(MemberId by)
             return Refusal(ErrorCode::Illegal, error->field);
 
         // The last checks, so a refusal for any other reason never uses a place up. The drain is read
-        // after the place is taken: it counts the games running only once it is set, so a game that
-        // slipped past it is either counted or refused here.
+        // after the place is taken, and it counts the games after it is set, so a game that starts
+        // during the drain is either refused here or counted by it.
         std::optional<RunningGames::Slot> slot;
         if(options_.runningGames)
             slot = options_.runningGames->take();

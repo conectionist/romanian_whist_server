@@ -260,6 +260,56 @@ TEST_CASE("Every connection is told once, whether it said hello before the drain
     }
 }
 
+TEST_CASE("A game that starts while the drain begins is counted by it or refused, never missed", "[drain][race]")
+{
+    constexpr MemberId tables = 12;
+
+    for(int round = 0 ; round < 25 ; round++)
+    {
+        test::Recorder recorder;
+        const auto clock = std::make_shared<test::ManualClock>();
+        const auto service = test::clockedService(clock);
+        Registry& registry = service->registry();
+
+        std::vector<std::unique_ptr<test::Client>> hosts;
+        for(MemberId label = 1 ; label <= tables ; label++)
+        {
+            hosts.push_back(std::make_unique<test::Client>(service, recorder, label));
+            hosts.back()->hello();
+            hosts.back()->send(createTable("Host", test::onlineSettings(2, 1)));
+        }
+
+        // Every host asks to start at the moment the drain begins. A game that took its place before
+        // the drain was set has to be in what the drain counts afterwards, and one that did not is refused.
+        Service::DrainCounts found;
+        std::latch start(tables + 1);
+        {
+            std::vector<std::jthread> threads;
+            for(const auto& host : hosts)
+            {
+                threads.emplace_back([&]
+                {
+                    start.arrive_and_wait();
+                    host->send(test::typed("startGame"));
+                });
+            }
+            threads.emplace_back([&]
+            {
+                start.arrive_and_wait();
+                found = service->beginDrain(clock->now() + fifteenMinutes);
+            });
+        }
+
+        std::size_t playing = 0;
+        for(const auto& host : hosts)
+            playing += registry.tableOf(*host->member())->state() == TableState::Playing ? 1 : 0;
+
+        INFO("round " << round << ", " << playing << " games started");
+        CHECK(found.running >= playing);
+        CHECK(found.attended >= playing);
+    }
+}
+
 TEST_CASE("A game that is running when the drain begins goes on, and the server still quits when it is cut", "[drain]")
 {
     test::Recorder recorder;

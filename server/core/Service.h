@@ -43,10 +43,18 @@ public:
     const std::string& version() const;
     const std::string& commit() const;
 
+    // The games a drain finds: those running, and those someone is at.
+    struct DrainCounts
+    {
+        std::size_t running = 0;
+        std::size_t attended = 0;
+    };
+
     // Begins the drain: no table is made and no game starts, and every connection is told, now and
     // when it says hello later, that the server restarts and its games have until `deadline`. Games
-    // that are running, and joining and coming back, go on. Does nothing the second time.
-    void beginDrain(Clock::time_point deadline);
+    // that are running, and joining and coming back, go on. Starts nothing the second time. Always
+    // counts the games, after the drain is set, so one that starts meanwhile is refused or counted.
+    DrainCounts beginDrain(Clock::time_point deadline);
     bool draining() const;
 
     // What the server is doing: everything of a ServerStatus but the processor and the memory.

@@ -80,16 +80,15 @@ void watchForStop(std::chrono::milliseconds drainTime)
             return;
 
         const Clock::time_point now = Clock::now();
-        const std::size_t running = service()->registry().runningGames();
-        const std::size_t attended = service()->registry().attendedGames(now);
-        if(!deadline)
-        {
+        const bool first = !deadline;
+        if(first)
             deadline = now + drainTime;
-            service()->beginDrain(*deadline);
+
+        const auto [running, attended] = service()->beginDrain(*deadline);
+        if(first)
             LOG_INFO << "stop asked for: no new games, " << running << " running, " << attended
                      << " attended, may finish within " << std::chrono::duration_cast<std::chrono::seconds>(drainTime).count()
                      << " s";
-        }
 
         if(attended == 0)
         {
