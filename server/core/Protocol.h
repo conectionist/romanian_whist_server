@@ -38,6 +38,7 @@ enum class ErrorCode
     Illegal,
     RateLimited,
     Draining,
+    Busy,
     OpenElsewhere
 };
 

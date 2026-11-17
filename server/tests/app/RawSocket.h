@@ -22,7 +22,8 @@ namespace whist::test
 class RawSocket
 {
 public:
-    explicit RawSocket(std::uint16_t port, const std::string& path = "/ws")
+    // `extraHeaders` is whole header lines, each ending in \r\n, added to the handshake.
+    explicit RawSocket(std::uint16_t port, const std::string& path = "/ws", const std::string& extraHeaders = {})
     {
         fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
         REQUIRE(fd_ >= 0);
@@ -35,7 +36,7 @@ public:
 
         writeAll("GET " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + std::to_string(port) +
                  "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" + extraHeaders + "\r\n");
 
         std::string response;
         while(response.find("\r\n\r\n") == std::string::npos)

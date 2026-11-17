@@ -36,6 +36,10 @@ std::string sampleName(const Json::Value& message)
         return "prompt." + message["kind"].asString() + (message.isMember("hand") ? "" : "-blind");
     if(type == "promptClosed")
         return "promptClosed." + message["by"].asString();
+
+    // The errors that carry something of their own are named for it; any other is "error".
+    if(type == "error" && (message["code"] == "rateLimited" || message["code"] == "busy"))
+        return "error." + message["code"].asString();
     return type;
 }
 
@@ -269,6 +273,48 @@ void droppedGame(Samples& samples)
     CHECK(first.waitUntilOver(patience));
 }
 
+// Members over what the server allows: a second table within the hour from one address, and a game
+// started while another runs. Neither sends a game message to the connection that is refused, so
+// the refusals' seq is the same on every run.
+void limitedGame(Samples& samples)
+{
+    test::Recorder recorder;
+
+    ServiceOptions options;
+    options.registry.table.instantFloor = milliseconds(0);
+    options.registry.table.threadNiceness = 0;
+    options.registry.maxRunningGames = 1;
+    options.limits.tablesPerAddressPerHour = 1;
+    const auto service = std::make_shared<Service>(std::move(options));
+
+    test::Client maker(service, recorder, 1, "203.0.113.5");
+    maker.hello();
+
+    Settings settings = test::tableSettings(3, {0, 1}, Level::Cyborg);
+    settings.seats[0] = SeatSetting{};
+    settings.seats[1] = SeatSetting{};
+    Json::Value create = test::typed("createTable");
+    create["settings"] = encodeSettings(settings);
+    create["profile"]["name"] = "Ana";
+    create["profile"]["gender"] = "female";
+    create["profile"]["avatar"] = "woman-long-red-hair";
+    maker.send(create);
+    maker.send(test::typed("leaveTable"));
+    maker.send(create);
+    keepFirsts(recorder.messagesTo(1), samples);
+
+    test::Client player(service, recorder, 2, "198.51.100.7");
+    test::Client crowd(service, recorder, 3, "192.0.2.44");
+    player.hello();
+    crowd.hello();
+
+    Json::Value solo = test::typed("createSolo");
+    solo["settings"] = encodeSettings(test::tableSettings(3, {0}, Level::Cyborg));
+    player.send(solo);
+    crowd.send(solo);
+    keepFirsts(recorder.messagesTo(3), samples);
+}
+
 } // namespace
 
 TEST_CASE("Every message the server sends has a fixture, and it is up to date", "[fixtures]")
@@ -279,10 +325,11 @@ TEST_CASE("Every message the server sends has a fixture, and it is up to date", 
     stoppedGame(samples);
     onlineGame(samples);
     droppedGame(samples);
+    limitedGame(samples);
 
     const std::vector<std::string> expected{
         "welcome", "tableState", "tableState.online", "tableState.waiting", "tableState.replaced", "sync", "held",
-        "held.online", "error",
+        "held.online", "error", "error.rateLimited", "error.busy",
         "prompt.bet", "prompt.play", "prompt.bet-blind", "prompt.play-blind",
         "promptClosed.you", "promptClosed.computer",
         "game.gameStarted", "game.roundStarted", "game.betRequested", "game.betPlaced", "game.bettingComplete",

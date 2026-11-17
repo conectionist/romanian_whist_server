@@ -4,6 +4,7 @@
 #include "core/Outbox.h"
 #include "core/Protocol.h"
 #include "core/Publisher.h"
+#include "core/RunningGames.h"
 #include "core/SeatDriver.h"
 #include "core/Settings.h"
 
@@ -46,6 +47,10 @@ struct GameRunSetup
     int threadNiceness = 10;
 
     std::shared_ptr<std::atomic<std::uint64_t>> promptIds;
+
+    // The place this game holds among the running ones, given back when its thread is done with the
+    // engine.
+    std::optional<RunningGames::Slot> slot;
 
     // Called on the game thread, with no lock held, when a seat that waits for a member who is away
     // changes, and once the game is over: the table has something new to tell everyone.
@@ -143,12 +148,17 @@ public:
 private:
     void play(romanian_whist::GameSetup setup);
 
+    // Gives the slot back, then says how the game ended, so a game that reads as finished has
+    // already made room for the next.
+    void end(RunOutcome outcome);
+
     const unsigned int game_;
     const int threadNiceness_;
     const std::function<void()> changed_;
     const std::vector<romanian_whist::IGameObserver*> firstObservers_;
     const std::vector<Viewer> viewers_;
     std::optional<romanian_whist::GameSetup> engineSetup_;
+    std::optional<RunningGames::Slot> slot_;
 
     // The order is the design: destruction runs in reverse, so the thread is joined first, and the
     // engine goes before the observers it points at.

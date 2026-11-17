@@ -8,6 +8,8 @@
 
 #include <json/value.h>
 
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,7 +24,12 @@ namespace whist
 class Session
 {
 public:
-    Session(std::shared_ptr<Service> service, std::shared_ptr<Connection> connection);
+    // `address` is what the limits count this connection under, as clientKey() gives it; empty is
+    // not limited. A connection that is one too many from its address is told so and closed.
+    Session(std::shared_ptr<Service> service, std::shared_ptr<Connection> connection, std::string address = {});
+
+    // Gives the connection's place under its address back, whether or not closed() was called.
+    ~Session();
 
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
@@ -45,7 +52,19 @@ public:
     // never does.
     static constexpr int badMessageLimit = 5;
 
+    // A message beyond the rate within this long of the last one that was told closes the connection.
+    static constexpr std::chrono::seconds excessWindow{10};
+
 private:
+    // False when the connection is over its rate. The first time it is told, and the next time
+    // within the window it is closed.
+    bool withinRate();
+
+    // A table made for the member, within what their address may make. `make` makes it.
+    void create(const std::function<Registry::Created()>& make);
+
+    void giveUpAddress();
+
     void handle(const ClientMessage& message);
     void hello(const Hello& hello);
     void leave();
@@ -67,6 +86,10 @@ private:
     const std::shared_ptr<Service> service_;
     const std::shared_ptr<Connection> connection_;
     const std::shared_ptr<Outbox::Link> link_;
+    const std::string address_;
+    TokenBucket bucket_;
+    std::optional<Clock::time_point> excessAt_;
+    bool counted_ = false;
 
     std::optional<MemberId> member_;
     std::string lang_;

@@ -5,6 +5,7 @@
 #include "core/Joiner.h"
 #include "core/Outbox.h"
 #include "core/Protocol.h"
+#include "core/RunningGames.h"
 #include "core/Seating.h"
 #include "core/Settings.h"
 
@@ -40,6 +41,9 @@ struct TableOptions
 
     // For tests: the turn timer of every online table that has one, whatever its settings allow.
     std::optional<std::chrono::milliseconds> turnTimerOverride;
+
+    // Shared by every table. None: any number of games may run.
+    std::shared_ptr<RunningGames> runningGames;
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's
@@ -66,8 +70,8 @@ public:
     Settings settings() const;
 
     // The host starts the first game, or a new one once the last is over. The old game goes to
-    // the joiner, and everyone is sent the new tableState. When no thread can be made for the game,
-    // the table is left as it was and the answer is Draining.
+    // the joiner, and everyone is sent the new tableState. When as many games are running as may, or
+    // no thread can be made for this one, the table is left as it was and the answer is Busy.
     std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code

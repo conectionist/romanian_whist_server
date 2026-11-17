@@ -20,6 +20,8 @@ add_library(whist_session STATIC
     GameRun.cpp
     Joiner.h
     Joiner.cpp
+    Limits.h
+    Limits.cpp
     Log.h
     Log.cpp
     Names.h
@@ -33,6 +35,8 @@ add_library(whist_session STATIC
     Publisher.cpp
     Registry.h
     Registry.cpp
+    RunningGames.h
+    RunningGames.cpp
     SeatDriver.h
     SeatDriver.cpp
     SeatProvider.h

@@ -171,6 +171,11 @@ std::optional<Refusal> Table::startGame(MemberId by)
         if(const std::optional<SettingsError> error = checkSettings(seating_.settings(), mode_))
             return Refusal(ErrorCode::Illegal, error->field);
 
+        // The last check, so a refusal for any other reason never uses a place up.
+        std::optional<RunningGames::Slot> slot;
+        if(options_.runningGames && !(slot = options_.runningGames->take()))
+            return ErrorCode::Busy;
+
         const Settings& settings = seating_.settings();
         GameRunSetup setup;
         setup.game = game_ + 1;
@@ -187,6 +192,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
         setup.instantFloor = options_.instantFloor;
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
+        setup.slot = std::move(slot);
         setup.changed = [self = weak_from_this(), game = setup.game]
         {
             if(const std::shared_ptr<Table> table = self.lock())
@@ -238,7 +244,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
             state_ = before;
             paused_ = pausedBefore;
             broadcastLocked();
-            return ErrorCode::Draining;
+            return ErrorCode::Busy;
         }
 
         // It has sent gameOver; whatever it might still send must not follow the new game's start.

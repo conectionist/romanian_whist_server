@@ -158,6 +158,13 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     serviceOptions.registry.table.onlineIdle = options.onlineIdle;
     serviceOptions.registry.table.soloIdle = options.soloIdle;
     serviceOptions.registry.forgetMember = options.forgetMember;
+    serviceOptions.registry.maxRunningGames = options.maxRunningGames;
+    serviceOptions.limits.messagesPerSecond = options.messagesPerSecond;
+    serviceOptions.limits.messageBurst = options.messageBurst;
+    serviceOptions.limits.connectionsPerAddress = options.maxConnectionsPerIp;
+    serviceOptions.limits.tablesPerAddressPerHour = options.tablesPerIpPerHour;
+    serviceOptions.limits.failedJoinsPerAddress = options.failedJoinsPerIp;
+    serviceOptions.limits.failedJoinWindow = options.failedJoinWindow;
     service() = std::make_shared<Service>(std::move(serviceOptions));
 
     drogon::app()
@@ -170,8 +177,10 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setClientMaxMemoryBodySize(maxRequestBody)
         .setClientMaxBodySize(maxRequestBody)
         .setThreadNum(options.ioThreads)
+        .setMaxConnectionNum(options.maxConnections)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
-        .registerController(std::make_shared<GameController>(service(), options.pingInterval))
+        .registerController(std::make_shared<GameController>(service(), options.pingInterval,
+                                                           TrustedProxies(options.trustedProxies)))
         .disableSigtermHandling()
         .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, reapInterval = options.reapInterval,
                                   onListening = std::move(onListening)]

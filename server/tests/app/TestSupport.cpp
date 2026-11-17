@@ -173,6 +173,11 @@ const TestServer& testServer()
     options.logLevel = "warn";
     options.instantFloor = std::chrono::milliseconds(1);
 
+    // Every test client connects from 127.0.0.1, and some play at once as fast as they can.
+    options.messagesPerSecond = options.messageBurst = 100000;
+    options.maxConnectionsPerIp = options.tablesPerIpPerHour = options.failedJoinsPerIp = 100000;
+    options.maxRunningGames = 1000;
+
     auto listening = std::make_shared<std::promise<void>>();
     std::future<void> ready = listening->get_future();
     configureApp(options, [listening] { listening->set_value(); });
@@ -186,7 +191,7 @@ const TestServer& testServer()
     return server->info;
 }
 
-TestClient::TestClient(std::uint16_t port, const std::string& path)
+TestClient::TestClient(std::uint16_t port, const std::string& path, const Headers& headers)
 {
     loop_.run();
     client_ = drogon::WebSocketClient::newWebSocketClient("127.0.0.1", port, false, loop_.getLoop());
@@ -212,6 +217,8 @@ TestClient::TestClient(std::uint16_t port, const std::string& path)
 
     drogon::HttpRequestPtr request = drogon::HttpRequest::newHttpRequest();
     request->setPath(path);
+    for(const auto& [name, value] : headers)
+        request->addHeader(name, value);
     client_->connectToServer(request, [state = state_](drogon::ReqResult result,
                                                        const drogon::HttpResponsePtr&,
                                                        const drogon::WebSocketClientPtr&)

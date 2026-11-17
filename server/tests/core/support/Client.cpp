@@ -14,10 +14,10 @@ Json::Value typed(std::string_view type)
     return message;
 }
 
-Client::Client(std::shared_ptr<Service> service, Recorder& recorder, MemberId label)
+Client::Client(std::shared_ptr<Service> service, Recorder& recorder, MemberId label, std::string address)
     : recorder_(recorder),
       label_(label),
-      session_(std::move(service), recorder.connect(label))
+      session_(std::move(service), recorder.connect(label), std::move(address))
 {
 }
 
@@ -30,6 +30,12 @@ void Client::sendText(std::string_view text)
 void Client::send(const Json::Value& message)
 {
     sendText(toText(message));
+}
+
+void Client::sendBinary()
+{
+    std::lock_guard lock(mutex_);
+    session_.receiveBinary();
 }
 
 void Client::sendHello(const std::optional<std::string>& token)

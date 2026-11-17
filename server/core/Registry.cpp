@@ -26,11 +26,18 @@ std::function<std::uint64_t()> systemRandom()
     };
 }
 
+TableOptions withGames(TableOptions options, std::shared_ptr<RunningGames> games)
+{
+    options.runningGames = std::move(games);
+    return options;
+}
+
 } // namespace
 
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
-      tableOptions_(options.table),
+      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
+      tableOptions_(withGames(options.table, runningGames_)),
       forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
@@ -299,6 +306,11 @@ std::size_t Registry::tableCount() const
 {
     std::lock_guard lock(mutex_);
     return tables_.size();
+}
+
+std::size_t Registry::runningGames() const
+{
+    return runningGames_->count();
 }
 
 void Registry::closeTable(std::string_view code)

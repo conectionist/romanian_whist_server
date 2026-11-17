@@ -1,6 +1,7 @@
 #ifndef WHIST_CORE_SERVICE_H
 #define WHIST_CORE_SERVICE_H
 
+#include "core/Limits.h"
 #include "core/Outbox.h"
 #include "core/Registry.h"
 
@@ -13,6 +14,7 @@ namespace whist
 struct ServiceOptions
 {
     RegistryOptions registry;
+    LimitOptions limits;
 
     // A connection with nothing heard from it for this long is closed, and its member is away.
     std::chrono::milliseconds pongTimeout{30000};
@@ -36,6 +38,7 @@ public:
 
     Outbox& outbox();
     Registry& registry();
+    Limits& limits();
     const std::string& version() const;
     const std::string& commit() const;
 
@@ -52,6 +55,8 @@ private:
     const std::string version_;
     const std::string commit_;
     const std::chrono::milliseconds pongTimeout_;
+
+    Limits limits_;
 
     // The Registry's tables send through the Outbox, so it is declared first and outlives them.
     Outbox outbox_;

@@ -17,6 +17,7 @@ add_executable(core_tests
     core/support/Fixtures.cpp
     core/support/Games.h
     core/support/Games.cpp
+    core/support/ManualClock.h
     core/support/Online.h
     core/support/Oracle.h
     core/support/Oracle.cpp
@@ -36,12 +37,14 @@ add_executable(core_tests
     core/GameRunTests.cpp
     core/HoldTests.cpp
     core/LeakScanTests.cpp
+    core/LimitsTests.cpp
     core/LookTests.cpp
     core/OnlineTests.cpp
     core/NamesTests.cpp
     core/OutboxTests.cpp
     core/SeatDriverTests.cpp
     core/SeatingTests.cpp
+    core/SessionLimitsTests.cpp
     core/SessionTests.cpp
     core/SettingsTests.cpp
     core/SoloTests.cpp
@@ -67,6 +70,7 @@ add_executable(app_tests
     app/SpikeController.cpp
     app/DropTests.cpp
     app/GameTests.cpp
+    app/LimitTests.cpp
     app/OnlineTests.cpp
     app/OptionsTests.cpp
     app/ServerTests.cpp

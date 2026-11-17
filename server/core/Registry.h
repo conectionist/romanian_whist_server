@@ -30,6 +30,9 @@ struct RegistryOptions
 
     // A member nobody has been connected as, and who is at no table, is forgotten after this long.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};
+
+    // The most games that may run at once. 0: any number.
+    std::size_t maxRunningGames = 0;
 };
 
 // Every table and every member the server knows. Its lock comes first: the Registry may take a
@@ -81,6 +84,9 @@ public:
     std::shared_ptr<Table> tableOf(MemberId member) const;
     std::size_t tableCount() const;
 
+    // How many game threads are running now.
+    std::size_t runningGames() const;
+
     void closeTable(std::string_view code);
 
     // Called every second or so. Closes tables that have been idle too long, and forgets members who
@@ -110,6 +116,7 @@ private:
     std::shared_ptr<Table> removeLocked(std::string_view code);
 
     Outbox& outbox_;
+    const std::shared_ptr<RunningGames> runningGames_;
     const TableOptions tableOptions_;
     const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();

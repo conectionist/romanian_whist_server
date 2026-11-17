@@ -11,6 +11,7 @@ Service::Service(ServiceOptions options)
     : version_(options.version.empty() ? std::string(serverVersion()) : std::move(options.version)),
       commit_(options.commit.empty() ? std::string(serverCommit()) : std::move(options.commit)),
       pongTimeout_(options.pongTimeout),
+      limits_(std::move(options.limits)),
       registry_(outbox_, std::move(options.registry))
 {
 }
@@ -28,6 +29,11 @@ Outbox& Service::outbox()
 Registry& Service::registry()
 {
     return registry_;
+}
+
+Limits& Service::limits()
+{
+    return limits_;
 }
 
 const std::string& Service::version() const

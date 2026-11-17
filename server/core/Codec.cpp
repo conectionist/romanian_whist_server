@@ -459,6 +459,7 @@ std::string_view errorName(ErrorCode code)
         case ErrorCode::Illegal: return "illegal";
         case ErrorCode::RateLimited: return "rateLimited";
         case ErrorCode::Draining: return "draining";
+        case ErrorCode::Busy: return "busy";
         case ErrorCode::OpenElsewhere: return "openElsewhere";
     }
     return "badMessage";

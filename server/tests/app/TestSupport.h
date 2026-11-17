@@ -15,6 +15,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace whist::test
@@ -71,7 +72,10 @@ std::uint16_t freePort();
 class TestClient
 {
 public:
-    TestClient(std::uint16_t port, const std::string& path);
+    using Headers = std::vector<std::pair<std::string, std::string>>;
+
+    // `headers` are added to the handshake, as a proxy in front would add them.
+    TestClient(std::uint16_t port, const std::string& path, const Headers& headers = {});
     ~TestClient();
     TestClient(const TestClient&) = delete;
     TestClient& operator=(const TestClient&) = delete;

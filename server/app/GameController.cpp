@@ -60,12 +60,13 @@ private:
 
 } // namespace
 
-GameController::GameController(std::shared_ptr<Service> service, std::chrono::milliseconds pingInterval)
-    : service_(std::move(service)), pingInterval_(pingInterval)
+GameController::GameController(std::shared_ptr<Service> service, std::chrono::milliseconds pingInterval,
+                               TrustedProxies trusted)
+    : service_(std::move(service)), pingInterval_(pingInterval), trusted_(std::move(trusted))
 {
 }
 
-void GameController::handleNewConnection(const drogon::HttpRequestPtr&,
+void GameController::handleNewConnection(const drogon::HttpRequestPtr& request,
                                          const drogon::WebSocketConnectionPtr& connection)
 {
     // Drogon calls this on the connection's own I/O loop.
@@ -74,7 +75,9 @@ void GameController::handleNewConnection(const drogon::HttpRequestPtr&,
         throw std::logic_error("a WebSocket connection opened off its I/O loop");
 
     connection->setPingMessage("", pingInterval_);
-    connection->setContext(std::make_shared<Session>(service_, std::make_shared<WsConnection>(connection, loop)));
+    const std::string address = clientKey(request->peerAddr().toIp(), request->getHeader("x-forwarded-for"), trusted_);
+    connection->setContext(
+        std::make_shared<Session>(service_, std::make_shared<WsConnection>(connection, loop), address));
 }
 
 void GameController::handleNewMessage(const drogon::WebSocketConnectionPtr& connection,

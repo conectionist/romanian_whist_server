@@ -334,7 +334,7 @@ std::string shapeError(const Json::Value& message)
     if(type == "error")
         return object(with({{"code", oneOf({"badMessage", "version", "notFound", "tableFull", "nameTaken", "notHost",
                                             "notYourTurn", "stalePrompt", "illegal", "rateLimited", "draining",
-                                            "openElsewhere"})}}),
+                                            "busy", "openElsewhere"})}}),
                       {{"detail", text()}})(message);
 
     return "unknown type " + type;

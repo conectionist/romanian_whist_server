@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace whist
 {
@@ -42,6 +43,29 @@ struct ServerOptions
     // computer players does not hold a core for its whole length.
     std::chrono::milliseconds instantFloor{30};
     std::string logLevel = "info";
+
+    // Per connection, a token bucket: this many messages a second on average, bursts up to the
+    // second number. Past it a connection is told, and closed if it does it again within 10 s.
+    unsigned int messagesPerSecond = 20;
+    unsigned int messageBurst = 40;
+
+    // Connections in all, which Drogon enforces, and from one address, which the server does: Drogon
+    // counts the TCP peer, and behind a proxy that is the proxy.
+    std::size_t maxConnections = 2000;
+    unsigned int maxConnectionsPerIp = 16;
+
+    // Tables made from one address in an hour, and joins that found no table from one address within
+    // the window, which is how a six-character code would be guessed.
+    unsigned int tablesPerIpPerHour = 30;
+    unsigned int failedJoinsPerIp = 10;
+    std::chrono::milliseconds failedJoinWindow{10 * 60 * 1000};
+
+    // A game that would be the one past this is refused as busy.
+    std::size_t maxRunningGames = 50;
+
+    // Addresses and ranges whose X-Forwarded-For is believed. Never a range the open internet can
+    // reach the server from: anyone in it could then write any address they like.
+    std::vector<std::string> trustedProxies{"127.0.0.1", "::1"};
 };
 
 // Both throw std::invalid_argument naming the key at fault. Keys left out keep their defaults;
