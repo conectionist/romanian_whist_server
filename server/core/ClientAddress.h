@@ -54,14 +54,9 @@ private:
     std::vector<Range> ranges_;
 };
 
-// What a request's limits are counted under. `peer` is the connection's address, `forwardedFor` the
-// X-Forwarded-For header, empty when there is none.
-//
-// An untrusted peer is the client, whatever the header says. A trusted one is a proxy of ours, and
-// the client is the rightmost entry that is not trusted too: whatever stands left of that is the
-// client's own claim. When every entry is trusted the leftmost is the client, as nginx's
-// real_ip_recursive has it. With no header, or past an entry that is no address, the peer stands
-// for the client, so everyone behind it is counted together, which is too strict rather than too lax.
+// What a request's limits are counted under: the peer, unless it is a proxy of ours, then the rightmost
+// X-Forwarded-For entry that is not one, or the leftmost when all are, since what stands left is the client's
+// own claim. With no usable header the peer counts everyone behind it together: too strict rather than too lax.
 std::string clientKey(std::string_view peer, std::string_view forwardedFor, const TrustedProxies& trusted);
 
 } // namespace whist

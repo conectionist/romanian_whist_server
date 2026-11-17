@@ -51,10 +51,9 @@ public:
     // false, and attaches nothing, once the Outbox has stopped or the link has closed.
     bool attach(MemberId member, const std::shared_ptr<Link>& link, Json::Value first);
 
-    // Sends the message `make` builds to every link a member holds now, and, right after its first
-    // message, to each link a member takes later. Each link gets it once. `make` runs when it is
-    // sent, so a message that counts time down says what is left then. There is one announcement; a
-    // second replaces the first for the links that have not had it.
+    // Sends the message `make` builds to every link a member holds now, and right after the first
+    // message of each link a member takes later, once each. `make` runs when it is sent, so a countdown
+    // says what is left then. A second announcement replaces the first for the links that have not had it.
     void announce(std::function<Json::Value()> make);
 
     // Opens a link for the connection and attaches it, with no first message.

@@ -1,26 +1,6 @@
 #!/usr/bin/env node
-// Plays many tables against a server, to find how many it carries: ramps the number of tables in
-// steps, holds each for a while, and measures how long the server takes to echo each answer and how
-// much of the machine it uses. One run is one kind of table:
-//
-//   solo     one scripted human and five Reckoner Gammas, at normal speed
-//   instant  the same, at Instant speed, which is the most CPU a table can ask for
-//   online   six scripted humans, who answer at once
-//
-// It is for a server that is running with deploy/load-config.json, whose limits a single address
-// would otherwise reach. Run it on purpose, under nice, and one run at a time: the README says how.
-//
-//   nice -n 19 node tools/load/load.mjs --url http://127.0.0.1:8080 --kind solo --hold 180
-//
-// What it knows about the server's CPU and memory comes from one of:
-//   --server <program> --config <file>  starts the server, and reads the status lines it logs
-//   --status-log <file>                 a file that the server's log is written to, read as it grows
-//   --pid <n>                           a server on this machine, read from /proc
-//   --container <name>                  a Docker container, read with `docker stats`
-// With none of them the latency is measured and the CPU is not, so no cap is suggested.
-//
-// The latency of an answer is the time from sending it to the echo of the move (betPlaced or
-// cardPlayed) arriving. Node 22 or later, no packages.
+// Plays many tables against a server, in steps, to find how many it carries: how long an answer takes
+// to echo, and how much of the machine the server uses. Node 22 or later, no packages.
 
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";

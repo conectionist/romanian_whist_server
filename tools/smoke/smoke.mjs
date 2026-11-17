@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // Plays the first moments of a solo game against a running server, to see that it works end to end.
-// Usage and options: the README, under Tests.
 
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";

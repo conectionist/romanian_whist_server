@@ -1,22 +1,6 @@
 #!/usr/bin/env node
-// A few online tables of people who answer, disconnect, come back, leave and join again at random,
-// against a running server, to see that every game finishes and no table stalls.
-//
-//   nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --minutes 60
-//   nice -n 19 node tools/chaos/chaos.mjs --url ws://127.0.0.1:8080/ws --minutes 5
-//
-// With --server it starts that program with a configuration of its own (short grace, ping and
-// pong timeouts, and no limits to speak of) and stops it at the end. With --url the server is
-// yours: its grace period should be short too, its pong timeout under 10 s, and its per-address
-// limits (connections, tables, joins and messages) high enough for every person to come from one
-// address. Node 22 or later, no packages.
-//
-// It passes when, after the last disruption, every table finishes a game, and:
-//   - no table went without progress for longer than any wait of the server's allows;
-//   - every tab that went silent without closing was closed by the server;
-//   - no snapshot held a hand its viewer may not see, and no blind prompt held one;
-//   - every message parsed, and the server sent no error a person could not have caused.
-// The exit status is 0 on a pass and 1 otherwise.
+// Online tables of people who answer, disconnect, come back, leave and join at random, against a running
+// server, to see that every game finishes and no table stalls. Node 22 or later, no packages.
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

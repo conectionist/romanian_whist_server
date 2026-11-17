@@ -75,10 +75,9 @@ public:
     bool hasMember(MemberId member) const;
     Settings settings() const;
 
-    // The host starts the first game, or a new one once the last is over. The old game goes to
-    // the joiner, and everyone is sent the new tableState. While the server drains the answer is
-    // Draining; when as many games are running as may, or no thread can be made for this one, it is
-    // Busy. Either way the table is left as it was.
+    // The host starts the first game, or a new one once the last is over. The old game goes to the
+    // joiner, and everyone is sent the new tableState. A drain or the most games that may run refuses it,
+    // with Draining or Busy, and the table is left as it was.
     std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code

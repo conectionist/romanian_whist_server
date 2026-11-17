@@ -22,10 +22,9 @@ enum class Health
 // Reads what /health answered, the whole HTTP answer as text.
 Health healthOf(std::string_view answer);
 
-// What a container runtime runs to ask whether the server is alive: a GET /health to the address
-// and port `options` has the server listen on, which a server on any address is asked at the
-// loopback. Prints ok, draining or what went wrong, and returns the exit status: 0 for a server
-// that is ok or draining, 1 for anything else. A flag or a configuration it cannot read is 1 too.
+// What a container runtime runs to ask whether the server is alive: GET /health at the loopback, on the
+// port `options` has. Prints ok, draining or what went wrong, and returns 0 for a server that is ok or
+// draining and 1 for anything else, which Docker reads as unhealthy; 2 is reserved by it.
 int healthCheck(const ServerOptions& options);
 
 } // namespace whist

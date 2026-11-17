@@ -1,8 +1,4 @@
-# Romanian Whist's server as a systemd service (the README, "Deploying without Docker"). Install it
-# as /etc/systemd/system/whist-server.service, with the program in /opt/whist/bin, its configuration
-# in /etc/whist/config.json and the page's dist/ in /opt/whist/www, and run it as the user whist:
-#
-#   useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin whist
+# Romanian Whist's server as a systemd service, run as the user whist.
 [Unit]
 Description=Romanian Whist game server
 Documentation=https://github.com/conectionist/romanian_whist_server
@@ -14,9 +10,8 @@ User=whist
 Group=whist
 ExecStart=/opt/whist/bin/whist_server --config /etc/whist/config.json
 
-# A stop is a drain: on SIGTERM the server takes no new games and waits for the ones that are running,
-# for up to drain_ms (15 minutes), then ends them and exits with 0. systemd kills it only after
-# TimeoutStopSec, which must be longer. Only a failure is restarted, never a clean stop.
+# A stop is a drain: on SIGTERM the server takes no new games and waits up to drain_ms (15 minutes) for
+# the ones someone is at, then exits with 0. TimeoutStopSec must be longer. Only a failure is restarted.
 KillSignal=SIGTERM
 TimeoutStopSec=16min
 Restart=on-failure

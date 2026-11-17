@@ -417,7 +417,7 @@ journalctl -u whist-server -f
 
 The unit runs it as `whist` with a read-only view of the system, raises the file limit to 65536,
 restarts it if it fails, and gives it 16 minutes to stop: a stop is a drain, which waits for the
-games that are running for up to `drain_ms` (15 minutes), as the Docker stops do. `systemctl restart
+games someone is at for up to `drain_ms` (15 minutes), as the Docker stops do. `systemctl restart
 whist-server` and `stop` wait that long too.
 
 **5. Caddy,** from its own apt repository or your distribution's (any 2.x will do). Put the
@@ -543,8 +543,14 @@ takes a core for as long as it runs, so run it on purpose, and in the background
 nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --minutes 60
 ```
 
-It passes when every table finishes a game after the last disruption, no table stalled, and no
-snapshot or prompt carried a hand its viewer may not see.
+With `--url ws://127.0.0.1:8080/ws` in place of `--server` it plays against a server of yours, which
+needs a short grace period, a pong timeout under 10 s, and limits per address high enough for every
+person to come from one address. The program starts with a configuration of its own otherwise.
+
+It passes when, after the last disruption, every table finishes a game, no table went without
+progress for longer than a wait of the server's allows, every tab that went silent was closed by the
+server, no snapshot or prompt carried a hand its viewer may not see, every message parsed, and the
+server sent no error that a person could not have caused. It exits 0 on a pass and 1 otherwise.
 
 The smoke test plays the first moments of a solo game against a running server, to see that an image
 or a deployment works end to end: the server answers on its page, upgrades `/ws`, greets a new member

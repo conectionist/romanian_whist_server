@@ -50,10 +50,9 @@ public:
         std::size_t attended = 0;
     };
 
-    // Begins the drain: no table is made and no game starts, and every connection is told, now and
-    // when it says hello later, that the server restarts and its games have until `deadline`. Games
-    // that are running, and joining and coming back, go on. Starts nothing the second time. Always
-    // counts the games, after the drain is set, so one that starts meanwhile is refused or counted.
+    // Begins the drain: no table is made and no game starts, and every connection is told, now and when it
+    // says hello later, that its games have until `deadline`. Games running, joining and coming back go
+    // on. Counts the games after the drain is set, so one that starts meanwhile is refused or counted.
     DrainCounts beginDrain(Clock::time_point deadline);
     bool draining() const;
 

@@ -9,10 +9,9 @@
 namespace whist
 {
 
-// How many game threads are running, and how many games count against the most that may run. A game
-// takes a Slot before its thread starts and gives it back when the thread is done with the engine.
-// Only a game someone is at counts against the most: one nobody is at holds, uses no processor,
-// and is no reason to refuse another.
+// The game threads running, and the games among them that count against the most that may run: those
+// someone is at. A game nobody is at holds and uses no processor, so it is no reason to refuse another.
+// A game takes a Slot before its thread starts and gives it back when the thread is done with the engine.
 class RunningGames : public std::enable_shared_from_this<RunningGames>
 {
 public:
