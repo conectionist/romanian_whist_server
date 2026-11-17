@@ -1,0 +1,55 @@
+# Romanian Whist's server as a systemd service (the README, "Deploying without Docker"). Install it
+# as /etc/systemd/system/whist-server.service, with the program in /opt/whist/bin, its configuration
+# in /etc/whist/config.json and the page's dist/ in /opt/whist/www, and run it as the user whist:
+#
+#   useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin whist
+[Unit]
+Description=Romanian Whist game server
+Documentation=https://github.com/conectionist/romanian_whist_server
+After=network.target
+
+[Service]
+Type=simple
+User=whist
+Group=whist
+ExecStart=/opt/whist/bin/whist_server --config /etc/whist/config.json
+
+# A stop is a drain: on SIGTERM the server takes no new games and waits for the ones that are running,
+# for up to drain_ms (15 minutes), then ends them and exits with 0. systemd kills it only after
+# TimeoutStopSec, which must be longer. Only a failure is restarted, never a clean stop.
+KillSignal=SIGTERM
+TimeoutStopSec=16min
+Restart=on-failure
+RestartSec=2s
+
+# One socket for each connection, and some for the page's files.
+LimitNOFILE=65536
+
+# The server reads its program, its configuration and the page, and writes nothing but a folder in
+# /tmp, which is its own here. Logs go to the journal.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RemoveIPC=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

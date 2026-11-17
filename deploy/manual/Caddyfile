@@ -1,0 +1,10 @@
+# Romanian Whist on a machine of its own, run by hand (the README, "Deploying without Docker"). Caddy
+# gets the certificate and passes everything to the server on 127.0.0.1:8080: the page, the
+# WebSocket at /ws, and /health and /version. Put your own domain in place of whist.example.org, with
+# an A record that points at this machine.
+#
+# The server serves the page itself, and sends the page's security headers and its caching rules, so
+# none are added here. Caddy sends X-Forwarded-For, which the server needs to tell its clients apart.
+whist.example.org {
+	reverse_proxy 127.0.0.1:8080
+}
