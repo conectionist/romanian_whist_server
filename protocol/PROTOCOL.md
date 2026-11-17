@@ -1,12 +1,15 @@
 # The Romanian Whist protocol
 
-Version **1**. This is the reference every client follows. The server's code is in
+Version **2**. This is the reference every client follows. The server's code is in
 `server/core/Codec.cpp`. A real sample of every server message is in [`fixtures/`](fixtures/),
 written by the server's tests (`core_tests "[fixtures]"`). A client's tests should decode each one.
 The names and portraits players may have are in [`catalogues/`](catalogues/). The states the
 browser page draws its tables from, for comparing its look with the desktop client's, are in
 [`look/`](look/): each file holds a `shot` header and a `state`, which is a sync's fields without
 the envelope, not a message.
+
+Version 2 added the server message `restarting` and the error code `busy`. A client that says hello
+with version 1 gets `error {code: "version"}` and is closed.
 
 ## Transport
 
@@ -132,7 +135,9 @@ connection at that moment, which may be a newer tab.
 - **No `token`, or one the server does not know** (it has restarted since), makes a new member.
   Keep the `welcome`'s token, whichever it is.
 - **The answer is a `welcome`, then always a `sync`:** with `table: null` when the member is at no
-  table. Wait for the sync and render it; anything that came between the two is older than it.
+  table. Wait for the sync and render it; anything that came between the two is older than it,
+  except `restarting`, which is about the server and is never older than anything.
+- **During a drain,** a `restarting` comes right after the `welcome`, before the `sync`.
 
 ### Solo, while a game is on
 
@@ -240,6 +245,7 @@ game waits for `continue {round}`.
 | `prompt` | see [Prompts](#prompts) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor` (seats), `deadline` | Everyone, during the round hold |
+| `restarting` | `deadline` | Every connection, once the server is asked to stop; and each that says hello after that, right after its `welcome` |
 | `sync` | see [Sync](#sync) | After every `welcome`, and on making, joining or leaving an online table |
 | `error` | `code`, sometimes `detail` | The connection |
 
@@ -386,6 +392,21 @@ The order, for one move: the `game` event asking for it (`betRequested` or `card
 - **A hold ends with the game's next message** (`roundComplete`), or, when you `continue` while
   paused, with your `continue`: a `sync` then shows no hold.
 
+### restarting
+
+The server has been asked to stop, usually for an update, and drains.
+
+- From now on no table is made and no game starts: `createSolo`, `createTable` and `startGame` get
+  `error {code: "draining"}`. Games that are running go on, and so do joining a table and coming
+  back to one.
+- `deadline`: the milliseconds left, when it was sent, until the server ends the games that still
+  run and quits. Count down from when you received it. It is the time left, not a new time: a
+  connection that comes later is sent what is left then. The server quits sooner when the last game
+  ends, so the games may end before it.
+- It is about the server, not a table, so a `sync` does not make it old. Everyone is sent it once.
+- The connection closes when the server quits. A client may reconnect as it does after any drop;
+  the new server has the `welcome` of a member it does not know.
+
 ### Sync
 
 Sent to a member who joins or comes back. It holds everything needed to show the table now:
@@ -420,7 +441,7 @@ you do not hold can be ignored.
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
 | `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`) or joins that found no table (`joins`). The page waits before it tries again |
-| `draining` | The server is restarting, and takes no new games |
+| `draining` | The server is restarting: no table is made and no game starts. See [restarting](#restarting) |
 | `busy` | The server is running as many games as it may, so `createSolo` or `startGame` is refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |
 

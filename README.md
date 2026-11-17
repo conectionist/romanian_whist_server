@@ -54,14 +54,19 @@ docker compose up -d
 ```
 
 - **Updating:** `docker compose pull && docker compose up -d`. A service whose image is new is
-  restarted; the server's restart ends the games that are running.
+  restarted; the server drains first (see Stopping), so the games that are running get a chance to
+  end. A quiet hour is the time for it.
 - **Logs:** `docker compose logs -f server`, or `web`. The server writes a line that starts with
   `status` once a minute (`status_log_interval_ms`): connections, tables by state, game threads,
   moves made for players who went away, the share of a core it used since the last line, and its
   processor time and peak memory.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
-- **Stopping the server** takes a few seconds: on SIGTERM it ends every game and closes every
-  connection. The compose file allows it 30 s.
+- **Stopping the server** is a drain. On SIGTERM it takes no new tables or games, tells everyone it
+  is restarting, and waits for the games that are running to end, for at most `drain_ms` (15
+  minutes). It then ends the games that are left, closes every connection and exits with code 0. A
+  second SIGTERM, or Ctrl-C, ends the games at once. The container's stop grace period must be
+  longer than `drain_ms`, or Docker kills the server in the middle of the drain. The log says each
+  step, and `GET /health` answers 503 from the first.
 - **Settings:** the image holds `/etc/whist/config.json`, which lists every setting with its
   default, as [`server/app/config.json`](server/app/config.json) does. To change one, take the
   image's file, edit it, and mount it back, with `volumes: [./config.json:/etc/whist/config.json:ro]`
@@ -187,8 +192,7 @@ values, and are redundant; an nginx that includes them sends each header twice, 
 accept.
 
 - **Updating:** `docker compose pull && docker compose up -d` runs `page` again, which copies the
-  files that changed. The server restarts only when its own image is new, which ends the games that
-  are running. The files of the older page stay, so a tab open on it still finds its scripts. To
+  files that changed. The server restarts only when its own image is new, and drains first. The files of the older page stay, so a tab open on it still finds its scripts. To
   clear them: `docker compose down && docker volume rm whist_page`.
 - **Not for the public internet yet**, for the reason given above.
 
@@ -228,7 +232,8 @@ set `document_root` to its built `dist/` folder.
 The server answers two small questions about itself. `GET /version` gives the version, the commit
 and the protocol number, as `{"commit": "…", "protocol": 1, "version": "…"}`. `GET /health` gives 200
 `{"status":"ok"}` while it runs, and 503 `{"status":"draining"}` once it has been asked to stop: that
-is the address for an uptime monitor.
+is the address for an uptime monitor. Ctrl-C asks it to stop, which waits for the games that are
+running, up to `drain_ms`; Ctrl-C again stops it at once.
 
 ## Building the image yourself
 

@@ -669,6 +669,7 @@ it is a table with no human here.
 | `prompt` | [§6.6](#66-prompts-and-answers) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor`, `deadline` | Everyone, during the round hold |
+| `restarting` | `deadline` | Every connection, once the server drains; each that says hello later, right after its `welcome` |
 | `sync` | [§6.7](#67-resynchronising) | On joining or rejoining |
 | `error` | `code`, sometimes `detail` | The connection |
 
@@ -774,7 +775,8 @@ The page drops whatever it had queued and renders the sync.
   `error {code: "version"}` and the page reloads itself once.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
   `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`, `busy`. Several `badMessage`
-  errors close the connection. `rateLimited` has no `detail` for a connection over its rate, and
+  errors close the connection. `draining` is for a server that restarts and `busy` for one that is
+  running as many games as it may. `rateLimited` has no `detail` for a connection over its rate, and
   `connections`, `tables` or `joins` for the per-address limits.
 
 ### 6.9 Keeping the two sides in step
@@ -1377,17 +1379,23 @@ request. The commits after it change only this plan.
 
 ### 12.3 Either way
 
-- **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only set a
-  flag, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log line
-  inside the signal handler, which can allocate memory, and so hang. A timer on the main loop sees
-  the flag and drains:
-  1. refuse new tables;
-  2. tell everyone the server is restarting;
-  3. wait for running games to end, or for at most 15 minutes, then abandon and join any still
-     running ([§4.6](#46-threads-and-locks), rule 7);
-  4. quit.
+- **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only count
+  the signals, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log
+  line inside the signal handler, which can allocate memory, and so hang. A timer on the main loop
+  sees the first signal and drains:
+  1. refuse new tables and new games with `draining` (`createSolo`, `createTable`, `startGame`);
+     joining a table and coming back to one still work, and so does `/health`, which says 503
+     `draining`;
+  2. tell everyone the server is restarting, with `restarting {deadline}`: every connection now,
+     and each that says hello later, right after its welcome, with the time left then, which counts
+     down from the stop;
+  3. wait until no game runs, or until `drain_ms` (15 minutes) has passed, then abandon and join
+     any still running ([§4.6](#46-threads-and-locks), rule 7);
+  4. quit, with exit code 0.
 
-  Deploys wait for a quiet moment.
+  A second SIGTERM or SIGINT ends the games at once. The first line of each step is logged, so the
+  journal shows how long a drain took and how many games it cut. The container's stop grace period
+  has to outlast `drain_ms`. Deploys wait for a quiet moment.
 - **Health:**
   - `GET /health` (`app().registerHandler`), for uptime monitoring: 200 `{"status":"ok"}`, and 503
     `{"status":"draining"}` from the moment the server is asked to stop. `GET /version` gives
