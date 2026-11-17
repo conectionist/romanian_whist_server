@@ -6,6 +6,9 @@ add_library(whist_app STATIC
     Server.cpp
     GameController.h
     GameController.cpp
+    Http.h
+    Http.cpp
+    PageHeaders.h
 )
 
 target_include_directories(whist_app PUBLIC ${PROJECT_SOURCE_DIR}/server)

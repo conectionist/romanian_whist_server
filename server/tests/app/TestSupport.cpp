@@ -7,6 +7,7 @@
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
+#include <drogon/HttpClient.h>
 #include <drogon/drogon.h>
 #include <json/json.h>
 
@@ -126,6 +127,20 @@ std::uint16_t freePort()
     return ntohs(address.sin_port);
 }
 
+namespace
+{
+
+// Bytes that tell where they are, so a file cut short or mixed up with another shows.
+std::string bigFile()
+{
+    std::string contents(bigFileSize, 'x');
+    for(std::size_t i = 0 ; i < contents.size() ; i++)
+        contents[i] = static_cast<char>('a' + (i * 7 + i / 251) % 26);
+    return contents;
+}
+
+} // namespace
+
 const std::vector<ServedFile>& servedFiles()
 {
     // The binary contents hold NUL bytes, which a body must carry through.
@@ -140,8 +155,16 @@ const std::vector<ServedFile>& servedFiles()
         {"fonts/x.woff2", "wOF2", drogon::CT_APPLICATION_FONT_WOFF2},
         {"fonts/OFL.txt", "licence\n", drogon::CT_TEXT_PLAIN},
         {"avatars.json", "[]\n", drogon::CT_APPLICATION_JSON},
+        {bigFilePath, bigFile(), drogon::CT_TEXT_JAVASCRIPT},
     };
     return files;
+}
+
+const std::vector<std::string>& hiddenFiles()
+{
+    static const std::vector<std::string> paths{".secret.txt", ".vite/manifest.json", "assets/.hidden.txt",
+                                                "assets/.cache/x.json", "pages/.git/x.txt"};
+    return paths;
 }
 
 const std::vector<std::string>& unservedFiles()
@@ -166,6 +189,8 @@ const TestServer& testServer()
         server->documentRoot.write(file.path, file.contents);
     for(const std::string& path : unservedFiles())
         server->documentRoot.write(path, sourceMarker);
+    for(const std::string& path : hiddenFiles())
+        server->documentRoot.write(path, sourceMarker);
 
     ServerOptions options;
     options.port = freePort();
@@ -189,6 +214,44 @@ const TestServer& testServer()
     server->info = {options.port, server->documentRoot.path()};
     server->started = true;
     return server->info;
+}
+
+std::pair<drogon::ReqResult, drogon::HttpResponsePtr> fetch(std::uint16_t port, const std::string& path,
+                                                            const Headers& headers, drogon::HttpMethod method)
+{
+    trantor::EventLoopThread loop;
+    loop.run();
+    const drogon::HttpClientPtr client = drogon::HttpClient::newHttpClient("127.0.0.1", port, false, loop.getLoop());
+
+    drogon::HttpRequestPtr request = drogon::HttpRequest::newHttpRequest();
+    request->setMethod(method);
+    request->setPath(path);
+    for(const auto& [name, value] : headers)
+        request->addHeader(name, value);
+    return client->sendRequest(request, 5.0);
+}
+
+std::string rawRequest(std::uint16_t port, const std::string& request)
+{
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    REQUIRE(::inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) == 1);
+    REQUIRE(::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0);
+    REQUIRE(::send(fd, request.data(), request.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(request.size()));
+
+    timeval timeout{5, 0};
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+
+    std::string answer;
+    char buffer[4096];
+    for(ssize_t got ; (got = ::recv(fd, buffer, sizeof buffer, 0)) > 0 ; )
+        answer.append(buffer, static_cast<std::size_t>(got));
+    ::close(fd);
+    return answer;
 }
 
 TestClient::TestClient(std::uint16_t port, const std::string& path, const Headers& headers)

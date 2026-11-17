@@ -44,7 +44,7 @@ LimitedServer& behindProxy()
     return server;
 }
 
-TestClient::Headers from(const std::string& address)
+Headers from(const std::string& address)
 {
     return {{"X-Forwarded-For", address}};
 }

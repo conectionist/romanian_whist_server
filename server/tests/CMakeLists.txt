@@ -71,6 +71,7 @@ add_executable(app_tests
     app/SpikeController.cpp
     app/DropTests.cpp
     app/GameTests.cpp
+    app/HttpTests.cpp
     app/LimitTests.cpp
     app/OnlineTests.cpp
     app/OptionsTests.cpp

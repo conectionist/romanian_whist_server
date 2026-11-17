@@ -1,6 +1,7 @@
 #include "app/Server.h"
 
 #include "app/GameController.h"
+#include "app/Http.h"
 #include "core/BuildInfo.h"
 #include "core/Service.h"
 #include "core/Status.h"
@@ -34,6 +35,9 @@ std::shared_ptr<Service>& service()
 // Set from the signal handler, so it must stay lock-free. A timer on the main loop acts on it.
 std::atomic<bool> stopRequested{false};
 static_assert(std::atomic<bool>::is_always_lock_free);
+
+// Set once the server has begun to stop, and read by /health from the I/O threads.
+std::atomic<bool> draining{false};
 
 void onStopSignal(int)
 {
@@ -74,6 +78,7 @@ void watchForStop(std::chrono::milliseconds delay)
             return;
 
         stopping = true;
+        draining.store(true);
         LOG_INFO << "shutting down";
         loop->runAfter(delay, [] { stopApp(); });
     });
@@ -130,6 +135,25 @@ void whenListening(std::function<void()> done)
                     drogon::app().getLoop()->queueInLoop(done);
             });
     });
+}
+
+// What the page and a monitor ask the server about itself.
+void serveStatusPages()
+{
+    drogon::app().registerHandler(
+        "/version",
+        [](const drogon::HttpRequestPtr&, std::function<void(const drogon::HttpResponsePtr&)>&& respond)
+        {
+            respond(versionResponse(service()->version(), service()->commit(), protocolVersion));
+        },
+        {drogon::Get});
+    drogon::app().registerHandler(
+        "/health",
+        [](const drogon::HttpRequestPtr&, std::function<void(const drogon::HttpResponsePtr&)>&& respond)
+        {
+            respond(healthResponse(draining.load()));
+        },
+        {drogon::Get});
 }
 
 // A table's link, /t/K7QM4P, is the page itself, which reads the code from its address.
@@ -194,6 +218,16 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setThreadNum(options.ioThreads)
         .setMaxConnectionNum(options.maxConnections)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
+        .enableSendfile(false)
+        .registerPreRoutingAdvice([](const drogon::HttpRequestPtr& request, drogon::AdviceCallback&& answer,
+                                     drogon::AdviceChainCallback&& proceed)
+        {
+            if(hasDotSegment(request->path()))
+                answer(drogon::HttpResponse::newNotFoundResponse(request));
+            else
+                proceed();
+        })
+        .registerPreSendingAdvice(addPageHeaders)
         .registerController(std::make_shared<GameController>(service(), options.pingInterval,
                                                            TrustedProxies(options.trustedProxies)))
         .disableSigtermHandling()
@@ -211,6 +245,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
             });
         });
 
+    serveStatusPages();
     serveTableLinks(options.documentRoot);
     installStopHandlers();
 }

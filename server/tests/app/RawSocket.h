@@ -47,12 +47,16 @@ public:
             response.append(buffer, static_cast<std::size_t>(got));
         }
         REQUIRE(response.starts_with("HTTP/1.1 101"));
+        handshake_ = response;
     }
 
     ~RawSocket()
     {
         ::close(fd_);
     }
+
+    // The server's answer to the handshake, headers and all.
+    const std::string& handshake() const { return handshake_; }
 
     RawSocket(const RawSocket&) = delete;
     RawSocket& operator=(const RawSocket&) = delete;
@@ -109,6 +113,7 @@ private:
     }
 
     int fd_ = -1;
+    std::string handshake_;
 };
 
 } // namespace whist::test
