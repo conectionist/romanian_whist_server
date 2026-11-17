@@ -5,7 +5,7 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-const protocol = 1;
+const protocol = 2;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

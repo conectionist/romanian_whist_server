@@ -230,7 +230,7 @@ class Person {
     this.ws = ws;
     ws.onopen = () => {
       this.connected = true;
-      this.send({ type: "hello", protocol: 1, lang: "en", ...(this.token ? { token: this.token } : {}) });
+      this.send({ type: "hello", protocol: 2, lang: "en", ...(this.token ? { token: this.token } : {}) });
     };
     ws.onmessage = (event) => {
       let message;
@@ -326,6 +326,9 @@ class Person {
         return;
       case "held":
         this.onHeld(message);
+        return;
+      case "restarting":
+        world.count("restarting");
         return;
       case "error":
         world.count(`error ${message.code}`);
@@ -498,7 +501,7 @@ class Person {
       received += chunk.toString("latin1");
       if (received.includes("\r\n\r\n")) {
         upgraded = true;
-        socket.write(textFrame(JSON.stringify({ type: "hello", protocol: 1, lang: "en", token: this.token })));
+        socket.write(textFrame(JSON.stringify({ type: "hello", protocol: 2, lang: "en", token: this.token })));
       }
     });
     socket.on("connect", () => {
@@ -579,7 +582,7 @@ async function startServer(program) {
     port, document_root: directory,
     ping_interval_ms: 1000, pong_timeout_ms: 5000, reap_interval_ms: 250,
     grace_period_ms: 2000, online_idle_ms: 30000, solo_idle_ms: 60000,
-    instant_floor_ms: 10, log_level: "info",
+    instant_floor_ms: 10, drain_ms: 1000, log_level: "info",
     // Everyone connects from 127.0.0.1, makes tables again and again, and answers as fast as the game asks.
     messages_per_second: 10000, message_burst: 10000, max_connections_per_ip: 10000,
     tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000,
