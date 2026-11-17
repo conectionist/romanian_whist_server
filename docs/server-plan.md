@@ -1,12 +1,12 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 8 are complete (2026-11-13). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 8b are complete (2026-11-17). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
 > are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
 > `romanian_whist_web` (its PR #3). Phase 7, the sheets, the menus and online tables, is the
 > page's (its PR #7), and so is phase 8, its Romanian, keyboard, screen readers and touch (its
-> PR #8). Phase 8b, the page's phone layout, and phases 9 to 11 are not built yet.**
+> PR #8), and phase 8b, its phone layout (its PR #11). Phases 9 to 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -2160,11 +2160,18 @@ It changes nothing in this repository: the page's submodule stays at `df37bd8`.
 The owner approved it on 2026-11-13. One of its three ends moved on: "a phone held sideways
 finishes a game" is phase 8b's.
 
-### Phase 8b: the phone layout — L
+### Phase 8b: the phone layout — L ✅ COMPLETE
 
-In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-8b-the-phone-layout--l).
+In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-8b-the-phone-layout--l--complete).
 The owner added it on 2026-11-13: scaled as the desktop's table is, the page cannot be read on a
-phone, so a small window gets the Android mock-up's layout. It changes nothing in this repository.
+phone, so a small window gets the Android mock-up's layout. It changes nothing in this repository:
+the page's submodule stays at `df37bd8`.
+
+**Complete,** in `romanian_whist_web`: PR #11, merged into that repository's parent branch
+`ccr-209c0806-o444sp`. Its outcome is under phase 8b in
+[the page's plan on that branch](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-8b-the-phone-layout--l--complete).
+The owner approved it on 2026-11-17, after finishing a solo game and an online game on their phone
+in full screen.
 
 ### Phase 9: hardening and deployment — M
 
