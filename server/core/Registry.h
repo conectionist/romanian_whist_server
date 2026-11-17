@@ -85,8 +85,12 @@ public:
     std::shared_ptr<Table> tableOf(MemberId member) const;
     std::size_t tableCount() const;
 
-    // How many game threads are running now.
+    // How many game threads are running now, a game nobody is at included.
     std::size_t runningGames() const;
+
+    // How many of them count against the most that may run: the games someone is at, or was within
+    // the grace period as of the last reap, and none that has ended.
+    std::size_t countedGames() const;
 
     // How many of the running games are attended, as Table::attended says: the ones a drain waits
     // for, since a game nobody is at cannot go on.

@@ -162,7 +162,10 @@ void GameRun::play(GameSetup setup)
 
 void GameRun::end(RunOutcome outcome)
 {
-    slot_.reset();
+    {
+        std::lock_guard lock(slotMutex_);
+        slot_.reset();
+    }
     outcome_ = outcome;
 }
 
@@ -264,6 +267,13 @@ std::optional<WaitingFor> GameRun::waitingFor() const
 void GameRun::setNobodyHere(bool nobodyHere)
 {
     publisher_.setNobodyHere(nobodyHere);
+}
+
+void GameRun::setAttended(bool attended)
+{
+    std::lock_guard lock(slotMutex_);
+    if(slot_)
+        slot_->setAttended(attended);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

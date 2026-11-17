@@ -451,3 +451,175 @@ TEST_CASE("A game the host starts is refused when too many are running, and the 
     CHECK(table->state() == TableState::Playing);
     CHECK(registry.runningGames() == 1);
 }
+
+namespace
+{
+
+// A service that allows `most` attended games, and waits ten seconds for a player who has gone.
+std::shared_ptr<Service> cappedService(const std::shared_ptr<test::ManualClock>& clock, std::size_t most)
+{
+    return test::clockedService(clock, [most](ServiceOptions& options)
+    {
+        options.registry.maxRunningGames = most;
+        options.registry.table.gracePeriod = 10s;
+    });
+}
+
+// The tables are reaped at a time past the grace period and short of the idle limits.
+void pastGrace(Service& service)
+{
+    service.registry().reap(Clock::now() + 11s);
+}
+
+} // namespace
+
+TEST_CASE("A game nobody is at stops counting against the most that may run, once its grace period is over", "[limits][busy][attended][session]")
+{
+    constexpr std::size_t most = 3;
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = cappedService(clock, most);
+    Registry& registry = service->registry();
+
+    std::vector<std::unique_ptr<test::Client>> players;
+    for(MemberId label = 1 ; label <= most ; label++)
+    {
+        players.push_back(std::make_unique<test::Client>(service, recorder, label));
+        players.back()->hello();
+        players.back()->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    }
+    REQUIRE(registry.countedGames() == most);
+
+    test::Client visitor(service, recorder, 100);
+    visitor.hello();
+    visitor.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    CHECK(lastError(recorder, 100)["code"] == "busy");
+
+    // They go. Within the grace period their games still count.
+    for(const auto& player : players)
+        player->drop();
+    players.clear();
+    registry.reap(Clock::now() + 5s);
+    CHECK(registry.countedGames() == most);
+    visitor.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    CHECK(errors(recorder, 100).size() == 2);
+
+    // Past it they do not, and the games still run: they hold, and take no processor.
+    pastGrace(*service);
+    CHECK(registry.countedGames() == 0);
+    CHECK(registry.runningGames() == most);
+    ServerStatus status = service->status();
+    CHECK(status.gameThreads == most);
+    CHECK(status.attendedGames == 0);
+
+    visitor.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    CHECK(registry.tableOf(*visitor.member()));
+    CHECK(errors(recorder, 100).size() == 2);
+    CHECK(registry.countedGames() == 1);
+    CHECK(registry.runningGames() == most + 1);
+}
+
+TEST_CASE("Fifty abandoned games do not keep one more from starting", "[limits][busy][attended][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = cappedService(clock, 2);
+    Registry& registry = service->registry();
+
+    for(MemberId label = 1 ; label <= 50 ; label++)
+    {
+        test::Client player(service, recorder, label);
+        player.hello();
+        player.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+        REQUIRE(registry.tableOf(*player.member()));
+        player.drop();
+        pastGrace(*service);
+    }
+
+    CHECK(registry.runningGames() == 50);
+    CHECK(registry.countedGames() == 0);
+    for(MemberId label = 1 ; label <= 50 ; label++)
+        CHECK(errors(recorder, label).empty());
+
+    // The ones who are there are what fills it.
+    std::vector<std::unique_ptr<test::Client>> present;
+    for(MemberId label = 101 ; label <= 103 ; label++)
+    {
+        present.push_back(std::make_unique<test::Client>(service, recorder, label));
+        present.back()->hello();
+        present.back()->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    }
+    CHECK(registry.tableOf(*present[0]->member()));
+    CHECK(registry.tableOf(*present[1]->member()));
+    CHECK_FALSE(registry.tableOf(*present[2]->member()));
+    CHECK(lastError(recorder, 103)["code"] == "busy");
+}
+
+TEST_CASE("A player who comes back to their game is never refused, so the most is soft for returns, and still holds for new games", "[limits][busy][attended][session]")
+{
+    constexpr std::size_t most = 2;
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = cappedService(clock, most);
+    Registry& registry = service->registry();
+
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    const std::string token = ana->hello()["token"].asString();
+    ana->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    test::Client bea(service, recorder, 2);
+    bea.hello();
+    bea.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    REQUIRE(registry.countedGames() == most);
+
+    // Ana's game stops counting, and the place is taken by Cora's.
+    ana->drop();
+    ana.reset();
+    pastGrace(*service);
+    REQUIRE(registry.countedGames() == 1);
+    test::Client cora(service, recorder, 3);
+    cora.hello();
+    cora.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    REQUIRE(registry.tableOf(*cora.member()));
+    REQUIRE(registry.countedGames() == most);
+
+    // Ana comes back and has her game, over the most. Nobody else gets one until someone leaves.
+    test::Client back(service, recorder, 4);
+    back.hello(token);
+    CHECK(registry.tableOf(*back.member()));
+    CHECK(errors(recorder, 4).empty());
+    CHECK(registry.countedGames() == most + 1);
+    CHECK(registry.runningGames() == most + 1);
+
+    test::Client dan(service, recorder, 5);
+    dan.hello();
+    dan.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    CHECK(lastError(recorder, 5)["code"] == "busy");
+
+    // Her game goes on counting for as long as she is there, and the places come back as games end.
+    back.send(test::typed("leaveTable"));
+    cora.send(test::typed("leaveTable"));
+    REQUIRE(waitUntil([&] { return registry.countedGames() == 1; }));
+    dan.send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    CHECK(registry.tableOf(*dan.member()));
+}
+
+TEST_CASE("A game that ends gives back its place whether or not anyone was at it", "[limits][busy][attended][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = cappedService(clock, 1);
+    Registry& registry = service->registry();
+
+    test::Client watcher(service, recorder, 1);
+    watcher.hello();
+    watcher.send(createSolo(test::tableSettings(3, {})));
+    const std::shared_ptr<Table> table = registry.tableOf(*watcher.member());
+    REQUIRE(table);
+    REQUIRE(waitUntil([&] { return table->state() == TableState::Finished; }));
+    REQUIRE(waitUntil([&] { return registry.runningGames() == 0; }));
+    CHECK(registry.countedGames() == 0);
+
+    // A reap after the game has ended does not count it again.
+    pastGrace(*service);
+    CHECK(registry.countedGames() == 0);
+}

@@ -543,6 +543,14 @@ These are estimates; phase 9 measures them.
 
 Configure a maximum number of running games, rather than relying on the CPU running out first.
 
+- **The maximum counts the games someone is at.** A game whose members are all gone for the grace
+  period holds, in the publisher's `nobodyHere_`, and takes no processor, so it does not count: a
+  crowd of abandoned games never turns a visitor away with `busy`. A table counts again the moment
+  a member connects, and that is never refused, so the maximum is soft for people coming back;
+  `createSolo` and `startGame` are what it refuses. The table counts the game at each reap, so the
+  count lags the grace period by up to a second. `game_threads` in the status line is every game
+  thread, and `attended_games` is the ones the maximum counts.
+
 ---
 
 ## 5. Drops, replacement and reconnection
@@ -909,7 +917,7 @@ there too.
   failed joins are rate-limited per IP address, and tables expire.
 
 **Limits:** connections per client address, tables created per client address per hour, joins that
-found no table per client address, a maximum number of running games (`busy` past it), and members
+found no table per client address, a maximum number of running games someone is at (`busy` past it), and members
 per table no more than its seats. Drogon's `setMaxConnectionNumPerIP` counts TCP peers, which behind
 a proxy is the proxy, so the server counts its own. The client's address is the rightmost
 `X-Forwarded-For` entry that is not in `trusted_proxies`, read only when the connection itself comes

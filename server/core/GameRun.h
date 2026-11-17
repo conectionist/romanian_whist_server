@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -140,6 +141,10 @@ public:
     // Any thread. Whether nobody who sees the game is connected: it holds at its next rest.
     void setNobodyHere(bool nobodyHere);
 
+    // Any thread. Whether the game counts against the most that may run: it does while someone is at
+    // it, or was lately. Counting again is never refused.
+    void setAttended(bool attended);
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 
@@ -161,6 +166,8 @@ private:
     const std::vector<romanian_whist::IGameObserver*> firstObservers_;
     const std::vector<Viewer> viewers_;
     std::optional<romanian_whist::GameSetup> engineSetup_;
+    // The game thread gives the slot back as the table counts the game or not.
+    std::mutex slotMutex_;
     std::optional<RunningGames::Slot> slot_;
 
     // The order is the design: destruction runs in reverse, so the thread is joined first, and the

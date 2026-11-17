@@ -70,6 +70,7 @@ ServerStatus Service::status() const
     status.tablesPlaying = tables.playing;
     status.tablesFinished = tables.finished;
     status.gameThreads = registry_.runningGames();
+    status.attendedGames = registry_.countedGames();
     status.standInMoves = registry_.standInMoves();
     return status;
 }

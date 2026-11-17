@@ -86,8 +86,9 @@ docker compose up -d
   Caddy use them. Behind your own proxy, the port on the host is `WHIST_LISTEN` in `.env`.
 - **Limits:** `config.json` also holds the limits: messages per second on a connection, connections
   and new tables from one address, joins that found no table from one address, connections in all,
-  and games running at once. Past one the server answers `rateLimited`, or `busy` for a game, and
-  the page says so. An address is the client's: when a connection comes from one of
+  and games running at once that someone is at. Past one the server answers `rateLimited`, or `busy`
+  for a game, and the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
+  processor, so it does not count, and a player who comes back to their game is never refused. An address is the client's: when a connection comes from one of
   `trusted_proxies`, it is the rightmost address in `X-Forwarded-For` that is not in that list. The
   image trusts the loopback and the private ranges, where Caddy and a proxy on the same host
   connect from, and believes the header from nowhere else.
@@ -432,7 +433,9 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 
 ## Finding the cap on running games
 
-`max_running_games` is how many games the server runs at once before it answers `busy`. The number
+`max_running_games` is how many games someone is at that the server runs at once before it answers
+`busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
+holds the games nobody is at. The number
 is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
 ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
 packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is

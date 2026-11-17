@@ -429,7 +429,12 @@ void Table::refreshPresenceLocked()
         idleSince_ = Clock::now();
 
     if(run_)
+    {
         run_->setNobodyHere(!here);
+        // A player who comes back is never refused for the cap: their game counts again at once.
+        if(here)
+            run_->setAttended(true);
+    }
 }
 
 void Table::back(MemberId member)
@@ -459,6 +464,11 @@ bool Table::reap(Clock::time_point now)
     std::lock_guard lock(mutex_);
     if(state_ == TableState::Closed)
         return false;
+
+    // A game nobody has been at for the grace period stops counting against the most games that may
+    // run: it holds, uses no processor, and a refusal for it would turn a visitor away for nothing.
+    if(run_)
+        run_->setAttended(attendedLocked(now));
 
     const std::chrono::milliseconds idleLimit = mode_ == Mode::Solo ? options_.soloIdle : options_.onlineIdle;
     if(idleSince_ && now - *idleSince_ >= idleLimit)
@@ -502,6 +512,11 @@ bool Table::reap(Clock::time_point now)
 bool Table::attended(Clock::time_point now) const
 {
     std::lock_guard lock(mutex_);
+    return attendedLocked(now);
+}
+
+bool Table::attendedLocked(Clock::time_point now) const
+{
     if(!run_ || run_->finished())
         return false;
     return !idleSince_ || now - *idleSince_ < options_.gracePeriod;

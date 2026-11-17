@@ -22,6 +22,9 @@ struct ServerStatus
     // Game threads running, which is not the same as tables playing: a finished game's table stays.
     std::size_t gameThreads = 0;
 
+    // Of those, the games someone is at, which are the ones max_running_games limits.
+    std::size_t attendedGames = 0;
+
     // Moves a computer player made for a member, since the server started.
     std::uint64_t standInMoves = 0;
 

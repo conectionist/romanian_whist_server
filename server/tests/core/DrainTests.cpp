@@ -430,6 +430,27 @@ TEST_CASE("A watched game of computer players is attended by its watcher", "[dra
     CHECK(registry.runningGames() == 1);
 }
 
+TEST_CASE("A drain finds a game nobody is at running and not attended, and the status line says both", "[drain][attended]")
+{
+    test::Recorder recorder;
+    const auto service = graceService(grace);
+
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    ana->hello();
+    ana->send(createSolo(test::tableSettings(3, {0}, Level::Cyborg)));
+    ana->drop();
+    ana.reset();
+    waitOutGrace();
+    service->registry().reap(Clock::now());
+
+    const Service::DrainCounts found = service->beginDrain(Clock::now() + fifteenMinutes);
+    CHECK(found.running == 1);
+    CHECK(found.attended == 0);
+    const ServerStatus status = service->status();
+    CHECK(status.gameThreads == 1);
+    CHECK(status.attendedGames == 0);
+}
+
 TEST_CASE("A table with a game is attended while any one of its members is connected", "[drain][attended]")
 {
     test::Recorder recorder;

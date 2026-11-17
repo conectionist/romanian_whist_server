@@ -318,6 +318,11 @@ std::size_t Registry::runningGames() const
     return runningGames_->count();
 }
 
+std::size_t Registry::countedGames() const
+{
+    return runningGames_->attended();
+}
+
 std::uint64_t Registry::standInMoves() const
 {
     return standInMoves_->load();

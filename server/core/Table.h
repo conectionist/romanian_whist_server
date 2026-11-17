@@ -183,6 +183,9 @@ private:
     // Works out whether anybody is connected, for the idle timer and for a game that holds for nobody.
     void refreshPresenceLocked();
 
+    // Table::attended, with the lock held.
+    bool attendedLocked(Clock::time_point now) const;
+
     const std::string code_;
     const Mode mode_;
     const TableOptions options_;
