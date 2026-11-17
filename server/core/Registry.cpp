@@ -43,6 +43,7 @@ Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
       runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
       tableOptions_(withShared(options.table, runningGames_, standInMoves_, draining_)),
+      maxTables_(options.maxTables),
       forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
@@ -137,6 +138,8 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
             return {nullptr, ErrorCode::NotFound, {}};
         if(!record->second.table.empty())
             return {nullptr, ErrorCode::Illegal, {}};
+        if(maxTables_ != 0 && tables_.size() >= maxTables_)
+            return {nullptr, ErrorCode::Busy, {}};
 
         std::optional<unsigned int> seat;
         for(unsigned int i = 0 ; i < settings.seats.size() ; i++)
@@ -193,6 +196,8 @@ Registry::Created Registry::createTable(MemberId member, Settings settings, Prof
             return {nullptr, ErrorCode::NotFound, {}};
         if(!record->second.table.empty())
             return {nullptr, ErrorCode::Illegal, {}};
+        if(maxTables_ != 0 && tables_.size() >= maxTables_)
+            return {nullptr, ErrorCode::Busy, {}};
 
         std::string code;
         do

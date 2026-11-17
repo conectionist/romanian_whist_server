@@ -32,8 +32,11 @@ struct RegistryOptions
     // A member nobody has been connected as, and who is at no table, is forgotten after this long.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};
 
-    // The most games that may run at once. 0: any number.
+    // The most games someone is at that may run at once. 0: any number.
     std::size_t maxRunningGames = 0;
+
+    // The most tables that may exist at once, whoever is at them. 0: any number.
+    std::size_t maxTables = 0;
 };
 
 // Every table and every member the server knows. Its lock comes first: the Registry may take a
@@ -147,6 +150,7 @@ private:
     const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_ = std::make_shared<std::atomic<std::uint64_t>>(0);
     const std::shared_ptr<std::atomic<bool>> draining_ = std::make_shared<std::atomic<bool>>(false);
     const TableOptions tableOptions_;
+    const std::size_t maxTables_;
     const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();
 

@@ -223,6 +223,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     serviceOptions.registry.table.soloIdle = options.soloIdle;
     serviceOptions.registry.forgetMember = options.forgetMember;
     serviceOptions.registry.maxRunningGames = options.maxRunningGames;
+    serviceOptions.registry.maxTables = options.maxTables;
     serviceOptions.limits.messagesPerSecond = options.messagesPerSecond;
     serviceOptions.limits.messageBurst = options.messageBurst;
     serviceOptions.limits.connectionsPerAddress = options.maxConnectionsPerIp;

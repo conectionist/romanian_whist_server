@@ -550,6 +550,11 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   `createSolo` and `startGame` are what it refuses. The table counts the game at each reap, so the
   count lags the grace period by up to a second. `game_threads` in the status line is every game
   thread, and `attended_games` is the ones the maximum counts.
+- **A second maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
+  or not, since a table holds its memory for as long as it is kept, a parked game included, until the
+  idle timeouts end it. `createSolo` and `createTable` past it are refused with `busy`, and the
+  address's quota of new tables is given back. Joining a table that exists is not making one, and a
+  player coming back to theirs is never refused.
 
 ---
 
@@ -785,7 +790,7 @@ The page drops whatever it had queued and renders the sync.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
   `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`, `busy`. Several `badMessage`
   errors close the connection. `draining` is for a server that restarts and `busy` for one that is
-  running as many games as it may. `rateLimited` has no `detail` for a connection over its rate, and
+  running as many games, someone is at, or holding as many tables, as it may. `rateLimited` has no `detail` for a connection over its rate, and
   `connections`, `tables` or `joins` for the per-address limits.
 
 ### 6.9 Keeping the two sides in step
@@ -917,9 +922,10 @@ there too.
   failed joins are rate-limited per IP address, and tables expire.
 
 **Limits:** connections per client address, tables created per client address per hour, joins that
-found no table per client address, a maximum number of running games someone is at (`busy` past it), and members
-per table no more than its seats. Drogon's `setMaxConnectionNumPerIP` counts TCP peers, which behind
-a proxy is the proxy, so the server counts its own. The client's address is the rightmost
+found no table per client address, a maximum number of running games someone is at and a maximum
+number of tables (`busy` past either), and members per table no more than its seats. Drogon's
+`setMaxConnectionNumPerIP` counts TCP peers, which behind a proxy is the proxy, so the server counts
+its own. The client's address is the rightmost
 `X-Forwarded-For` entry that is not in `trusted_proxies`, read only when the connection itself comes
 from one of them; when every entry is in that list the leftmost is it, as nginx's `real_ip_recursive`
 has it, and with no header, or one that is not an address, the peer's. An IPv6 address counts by its /64.

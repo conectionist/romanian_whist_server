@@ -86,8 +86,9 @@ docker compose up -d
   Caddy use them. Behind your own proxy, the port on the host is `WHIST_LISTEN` in `.env`.
 - **Limits:** `config.json` also holds the limits: messages per second on a connection, connections
   and new tables from one address, joins that found no table from one address, connections in all,
-  and games running at once that someone is at. Past one the server answers `rateLimited`, or `busy`
-  for a game, and the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
+  and games running at once that someone is at, and tables in all (`max_tables`, which counts a table
+  nobody is at too). Past one the server answers `rateLimited`, or `busy` for a game or a table, and
+  the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
   processor, so it does not count, and a player who comes back to their game is never refused.
   An address is the client's: when a connection comes from one of `trusted_proxies`, it is the
   rightmost address in `X-Forwarded-For` that is not in that list, or the leftmost when all are. The

@@ -56,6 +56,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.failedJoinsPerIp == 10);
     CHECK(options.failedJoinWindow == std::chrono::minutes(10));
     CHECK(options.maxRunningGames == 50);
+    CHECK(options.maxTables == 400);
     CHECK(options.trustedProxies == std::vector<std::string>{"127.0.0.1", "::1"});
 }
 
@@ -75,6 +76,7 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
     CHECK(sample.failedJoinsPerIp == defaults.failedJoinsPerIp);
     CHECK(sample.failedJoinWindow == defaults.failedJoinWindow);
     CHECK(sample.maxRunningGames == defaults.maxRunningGames);
+    CHECK(sample.maxTables == defaults.maxTables);
     CHECK(sample.trustedProxies == defaults.trustedProxies);
 }
 
@@ -88,7 +90,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
         "drain_ms": 61000, "instant_floor_ms": 0, "log_level": "debug",
         "messages_per_second": 5, "message_burst": 7, "max_connections": 100, "max_connections_per_ip": 3,
         "tables_per_ip_per_hour": 4, "failed_joins_per_ip": 2, "failed_join_window_ms": 60000,
-        "max_running_games": 9, "trusted_proxies": ["10.0.0.0/8", "2001:db8::/32", "192.0.2.7"]
+        "max_running_games": 9, "max_tables": 13, "trusted_proxies": ["10.0.0.0/8", "2001:db8::/32", "192.0.2.7"]
     })");
 
     CHECK(options.address == "::1");
@@ -115,6 +117,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.failedJoinsPerIp == 2);
     CHECK(options.failedJoinWindow == std::chrono::milliseconds(60000));
     CHECK(options.maxRunningGames == 9);
+    CHECK(options.maxTables == 13);
     CHECK(options.trustedProxies == std::vector<std::string>{"10.0.0.0/8", "2001:db8::/32", "192.0.2.7"});
 }
 
@@ -178,6 +181,7 @@ TEST_CASE("The load test's settings are the Docker image's, with the limits lift
     CHECK(options.tablesPerIpPerHour >= 100000);
     CHECK(options.failedJoinsPerIp >= 10000);
     CHECK(options.maxRunningGames >= 1000);
+    CHECK(options.maxTables >= 1000);
 
     // It reports often, to be read as it goes, and stops quickly, with games still running.
     CHECK(options.statusLogInterval <= std::chrono::seconds(10));
@@ -185,7 +189,7 @@ TEST_CASE("The load test's settings are the Docker image's, with the limits lift
 
     // Everything else is the image's, so the server that is measured is the one that is deployed.
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
-                           "tables_per_ip_per_hour", "failed_joins_per_ip", "max_running_games",
+                           "tables_per_ip_per_hour", "failed_joins_per_ip", "max_running_games", "max_tables",
                            "status_log_interval_ms", "drain_ms"})
     {
         CHECK(load.isMember(key));
@@ -199,7 +203,7 @@ TEST_CASE("A limit is refused when it is 0, negative or not a number", "[options
 {
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
                            "tables_per_ip_per_hour", "failed_joins_per_ip", "failed_join_window_ms",
-                           "max_running_games", "status_log_interval_ms"})
+                           "max_running_games", "max_tables", "status_log_interval_ms"})
     {
         for(const char* value : {"0", "-1", "\"20\"", "true", "1.5", "null"})
         {

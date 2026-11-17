@@ -623,3 +623,155 @@ TEST_CASE("A game that ends gives back its place whether or not anyone was at it
     pastGrace(*service);
     CHECK(registry.countedGames() == 0);
 }
+
+namespace
+{
+
+// A service that allows `most` tables at once, and each address `quota` new ones an hour.
+std::shared_ptr<Service> tablesService(const std::shared_ptr<test::ManualClock>& clock, std::size_t most, unsigned int quota = 0)
+{
+    return test::clockedService(clock, [most, quota](ServiceOptions& options)
+    {
+        options.registry.maxTables = most;
+        options.limits.tablesPerAddressPerHour = quota;
+    });
+}
+
+} // namespace
+
+TEST_CASE("No more tables exist than may, whoever is at them, and a refusal for it is busy", "[limits][busy][tables][session]")
+{
+    constexpr std::size_t most = 3;
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = tablesService(clock, most);
+    Registry& registry = service->registry();
+
+    std::vector<std::unique_ptr<test::Client>> makers;
+    for(MemberId label = 1 ; label <= most ; label++)
+    {
+        makers.push_back(std::make_unique<test::Client>(service, recorder, label));
+        makers.back()->hello();
+    }
+    makers[0]->send(createTable("Ana", test::onlineSettings(2, 1)));
+    makers[1]->send(createTable("Bea", test::onlineSettings(2, 1)));
+    // A solo game of computer players, which nobody is at once it has begun, counts as a table too.
+    makers[2]->send(createSolo(test::tableSettings(3, {})));
+    REQUIRE(registry.tableCount() == most);
+
+    test::Client visitor(service, recorder, 100);
+    visitor.hello();
+    visitor.send(createSolo(test::tableSettings(3, {0})));
+    REQUIRE(lastError(recorder, 100)["code"] == "busy");
+    CHECK(test::shapeError(lastError(recorder, 100)).empty());
+    visitor.send(createTable("Dan", test::onlineSettings(2, 1)));
+    CHECK(lastError(recorder, 100)["code"] == "busy");
+    CHECK(errors(recorder, 100).size() == 2);
+
+    // Nothing was left behind, and the visitor is free to ask again.
+    CHECK(registry.tableCount() == most);
+    CHECK_FALSE(registry.tableOf(*visitor.member()));
+}
+
+TEST_CASE("A table that closes makes room for another", "[limits][busy][tables][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = tablesService(clock, 1);
+    Registry& registry = service->registry();
+
+    test::Client ana(service, recorder, 1);
+    test::Client bea(service, recorder, 2);
+    ana.hello();
+    bea.hello();
+    ana.send(createTable("Ana", test::onlineSettings(2, 1)));
+    REQUIRE(registry.tableOf(*ana.member()));
+
+    bea.send(createTable("Bea", test::onlineSettings(2, 1)));
+    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+
+    ana.send(test::typed("leaveTable"));
+    REQUIRE(registry.tableCount() == 0);
+    bea.send(createTable("Bea", test::onlineSettings(2, 1)));
+    CHECK(registry.tableOf(*bea.member()));
+    CHECK(errors(recorder, 2).size() == 1);
+}
+
+TEST_CASE("At the most tables, joining a table and coming back to one still work", "[limits][busy][tables][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = tablesService(clock, 2);
+    Registry& registry = service->registry();
+
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    const std::string token = ana->hello()["token"].asString();
+    ana->send(createTable("Ana", test::onlineSettings(3, 2)));
+    const std::string code = tableCode(recorder, 1);
+    test::Client cora(service, recorder, 3);
+    cora.hello();
+    cora.send(createSolo(test::tableSettings(3, {0})));
+    REQUIRE(registry.tableCount() == 2);
+
+    // Someone with no table joins the one that is there: that makes no table.
+    test::Client bea(service, recorder, 2);
+    bea.hello();
+    bea.send(joinTable(code, "Bea"));
+    CHECK(registry.tableOf(*bea.member()));
+    CHECK(errors(recorder, 2).empty());
+
+    // Ana's connection goes, and she comes back with her token to the table that is hers.
+    ana->drop();
+    ana.reset();
+    test::Client back(service, recorder, 4);
+    back.hello(token);
+    CHECK(registry.tableOf(*back.member()));
+    CHECK(errors(recorder, 4).empty());
+    CHECK(registry.tableCount() == 2);
+}
+
+TEST_CASE("A busy refusal for the tables gives the address its new table back", "[limits][busy][tables][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = tablesService(clock, 1, 2);
+    Registry& registry = service->registry();
+
+    test::Client ana(service, recorder, 1, home);
+    test::Client bea(service, recorder, 2, home);
+    ana.hello();
+    bea.hello();
+
+    // Two new tables an hour: Ana's is the first, and Bea's is refused and does not use the second.
+    ana.send(createTable("Ana", test::onlineSettings(2, 1)));
+    bea.send(createTable("Bea", test::onlineSettings(2, 1)));
+    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+
+    ana.send(test::typed("leaveTable"));
+    bea.send(createTable("Bea", test::onlineSettings(2, 1)));
+    CHECK(registry.tableOf(*bea.member()));
+    CHECK(errors(recorder, 2).size() == 1);
+
+    // That was the second, so a third is over the quota and not busy.
+    bea.send(test::typed("leaveTable"));
+    ana.send(createTable("Ana", test::onlineSettings(2, 1)));
+    CHECK(lastError(recorder, 1)["code"] == "rateLimited");
+    CHECK(lastError(recorder, 1)["detail"] == "tables");
+}
+
+TEST_CASE("A drain at a server with the most tables says draining, not busy", "[limits][busy][tables][drain][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = tablesService(clock, 1);
+
+    test::Client ana(service, recorder, 1);
+    test::Client bea(service, recorder, 2);
+    ana.hello();
+    bea.hello();
+    ana.send(createTable("Ana", test::onlineSettings(2, 1)));
+
+    service->beginDrain(Clock::now() + 15min);
+    bea.send(createTable("Bea", test::onlineSettings(2, 1)));
+    CHECK(lastError(recorder, 2)["code"] == "draining");
+}

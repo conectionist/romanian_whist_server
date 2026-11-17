@@ -67,8 +67,10 @@ struct ServerOptions
     unsigned int failedJoinsPerIp = 10;
     std::chrono::milliseconds failedJoinWindow{10 * 60 * 1000};
 
-    // A game that would be the one past this is refused as busy.
+    // A game someone is at that would be the one past this is refused as busy, and so is a table that
+    // would be the one past maxTables, whoever is at the ones there are.
     std::size_t maxRunningGames = 50;
+    std::size_t maxTables = 400;
 
     // Addresses and ranges whose X-Forwarded-For is believed. Never a range the open internet can
     // reach the server from: anyone in it could then write any address they like.

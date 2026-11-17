@@ -569,7 +569,7 @@ async function startServer(program) {
     instant_floor_ms: 10, drain_ms: 1000, log_level: "info",
     // Everyone connects from 127.0.0.1, makes tables again and again, and answers as fast as the game asks.
     messages_per_second: 10000, message_burst: 10000, max_connections_per_ip: 10000,
-    tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000,
+    tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000, max_tables: 10000,
   }));
 
   const child = spawn(program, ["--config", join(directory, "config.json")], { stdio: ["ignore", "pipe", "inherit"] });
