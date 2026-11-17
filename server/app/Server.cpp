@@ -13,6 +13,7 @@
 #include <csignal>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -32,20 +33,18 @@ std::shared_ptr<Service>& service()
     return instance;
 }
 
-// Set from the signal handler, so it must stay lock-free. A timer on the main loop acts on it.
-std::atomic<bool> stopRequested{false};
-static_assert(std::atomic<bool>::is_always_lock_free);
-
-// Set once the server has begun to stop, and read by /health from the I/O threads.
-std::atomic<bool> draining{false};
+// How many times a stop has been asked for. Counted in the signal handler, so it must stay
+// lock-free. A timer on the main loop acts on it.
+std::atomic<int> stopSignals{0};
+static_assert(std::atomic<int>::is_always_lock_free);
 
 void onStopSignal(int)
 {
-    stopRequested.store(true);
+    stopSignals.fetch_add(1);
 }
 
 // Drogon's own handler logs inside the signal handler, which can allocate, and would hang if the
-// signal landed on a thread holding the allocator's lock. Ours only sets the flag.
+// signal landed on a thread holding the allocator's lock. Ours only counts.
 void installStopHandlers()
 {
     struct sigaction action{};
@@ -68,19 +67,40 @@ trantor::Logger::LogLevel toLogLevel(const std::string& name)
     return trantor::Logger::kInfo;
 }
 
-// The server keeps serving for the delay after a stop is asked for, which is what a drain needs.
-void watchForStop(std::chrono::milliseconds delay)
+// The first stop signal starts the drain: no new games, everyone told, and the games that are running
+// go on until the last is over or `drainTime` has passed. A second signal ends them at once.
+void watchForStop(std::chrono::milliseconds drainTime)
 {
-    trantor::EventLoop* loop = drogon::app().getLoop();
-    loop->runEvery(std::chrono::milliseconds(200), [loop, delay, stopping = false]() mutable
+    drogon::app().getLoop()->runEvery(std::chrono::milliseconds(100),
+        [drainTime, deadline = std::optional<Clock::time_point>{}, stopping = false]() mutable
     {
-        if(stopping || !stopRequested.load())
+        const int signals = stopSignals.load();
+        if(stopping || signals == 0 || !service())
+            return;
+
+        const Clock::time_point now = Clock::now();
+        if(!deadline)
+        {
+            deadline = now + drainTime;
+            service()->beginDrain(*deadline);
+            LOG_INFO << "stop asked for: no new games, " << service()->registry().runningGames()
+                     << " running may finish within " << std::chrono::duration_cast<std::chrono::seconds>(drainTime).count()
+                     << " s";
+        }
+
+        const std::size_t running = service()->registry().runningGames();
+        if(running == 0)
+            LOG_INFO << "drained: no game is running";
+        else if(signals > 1)
+            LOG_INFO << "stop asked for again: ending " << running << " running game(s) now";
+        else if(now >= *deadline)
+            LOG_INFO << "drain time is up: ending " << running << " running game(s)";
+        else
             return;
 
         stopping = true;
-        draining.store(true);
         LOG_INFO << "shutting down";
-        loop->runAfter(delay, [] { stopApp(); });
+        stopApp();
     });
 }
 
@@ -151,7 +171,7 @@ void serveStatusPages()
         "/health",
         [](const drogon::HttpRequestPtr&, std::function<void(const drogon::HttpResponsePtr&)>&& respond)
         {
-            respond(healthResponse(draining.load()));
+            respond(healthResponse(service()->draining()));
         },
         {drogon::Get});
 }
@@ -231,10 +251,10 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .registerController(std::make_shared<GameController>(service(), options.pingInterval,
                                                            TrustedProxies(options.trustedProxies)))
         .disableSigtermHandling()
-        .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, reapInterval = options.reapInterval,
+        .registerBeginningAdvice([drainTime = options.drainTime, reapInterval = options.reapInterval,
                                   statusInterval = options.statusLogInterval, onListening = std::move(onListening)]
         {
-            watchForStop(shutdownDelay);
+            watchForStop(drainTime);
             watchForSilence(reapInterval);
             watchStatus(statusInterval);
             whenListening([onListening]

@@ -1,6 +1,7 @@
 #include "core/Service.h"
 
 #include "core/BuildInfo.h"
+#include "core/Codec.h"
 
 #include <utility>
 
@@ -44,6 +45,19 @@ const std::string& Service::version() const
 const std::string& Service::commit() const
 {
     return commit_;
+}
+
+void Service::beginDrain(Clock::time_point deadline)
+{
+    if(!registry_.beginDrain())
+        return;
+
+    outbox_.announce([this, deadline] { return restartingMessage(deadline, limits_.now()); });
+}
+
+bool Service::draining() const
+{
+    return registry_.draining();
 }
 
 ServerStatus Service::status() const

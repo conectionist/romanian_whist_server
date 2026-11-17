@@ -57,7 +57,7 @@ bool isError(const Json::Value& message, const std::string& code, const std::str
 // Says hello, and waits for the sync that follows the welcome.
 void greet(TestClient& client)
 {
-    client.send(R"({"type":"hello","protocol":1,"lang":"en"})");
+    client.send(R"({"type":"hello","protocol":2,"lang":"en"})");
     REQUIRE(client.waitFor([](const Json::Value& m) { return m["type"] == "sync"; }, 5s));
 }
 

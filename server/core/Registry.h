@@ -107,6 +107,11 @@ public:
     // are at no table and have not been connected for long.
     void reap(Clock::time_point now);
 
+    // From now on no table is made and no game starts; everything else goes on. Returns false when
+    // it had begun already.
+    bool beginDrain();
+    bool draining() const;
+
     // Refuses new tables, closes every table, and joins every game thread. Call it before the
     // Outbox's connections are gone.
     void shutdown();
@@ -132,6 +137,7 @@ private:
     Outbox& outbox_;
     const std::shared_ptr<RunningGames> runningGames_;
     const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_ = std::make_shared<std::atomic<std::uint64_t>>(0);
+    const std::shared_ptr<std::atomic<bool>> draining_ = std::make_shared<std::atomic<bool>>(false);
     const TableOptions tableOptions_;
     const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();

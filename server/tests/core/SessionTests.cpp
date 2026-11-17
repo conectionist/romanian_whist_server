@@ -111,6 +111,26 @@ TEST_CASE("Another protocol version is refused, and the connection closed", "[se
     CHECK_FALSE(client.member());
 }
 
+TEST_CASE("A hello from the protocol before this one is refused with version, and the connection closed", "[session]")
+{
+    test::Recorder recorder;
+    const auto service = quickService();
+    test::Client client(service, recorder, 1);
+
+    Json::Value hello = test::typed("hello");
+    hello["protocol"] = 1;
+    hello["lang"] = "en";
+    client.send(hello);
+
+    const auto messages = recorder.messagesTo(1);
+    REQUIRE(messages.size() == 1);
+    CHECK(messages[0]["code"] == "version");
+    CHECK(test::shapeError(messages[0]).empty());
+    CHECK(recorder.closedAfter(1) == 1u);
+    CHECK_FALSE(client.member());
+    CHECK(protocolVersion == 2);
+}
+
 TEST_CASE("A known token is the same member; an unknown one gets a new member", "[session]")
 {
     test::Recorder recorder;

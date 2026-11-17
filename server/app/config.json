@@ -12,7 +12,7 @@
     "online_idle_ms": 600000,
     "solo_idle_ms": 1800000,
     "forget_member_ms": 3600000,
-    "shutdown_delay_ms": 0,
+    "drain_ms": 900000,
     "instant_floor_ms": 30,
     "messages_per_second": 20,
     "message_burst": 40,

@@ -129,8 +129,8 @@ ServerOptions parseOptions(std::string_view json)
             options.soloIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "forget_member_ms")
             options.forgetMember = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
-        else if(key == "shutdown_delay_ms")
-            options.shutdownDelay = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
+        else if(key == "drain_ms")
+            options.drainTime = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
         else if(key == "instant_floor_ms")
             options.instantFloor = std::chrono::milliseconds(readCount(value, key, 0, 1000));
         else if(key == "messages_per_second")

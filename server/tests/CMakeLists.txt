@@ -29,6 +29,7 @@ add_executable(core_tests
     core/support/ServerMessages.cpp
     core/AddressTests.cpp
     core/CardsTests.cpp
+    core/DrainTests.cpp
     core/CatalogueTests.cpp
     core/CodecTests.cpp
     core/DropTests.cpp

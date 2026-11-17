@@ -90,8 +90,16 @@ bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Va
         if(!first.isNull())
             postLocked(*link, std::move(first));
 
-        std::lock_guard lock(mutex_);
-        previous = std::exchange(links_[member], link);
+        // Read in the step that makes the link the member's, so that an announcement made meanwhile
+        // reaches it either here or through links_, and the link's flag keeps it to one.
+        std::function<Json::Value()> announcement;
+        {
+            std::lock_guard lock(mutex_);
+            previous = std::exchange(links_[member], link);
+            announcement = announcement_;
+        }
+        if(announcement)
+            announceLocked(*link, announcement);
     }
 
     if(previous && previous != link)
@@ -104,6 +112,34 @@ bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Va
         closeLocked(*previous);
     }
     return true;
+}
+
+void Outbox::announce(std::function<Json::Value()> make)
+{
+    std::vector<std::shared_ptr<Link>> links;
+    {
+        std::lock_guard lock(mutex_);
+        announcement_ = make;
+        for(const auto& [member, link] : links_)
+            links.push_back(link);
+    }
+
+    std::shared_lock gate(gate_);
+    if(stopped_)
+        return;
+    for(const std::shared_ptr<Link>& link : links)
+    {
+        std::lock_guard linkLock(link->mutex_);
+        announceLocked(*link, make);
+    }
+}
+
+void Outbox::announceLocked(Link& link, const std::function<Json::Value()>& make)
+{
+    if(link.announced_ || link.closed_)
+        return;
+    link.announced_ = true;
+    postLocked(link, make());
 }
 
 void Outbox::attach(MemberId member, std::shared_ptr<Connection> connection)

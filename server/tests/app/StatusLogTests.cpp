@@ -60,7 +60,7 @@ TEST_CASE("The log says what the server is doing, once in a while", "[status][pr
 
     // A person with a game that waits for them.
     TestClient player(port, "/ws");
-    player.send(R"({"type":"hello","protocol":1,"lang":"en"})");
+    player.send(R"({"type":"hello","protocol":2,"lang":"en"})");
     REQUIRE(player.waitForMessages(2, 5s));
     player.send(R"({"type":"createSolo","settings":{"structure":"1-8-1","seats":[)"
                 R"({"kind":"human","name":"Ana","gender":"female","avatar":"woman-long-red-hair"},)"

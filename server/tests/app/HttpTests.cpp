@@ -1,5 +1,4 @@
 #include "RawSocket.h"
-#include "ServerProcess.h"
 #include "TestSupport.h"
 
 #include "app/Http.h"
@@ -364,7 +363,7 @@ TEST_CASE("The WebSocket and a table's link are not touched by the check", "[htt
     const TestServer& server = testServer();
 
     TestClient client(server.port, "/ws");
-    client.send(R"({"type":"hello","protocol":1,"lang":"en"})");
+    client.send(R"({"type":"hello","protocol":2,"lang":"en"})");
     CHECK(client.waitFor([](const Json::Value& m) { return m["type"] == "welcome"; }, 5s));
 
     const auto [result, response] = fetch(server.port, "/t/K7QM4P");
@@ -422,36 +421,4 @@ TEST_CASE("A large file that is replaced under the server is never served cut sh
     REQUIRE(second == drogon::ReqResult::Ok);
     CHECK(answer->getHeader("Content-Length") == std::to_string(answer->body().size()));
     CHECK((std::string(answer->body()) == before || std::string(answer->body()) == after));
-}
-
-TEST_CASE("/health says draining from the moment the server is asked to stop", "[http][health][process]")
-{
-    TempDir dir;
-    const std::uint16_t port = freePort();
-    dir.write("index.html", "<!doctype html><title>test</title>\n");
-    dir.write("config.json", R"({"port": )" + std::to_string(port) + R"(, "shutdown_delay_ms": 1500, "document_root": ")"
-                             + dir.path().string() + R"("})");
-
-    ServerProcess server((dir.path() / "config.json").string());
-    const bool listening = server.waitForLine("listening on ", 10s).has_value();
-    INFO(server.log());
-    REQUIRE(listening);
-
-    const WireAnswer running = wireGet(port, "/health");
-    CHECK(running.status == 200);
-    CHECK(running.body == R"({"status":"ok"})");
-
-    server.signal(SIGTERM);
-    REQUIRE(server.waitForLine("shutting down", 2s));
-
-    // The server serves on for the delay, and says what it is doing.
-    const WireAnswer draining = wireGet(port, "/health");
-    CHECK(draining.status == 503);
-    CHECK(draining.body == R"({"status":"draining"})");
-    CHECK(draining.headers.at("content-type").starts_with("application/json"));
-    CHECK(draining.headers.at("content-security-policy") == pagePolicy);
-    CHECK_FALSE(draining.headers.contains("cache-control"));
-    CHECK(wireGet(port, "/version").status == 200);
-
-    CHECK(server.waitForExit(5s) == 0);
 }

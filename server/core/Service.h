@@ -43,6 +43,12 @@ public:
     const std::string& version() const;
     const std::string& commit() const;
 
+    // Begins the drain: no table is made and no game starts, and every connection is told, now and
+    // when it says hello later, that the server restarts and its games have until `deadline`. Games
+    // that are running, and joining and coming back, go on. Does nothing the second time.
+    void beginDrain(Clock::time_point deadline);
+    bool draining() const;
+
     // What the server is doing: everything of a ServerStatus but the processor and the memory.
     ServerStatus status() const;
 

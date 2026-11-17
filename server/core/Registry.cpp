@@ -26,11 +26,13 @@ std::function<std::uint64_t()> systemRandom()
     };
 }
 
-TableOptions withCounters(TableOptions options, std::shared_ptr<RunningGames> games,
-                          std::shared_ptr<std::atomic<std::uint64_t>> standInMoves)
+TableOptions withShared(TableOptions options, std::shared_ptr<RunningGames> games,
+                        std::shared_ptr<std::atomic<std::uint64_t>> standInMoves,
+                        std::shared_ptr<const std::atomic<bool>> draining)
 {
     options.runningGames = std::move(games);
     options.standInMoves = std::move(standInMoves);
+    options.draining = std::move(draining);
     return options;
 }
 
@@ -39,7 +41,7 @@ TableOptions withCounters(TableOptions options, std::shared_ptr<RunningGames> ga
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
       runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
-      tableOptions_(withCounters(options.table, runningGames_, standInMoves_)),
+      tableOptions_(withShared(options.table, runningGames_, standInMoves_, draining_)),
       forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
@@ -126,7 +128,7 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
     std::shared_ptr<Table> table;
     {
         std::lock_guard lock(mutex_);
-        if(closing_)
+        if(closing_ || draining_->load())
             return {nullptr, ErrorCode::Draining, {}};
 
         const auto record = members_.find(member);
@@ -182,7 +184,7 @@ Registry::Created Registry::createTable(MemberId member, Settings settings, Prof
     std::shared_ptr<Table> table;
     {
         std::lock_guard lock(mutex_);
-        if(closing_)
+        if(closing_ || draining_->load())
             return {nullptr, ErrorCode::Draining, {}};
 
         const auto record = members_.find(member);
@@ -405,6 +407,18 @@ void Registry::reap(Clock::time_point now)
         else
             ++it;
     }
+}
+
+bool Registry::beginDrain()
+{
+    // Under the lock, so a table being made now is made or refused, never half of each.
+    std::lock_guard lock(mutex_);
+    return !draining_->exchange(true);
+}
+
+bool Registry::draining() const
+{
+    return draining_->load();
 }
 
 void Registry::shutdown()

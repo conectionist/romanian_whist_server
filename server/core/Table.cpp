@@ -171,9 +171,15 @@ std::optional<Refusal> Table::startGame(MemberId by)
         if(const std::optional<SettingsError> error = checkSettings(seating_.settings(), mode_))
             return Refusal(ErrorCode::Illegal, error->field);
 
-        // The last check, so a refusal for any other reason never uses a place up.
+        // The last checks, so a refusal for any other reason never uses a place up. The drain is read
+        // after the place is taken: it counts the games running only once it is set, so a game that
+        // slipped past it is either counted or refused here.
         std::optional<RunningGames::Slot> slot;
-        if(options_.runningGames && !(slot = options_.runningGames->take()))
+        if(options_.runningGames)
+            slot = options_.runningGames->take();
+        if(options_.draining && options_.draining->load())
+            return ErrorCode::Draining;
+        if(options_.runningGames && !slot)
             return ErrorCode::Busy;
 
         const Settings& settings = seating_.settings();

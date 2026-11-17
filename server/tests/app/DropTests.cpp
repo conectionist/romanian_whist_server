@@ -38,7 +38,7 @@ std::string joinText(const std::string& code, const std::string& name)
     return R"({"type":"joinTable","code":")" + code + R"(","profile":)" + profileJson(name) + "}";
 }
 
-const std::string helloText = R"({"type":"hello","protocol":1,"lang":"en"})";
+const std::string helloText = R"({"type":"hello","protocol":2,"lang":"en"})";
 
 bool seatIs(const Json::Value& message, unsigned int seat, const char* presence)
 {

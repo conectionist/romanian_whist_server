@@ -41,7 +41,10 @@ struct ServerOptions
 
     // How long a member who is at no table and not connected is remembered.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};
-    std::chrono::milliseconds shutdownDelay{0};
+
+    // How long, once the server is asked to stop, the games that are running may go on before they
+    // are ended. The server quits sooner when the last of them is over.
+    std::chrono::milliseconds drainTime{15 * 60 * 1000};
 
     // The shortest beat a computer player's move gets, even at Instant, so a watched game of
     // computer players does not hold a core for its whole length.

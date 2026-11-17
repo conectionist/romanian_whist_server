@@ -16,7 +16,8 @@ services:
     security_opt: [no-new-privileges:true]
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-    # Longer than shutdown_delay_ms, plus the time to end every game.
+    # Longer than the server's drain_ms, which is how long it lets running games finish once it is
+    # asked to stop, plus the time to end every game.
     stop_grace_period: 30s
     # To change the settings: copy the image's /etc/whist/config.json beside this file, then
     # volumes: [./config.json:/etc/whist/config.json:ro]

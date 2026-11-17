@@ -6,7 +6,9 @@
 #include "support/Client.h"
 #include "support/Fixtures.h"
 #include "support/Games.h"
+#include "support/ManualClock.h"
 #include "support/Recorder.h"
+#include "support/Requests.h"
 #include "support/ScriptedHuman.h"
 #include "support/ServerMessages.h"
 
@@ -38,7 +40,7 @@ std::string sampleName(const Json::Value& message)
         return "promptClosed." + message["by"].asString();
 
     // The errors that carry something of their own are named for it; any other is "error".
-    if(type == "error" && (message["code"] == "rateLimited" || message["code"] == "busy"))
+    if(type == "error" && (message["code"] == "rateLimited" || message["code"] == "busy" || message["code"] == "draining"))
         return "error." + message["code"].asString();
     return type;
 }
@@ -315,6 +317,24 @@ void limitedGame(Samples& samples)
     keepFirsts(recorder.messagesTo(3), samples);
 }
 
+// A server that has begun to drain: a connection is told, and a game is refused. Nothing here starts
+// a game thread, so the seq of both is the same on every run.
+void drainingGame(Samples& samples)
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = test::clockedService(clock);
+
+    test::Client ana(service, recorder, 1);
+    ana.hello();
+    service->beginDrain(clock->now() + std::chrono::minutes(15));
+
+    Json::Value solo = test::typed("createSolo");
+    solo["settings"] = encodeSettings(test::tableSettings(3, {0}, Level::Cyborg));
+    ana.send(solo);
+    keepFirsts(recorder.messagesTo(1), samples);
+}
+
 } // namespace
 
 TEST_CASE("Every message the server sends has a fixture, and it is up to date", "[fixtures]")
@@ -326,10 +346,11 @@ TEST_CASE("Every message the server sends has a fixture, and it is up to date", 
     onlineGame(samples);
     droppedGame(samples);
     limitedGame(samples);
+    drainingGame(samples);
 
     const std::vector<std::string> expected{
         "welcome", "tableState", "tableState.online", "tableState.waiting", "tableState.replaced", "sync", "held",
-        "held.online", "error", "error.rateLimited", "error.busy",
+        "held.online", "error", "error.rateLimited", "error.busy", "error.draining", "restarting",
         "prompt.bet", "prompt.play", "prompt.bet-blind", "prompt.play-blind",
         "promptClosed.you", "promptClosed.computer",
         "game.gameStarted", "game.roundStarted", "game.betRequested", "game.betPlaced", "game.bettingComplete",

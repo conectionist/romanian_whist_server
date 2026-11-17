@@ -45,7 +45,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.onlineIdle == std::chrono::minutes(10));
     CHECK(options.soloIdle == std::chrono::minutes(30));
     CHECK(options.forgetMember == std::chrono::hours(1));
-    CHECK(options.shutdownDelay == std::chrono::milliseconds(0));
+    CHECK(options.drainTime == std::chrono::minutes(15));
     CHECK(options.instantFloor == std::chrono::milliseconds(30));
     CHECK(options.logLevel == "info");
     CHECK(options.messagesPerSecond == 20);
@@ -66,6 +66,7 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
     const whist::ServerOptions defaults;
 
     CHECK(sample.statusLogInterval == defaults.statusLogInterval);
+    CHECK(sample.drainTime == defaults.drainTime);
     CHECK(sample.messagesPerSecond == defaults.messagesPerSecond);
     CHECK(sample.messageBurst == defaults.messageBurst);
     CHECK(sample.maxConnections == defaults.maxConnections);
@@ -84,7 +85,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
         "io_threads": 4, "max_message_bytes": 1024, "ping_interval_ms": 250,
         "pong_timeout_ms": 900, "reap_interval_ms": 50, "status_log_interval_ms": 250, "grace_period_ms": 700,
         "online_idle_ms": 8000, "solo_idle_ms": 9000, "forget_member_ms": 7000,
-        "shutdown_delay_ms": 900000, "instant_floor_ms": 0, "log_level": "debug",
+        "drain_ms": 61000, "instant_floor_ms": 0, "log_level": "debug",
         "messages_per_second": 5, "message_burst": 7, "max_connections": 100, "max_connections_per_ip": 3,
         "tables_per_ip_per_hour": 4, "failed_joins_per_ip": 2, "failed_join_window_ms": 60000,
         "max_running_games": 9, "trusted_proxies": ["10.0.0.0/8", "2001:db8::/32", "192.0.2.7"]
@@ -103,7 +104,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.onlineIdle == std::chrono::milliseconds(8000));
     CHECK(options.soloIdle == std::chrono::milliseconds(9000));
     CHECK(options.forgetMember == std::chrono::milliseconds(7000));
-    CHECK(options.shutdownDelay == std::chrono::milliseconds(900000));
+    CHECK(options.drainTime == std::chrono::milliseconds(61000));
     CHECK(options.instantFloor == std::chrono::milliseconds(0));
     CHECK(options.logLevel == "debug");
     CHECK(options.messagesPerSecond == 5);
@@ -115,6 +116,15 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.failedJoinWindow == std::chrono::milliseconds(60000));
     CHECK(options.maxRunningGames == 9);
     CHECK(options.trustedProxies == std::vector<std::string>{"10.0.0.0/8", "2001:db8::/32", "192.0.2.7"});
+}
+
+TEST_CASE("The drain may be given no time, and the old delay is not a setting any more", "[options]")
+{
+    CHECK(parseOptions(R"({"drain_ms": 0})").drainTime == std::chrono::milliseconds(0));
+    CHECK_THROWS_WITH(parseOptions(R"({"drain_ms": -1})"), ContainsSubstring("\"drain_ms\""));
+    CHECK_THROWS_WITH(parseOptions(R"({"drain_ms": "900000"})"), ContainsSubstring("\"drain_ms\""));
+    CHECK_THROWS_WITH(parseOptions(R"({"drain_ms": 90000000})"), ContainsSubstring("\"drain_ms\""));
+    CHECK_THROWS_WITH(parseOptions(R"({"shutdown_delay_ms": 0})"), ContainsSubstring("\"shutdown_delay_ms\" is not a known setting"));
 }
 
 TEST_CASE("No proxy may be trusted at all", "[options]")

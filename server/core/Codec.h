@@ -58,6 +58,10 @@ Json::Value promptClosedMessage(std::uint64_t prompt, bool byYou);
 Json::Value heldMessage(const HoldView& hold, Clock::time_point now);
 Json::Value errorMessage(ErrorCode code, std::string_view detail = {});
 
+// The server is going to restart: its running games get until `deadline` at most. The deadline goes
+// out as the milliseconds left at `now`.
+Json::Value restartingMessage(Clock::time_point deadline, Clock::time_point now);
+
 // What a viewer needs to pick a game up where it is, without the engine.
 struct SyncView
 {

@@ -47,6 +47,9 @@ struct TableOptions
 
     // Shared by every table. None: nothing is counted.
     std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
+
+    // Shared by every table. Once it is set, no game starts. None: never set.
+    std::shared_ptr<const std::atomic<bool>> draining;
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's
@@ -73,8 +76,9 @@ public:
     Settings settings() const;
 
     // The host starts the first game, or a new one once the last is over. The old game goes to
-    // the joiner, and everyone is sent the new tableState. When as many games are running as may, or
-    // no thread can be made for this one, the table is left as it was and the answer is Busy.
+    // the joiner, and everyone is sent the new tableState. While the server drains the answer is
+    // Draining; when as many games are running as may, or no thread can be made for this one, it is
+    // Busy. Either way the table is left as it was.
     std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
