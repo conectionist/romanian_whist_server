@@ -76,6 +76,16 @@ void addPageHeaders(const drogon::HttpRequestPtr& request, const drogon::HttpRes
         response->removeHeader("Expires");
 }
 
+drogon::HttpResponsePtr notFoundPage()
+{
+    drogon::HttpResponsePtr response = drogon::HttpResponse::newHttpResponse();
+    response->setStatusCode(drogon::k404NotFound);
+    response->setContentTypeCode(drogon::CT_TEXT_HTML);
+    response->setBody("<!doctype html><html><head><title>404 Not Found</title></head>"
+                      "<body><h1>404 Not Found</h1></body></html>\n");
+    return response;
+}
+
 drogon::HttpResponsePtr versionResponse(std::string_view version, std::string_view commit, int protocol)
 {
     Json::Value body(Json::objectValue);

@@ -21,6 +21,9 @@ std::string_view cacheControlFor(std::string_view path);
 // read.
 void addPageHeaders(const drogon::HttpRequestPtr& request, const drogon::HttpResponsePtr& response);
 
+// What a path with nothing at it is answered with. Drogon's own page names its version.
+drogon::HttpResponsePtr notFoundPage();
+
 // {"version", "commit", "protocol"}: what the page's source links and its About page read.
 drogon::HttpResponsePtr versionResponse(std::string_view version, std::string_view commit, int protocol);
 

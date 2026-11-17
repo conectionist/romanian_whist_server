@@ -245,6 +245,8 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
         .setMaxConnectionNum(options.maxConnections)
         .setClientMaxWebSocketMessageSize(options.maxMessageBytes)
         .enableSendfile(false)
+        .enableServerHeader(false)
+        .setCustom404Page(notFoundPage())
         .registerPreRoutingAdvice([](const drogon::HttpRequestPtr& request, drogon::AdviceCallback&& answer,
                                      drogon::AdviceChainCallback&& proceed)
         {

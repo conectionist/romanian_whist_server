@@ -291,7 +291,8 @@ networks:
 **The headers.** The server sends a content-security-policy, `nosniff`, a referrer policy and cache
 rules itself: on every answer but the 400 and 413 that its parser writes, which have no body. The
 cache rules are on successful answers only, and keep `/version` and `/health` out of every cache,
-so a new server shows at once. The examples add nothing, and a proxy that did would send a header
+so a new server shows at once. No answer says what server or which version it is: there is no
+`Server` header, and the 404 page is a plain one. The examples add nothing, and a proxy that did would send a header
 twice.
 
 - **Updating:** `docker compose pull && docker compose up -d` runs `page` again, which copies the

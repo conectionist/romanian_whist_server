@@ -90,6 +90,9 @@ void checkPolicy(const drogon::HttpResponsePtr& response)
     CHECK(response->getHeader("Content-Security-Policy") == pagePolicy);
     CHECK(response->getHeader("X-Content-Type-Options") == "nosniff");
     CHECK(response->getHeader("Referrer-Policy") == "no-referrer");
+
+    // Nothing says what the server is, or which version of Drogon.
+    CHECK(response->getHeader("Server").empty());
 }
 
 std::string fileText(const std::filesystem::path& path)
@@ -249,6 +252,36 @@ TEST_CASE("Every answer that goes through Drogon's sending has the page's header
     }
 }
 
+TEST_CASE("A path with nothing at it is answered with a plain page that names no version", "[http][headers]")
+{
+    const TestServer& server = testServer();
+
+    const std::string plain = std::string(notFoundPage()->body());
+    CHECK(plain.find("404") != std::string::npos);
+    CHECK(lowered(plain).find("drogon") == std::string::npos);
+
+    for(const char* path : {"/nothing.js", "/assets/nothing.js", "/photos/x.jpg", "/t/bad", "/ws", "/.vite/manifest.json"})
+    {
+        CAPTURE(path);
+        const auto [result, response] = fetch(server.port, path);
+        REQUIRE(result == drogon::ReqResult::Ok);
+        CHECK(response->statusCode() == drogon::k404NotFound);
+        CHECK(std::string(response->body()) == plain);
+        CHECK(response->contentType() == drogon::CT_TEXT_HTML);
+        checkPolicy(response);
+    }
+
+    // However the path is written, the page is the same, and nothing else of the answer names Drogon.
+    const WireAnswer raw = wireGet(server.port, "/%2e%2e/nothing");
+    CHECK(raw.status == 404);
+    CHECK(raw.body == plain);
+    for(const auto& [name, value] : raw.headers)
+    {
+        CAPTURE(name);
+        CHECK(lowered(value).find("drogon") == std::string::npos);
+    }
+}
+
 TEST_CASE("A method the route does not take is refused with the policy and no caching", "[http][headers]")
 {
     const TestServer& server = testServer();
@@ -302,6 +335,7 @@ TEST_CASE("The WebSocket's handshake answer has the policy and no caching rule",
     CHECK(answer.headers.at("x-content-type-options") == "nosniff");
     CHECK(answer.headers.at("referrer-policy") == "no-referrer");
     CHECK_FALSE(answer.headers.contains("cache-control"));
+    CHECK_FALSE(answer.headers.contains("server"));
 }
 
 TEST_CASE("The refusals Drogon makes before it routes have no body, so nothing in them to sniff or frame", "[http][headers]")
@@ -342,6 +376,7 @@ TEST_CASE("A path with a dot segment is not found, however the dot is written", 
         CHECK(answer.body.find(sourceMarker) == std::string::npos);
         CHECK(answer.headers.at("content-security-policy") == pagePolicy);
         CHECK_FALSE(answer.headers.contains("cache-control"));
+        CHECK_FALSE(answer.headers.contains("server"));
     }
 }
 

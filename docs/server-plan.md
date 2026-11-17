@@ -1184,7 +1184,7 @@ should claim ports or fetch certificates.
 | `/t/{code}` | Caddy's rewrite | the server | same |
 | MIME types | Caddy | Drogon (`woff2` as `application/font-woff2`, which browsers accept) | same |
 | Compression | zstd and gzip | Drogon's gzip | same |
-| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400 and 413 that Drogon's parser writes itself, which have no body |
+| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400 and 413 that Drogon's parser writes itself, which have no body. No answer has a `Server` header, and the 404 page is a plain one that names no version |
 | `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server, on 2xx and 304 only: `/assets/*` a year and immutable; `/`, `/index.html` and `/t/*` `no-cache`; `/version` and `/health` `no-store`; the rest an hour |
 | Dotfiles | hidden | `dist/` has none | refused by the server: a path with a segment that starts with a dot, `%2e` included, is a 404 |
 | Files over 200 KB | Caddy | Drogon's sendfile | read whole by the server (`enableSendfile(false)`), so one that changes is never served cut short |
