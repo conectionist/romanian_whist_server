@@ -406,7 +406,7 @@ you do not hold can be ignored.
 
 ## Errors
 
-`error {code, detail}`. `detail` only ever names a field.
+`error {code, detail}`. `detail` names the field at fault; for `rateLimited` it names the limit.
 
 | Code | |
 |---|---|
@@ -419,8 +419,9 @@ you do not hold can be ignored.
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
-| `rateLimited` | Too many messages |
-| `draining` | The server is restarting, or cannot start a game just now, and takes no new games |
+| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`) or joins that found no table (`joins`). The page waits before it tries again |
+| `draining` | The server is restarting, and takes no new games |
+| `busy` | The server is running as many games as it may, so `createSolo` or `startGame` is refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |
 
 ## Catalogues

@@ -773,8 +773,9 @@ The page drops whatever it had queued and renders the sync.
   against (§12), so a mismatch can happen only across a deploy. The server answers
   `error {code: "version"}` and the page reloads itself once.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
-  `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`. Several `badMessage` errors
-  close the connection.
+  `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`, `busy`. Several `badMessage`
+  errors close the connection. `rateLimited` has no `detail` for a connection over its rate, and
+  `connections`, `tables` or `joins` for the per-address limits.
 
 ### 6.9 Keeping the two sides in step
 
@@ -890,7 +891,8 @@ there too.
 **Untrusted input:**
 
 - **Size and rate.** Messages are capped at 4 KiB. Each connection may send about 20 messages a
-  second, with bursts to 40; beyond that it gets an error, then is closed. HTTP request bodies are
+  second, with bursts to 40; beyond that it gets an error, and is closed if it goes over again
+  within 10 s. HTTP request bodies are
   capped at 16 KiB, Drogon's in-memory limit, so Drogon never writes one to disk.
 - **Strict decoding.** Unknown types and unknown fields are rejected.
 - **Every answer is checked** by its seat driver ([§4.7](#47-a-seats-driver)).
@@ -903,8 +905,12 @@ there too.
 - **A join code** is six characters from an alphabet without look-alikes (about 30 bits), so
   failed joins are rate-limited per IP address, and tables expire.
 
-**Limits:** connections per IP address (`setMaxConnectionNumPerIP`), tables created per IP address
-per hour, a maximum number of running games, and members per table no more than its seats.
+**Limits:** connections per client address, tables created per client address per hour, joins that
+found no table per client address, a maximum number of running games (`busy` past it), and members
+per table no more than its seats. Drogon's `setMaxConnectionNumPerIP` counts TCP peers, which behind
+a proxy is the proxy, so the server counts its own. The client's address is the rightmost
+`X-Forwarded-For` entry that is not in `trusted_proxies`, read only when the connection itself comes
+from one of them; with no such entry, the peer's. An IPv6 address counts by its /64.
 
 **The page:**
 

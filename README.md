@@ -68,6 +68,13 @@ docker compose up -d
   ```
   Keep `"address": "0.0.0.0"` and `"port": 8080`: the container's health check and the page's
   Caddy use them. Behind your own proxy, the port on the host is `WHIST_LISTEN` in `.env`.
+- **Limits:** `config.json` also holds the limits: messages per second on a connection, connections
+  and new tables from one address, joins that found no table from one address, connections in all,
+  and games running at once. Past one the server answers `rateLimited`, or `busy` for a game, and
+  the page says so. An address is the client's: when a connection comes from one of
+  `trusted_proxies`, it is the rightmost address in `X-Forwarded-For` that is not in that list. The
+  image trusts the loopback and the private ranges, where Caddy and a proxy on the same host
+  connect from, and believes the header from nowhere else.
 - **Pairing:** the page and the server speak the same protocol only when their versions match. Each
   image carries the version as the label `io.github.conectionist.whist.protocol`:
   ```
@@ -110,7 +117,11 @@ images. A one-shot `page` service copies the built page out of the page's image 
 exits; the server mounts that volume read-only as its `document_root`. Nothing of ours claims a
 port or fetches a certificate. `.env` can set `WHIST_SERVER_TAG`, `WHIST_WEB_TAG` and
 `WHIST_LISTEN`, which is where the server listens (`127.0.0.1:8080`). It speaks plain HTTP: use
-`0.0.0.0:8080` only for a proxy on another host, over a private network.
+`0.0.0.0:8080` only for a proxy on another host, over a private network, and never where the open
+internet or a network of strangers can reach it. The server believes `X-Forwarded-For` from the
+private ranges (`trusted_proxies` in its configuration), so anyone who reaches the port from one
+could write any address they like and slip the limits per address. Your proxy must send the header:
+the nginx example does, and Caddy's `reverse_proxy` does by itself.
 
 Give the game a host of its own, such as `whist.example.org`. A sub-path such as
 `example.org/whist` does not work, because the page's links start at the root.
