@@ -431,6 +431,10 @@ you do not hold can be ignored.
 
 `error {code, detail}`. `detail` names the field at fault; for `rateLimited` it names the limit.
 
+**The message rate.** A connection may send 20 messages a second on average, in bursts of up to 40.
+A message past that is not carried out: the server answers `rateLimited`, with no `detail`, and
+drops it. A second one within 10 seconds of the last closes the connection.
+
 | Code | |
 |---|---|
 | `badMessage` | Not valid JSON, an unknown type or field, a value out of range, or a name, gender or portrait the rules refuse |

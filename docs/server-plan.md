@@ -1124,18 +1124,25 @@ with `libjsoncpp25`, and recording the failing log.
   of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
   adds it.
 - **Configuration.** `server/app/config.json` listens on `127.0.0.1`, which does not work inside a
-  container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"` and
-  `"document_root": "/opt/whist/www"`, and is the image's `/etc/whist/config.json`. A test
-  (`[options]`) fails when the two differ in anything else, or when the image's cannot be loaded.
+  container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"`,
+  `"document_root": "/opt/whist/www"` and `trusted_proxies` widened to the private ranges, where
+  Caddy and a proxy on the same host connect from. It is the image's `/etc/whist/config.json`. A
+  test (`[options]`) fails when the two differ in anything else, or when the image's cannot be
+  loaded.
   Settings have no environment overrides: to change one, mount a file over
   `/etc/whist/config.json`. The address and port 8080 must stay, since the health check uses them.
   The port on the host is `WHIST_LISTEN`, in the own-proxy compose file; the full stack's server
   publishes none.
 - **Stopping.** `STOPSIGNAL SIGTERM`: the server's handlers only set a flag, and a timer on the main
-  loop then ends the games and exits with 0 within about 5 s ([§4.6](#46-threads-and-locks), and
-  `ShutdownTests`), so it is safe as PID 1. The compose files allow 30 s. CI checks that
-  `docker stop -t 30` gives exit code 0.
-- **Health** is a TCP check on the port, because the server has no health route yet.
+  loop then drains ([§12.3](#123-either-way)) and exits with 0, so it is safe as PID 1. With nobody
+  at its games it is at once; otherwise it waits for them, at most `drain_ms` (15 minutes). The
+  compose files allow 16 minutes (`stop_grace_period: 16m`), which outlasts it, so Docker does not
+  kill a drain. CI checks that a stop with nobody at the games and one with a game someone is at
+  both give exit code 0, and that `drain_ms` is under the grace period.
+- **Health** is `GET /health`, asked by the server itself: the image's `HEALTHCHECK` runs
+  `whist_server --health-check --config /etc/whist/config.json`, which prints `ok`, `draining` or
+  what went wrong, and exits 0 for a server that is ok or draining, which is alive, and 1 for
+  anything else, a flag or a configuration it cannot read included. Never 2, which Docker reserves.
 - **Hardening** in the compose files: a read-only root with a tmpfs on `/tmp` (Drogon's upload
   folder is under it), all capabilities dropped, `no-new-privileges`, and 65536 open files.
 - **Size:** CI fails the build above 150 MB, counted as the sum of the layers. The Ubuntu base is
@@ -1153,9 +1160,12 @@ is [§12.1.1](#1211-behind-your-own-proxy). `compose.yaml` builds the server fro
 - **`build-ubuntu-26`:** the same build and tests inside an `ubuntu:26.04` container, on the
   image's toolchain (g++ 15, CMake 4.2), which is newer than the first job's. Warnings are not
   errors there.
-- **`docker`:** builds the image, runs it with the hardening flags, plays a game with
-  `tools/smoke/smoke.mjs`, checks `docker stop -t 30` and the compose files, and holds the size to
-  its budget. A tag must equal the `VERSION` in `CMakeLists.txt`.
+- **`docker`:** builds the image, runs it with the hardening flags, and plays a game with
+  `tools/smoke/smoke.mjs` and a short run of the load test. It checks the health check and
+  `/health`, a stop with nobody at the games and one with a game someone is at (exit code 0, the
+  second after a drain, with `/health` saying 503 meanwhile), and the compose files' grace period
+  against `drain_ms`. It holds the size to its budget. A tag must equal the `VERSION` in
+  `CMakeLists.txt`.
 - **`publish`:** needs the three jobs above, and runs only on a push to `master` or to a version
   tag, or when a manual run asks for it, which tags the image `sha-<commit>` and with the branch's
   name, never `latest`. A pull request never publishes.
@@ -1193,7 +1203,7 @@ should claim ports or fetch certificates.
 | `/t/{code}` | Caddy's rewrite | the server | same |
 | MIME types | Caddy | Drogon (`woff2` as `application/font-woff2`, which browsers accept) | same |
 | Compression | zstd and gzip | Drogon's gzip | same |
-| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400 and 413 that Drogon's parser writes itself, which have no body. No answer has a `Server` header, and the 404 page is a plain one that names no version |
+| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400, 405 (a method it does not know) and 413 that Drogon's parser writes itself, which have no body and no headers. No answer has a `Server` header, and the 404 page is a plain one that names no version |
 | `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server, on 2xx and 304 only: `/assets/*` a year and immutable; `/`, `/index.html` and `/t/*` `no-cache`; `/version` and `/health` `no-store`; the rest an hour |
 | Dotfiles | hidden | `dist/` has none | refused by the server: a path with a segment that starts with a dot, `%2e` included, is a 404 |
 | Files over 200 KB | Caddy | Drogon's sendfile | read whole by the server (`enableSendfile(false)`), so one that changes is never served cut short |
@@ -1217,7 +1227,7 @@ That is acceptable without a server change now: the examples carry the headers u
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
   `nginx/whist.conf`, to include inside a server block. Each forwards everything, `/health` and
   `/version` included, passes the WebSocket on, and sends `X-Forwarded-For`. Neither adds a header
-  or a cache rule: the server sends them, on every answer but the two its parser writes, and its
+  or a cache rule: the server sends them, on every answer but the three its parser writes, and its
   rules keep errors and `/version` and `/health` out of every cache. Before the server did, the
   examples carried the headers, in files of their own because an nginx location's `add_header`
   drops the ones it inherits. The game needs a host of its own: a sub-path is not supported, since
@@ -1438,8 +1448,9 @@ request. The commits after it change only this plan.
     `{"status":"draining"}` from the moment the server is asked to stop. `GET /version` gives
     `{"version", "commit", "protocol"}`;
   - one log line a minute (`status_log_interval_ms`), starting with `status `, of `key=value`
-    pairs: connections, tables by state, game threads, moves made by stand-ins, the share of a core
-    used since the last line, processor seconds and peak memory.
+    pairs: connections, tables by state, game threads, the attended games that
+    `max_running_games` limits, moves made by stand-ins, the share of a core used since the last
+    line, processor seconds and peak memory.
 - **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to this
   repository at that commit, which covers the AGPL's section 13 for the server and the engine. It
   links `romanian_whist_web` too, at the commit the page was built from.

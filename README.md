@@ -296,7 +296,8 @@ networks:
 ```
 
 **The headers.** The server sends a content-security-policy, `nosniff`, a referrer policy and cache
-rules itself: on every answer but the 400 and 413 that its parser writes, which have no body. The
+rules itself: on every answer but the 400, 405 (for a method it does not know) and 413 that its
+parser writes, which have no body and no headers. The
 cache rules are on successful answers only, and keep `/version` and `/health` out of every cache,
 so a new server shows at once. No answer says what server or which version it is: there is no
 `Server` header, and the 404 page is a plain one. The examples add nothing, and a proxy that did would send a header
@@ -342,7 +343,7 @@ the settings if you like, and play or watch a solo game.
 set `document_root` to its built `dist/` folder.
 
 The server answers two small questions about itself. `GET /version` gives the version, the commit
-and the protocol number, as `{"commit": "…", "protocol": 1, "version": "…"}`. `GET /health` gives 200
+and the protocol number, as `{"commit": "…", "protocol": 2, "version": "…"}`. `GET /health` gives 200
 `{"status":"ok"}` while it runs, and 503 `{"status":"draining"}` once it has been asked to stop: that
 is the address for an uptime monitor. Ctrl-C asks it to stop, which waits for the games that
 someone is at, up to `drain_ms`; Ctrl-C again stops it at once.
