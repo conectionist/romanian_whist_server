@@ -2,6 +2,7 @@
 
 #include "core/Codec.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace whist
@@ -118,6 +119,26 @@ bool Outbox::detach(MemberId member, const Connection* connection)
         return false;
     links_.erase(found);
     return true;
+}
+
+std::size_t Outbox::openLinks() const
+{
+    std::vector<std::shared_ptr<Link>> links;
+    {
+        std::lock_guard lock(mutex_);
+        for(const std::weak_ptr<Link>& weak : opened_)
+        {
+            if(std::shared_ptr<Link> link = weak.lock())
+                links.push_back(std::move(link));
+        }
+    }
+
+    // A link's lock comes before the Outbox's, so each is taken with the Outbox's let go.
+    return static_cast<std::size_t>(std::ranges::count_if(links, [](const std::shared_ptr<Link>& link)
+    {
+        std::lock_guard lock(link->mutex_);
+        return !link->closed_;
+    }));
 }
 
 bool Outbox::isConnected(MemberId member) const

@@ -46,6 +46,20 @@ const std::string& Service::commit() const
     return commit_;
 }
 
+ServerStatus Service::status() const
+{
+    const Registry::TableCounts tables = registry_.tableCounts();
+
+    ServerStatus status;
+    status.connections = outbox_.openLinks();
+    status.tablesInLobby = tables.lobby;
+    status.tablesPlaying = tables.playing;
+    status.tablesFinished = tables.finished;
+    status.gameThreads = registry_.runningGames();
+    status.standInMoves = registry_.standInMoves();
+    return status;
+}
+
 void Service::shutdown()
 {
     registry_.shutdown();

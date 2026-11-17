@@ -52,7 +52,8 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
             throw std::invalid_argument("a human seat needs its member");
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
-                                                       turnTimer, outbox, setup.promptIds, setup.changed));
+                                                       turnTimer, outbox, setup.promptIds, setup.changed,
+                                                       setup.standInMoves));
     }
     return drivers;
 }

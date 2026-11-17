@@ -27,6 +27,10 @@ struct ServerOptions
     // How often the server looks for silent connections, and for tables to reap.
     std::chrono::milliseconds reapInterval{1000};
 
+    // How often the log says what the server is doing: connections, tables, game threads, moves
+    // made for members, and the processor's share.
+    std::chrono::milliseconds statusLogInterval{60000};
+
     // How long, from when their connection went, an online player's turn is waited for before a
     // computer player takes their seat.
     std::chrono::milliseconds gracePeriod{30000};

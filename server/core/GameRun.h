@@ -48,6 +48,9 @@ struct GameRunSetup
 
     std::shared_ptr<std::atomic<std::uint64_t>> promptIds;
 
+    // Counts the moves computer players make for members.
+    std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
+
     // The place this game holds among the running ones, given back when its thread is done with the
     // engine.
     std::optional<RunningGames::Slot> slot;

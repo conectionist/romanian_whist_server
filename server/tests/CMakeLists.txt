@@ -48,6 +48,7 @@ add_executable(core_tests
     core/SessionTests.cpp
     core/SettingsTests.cpp
     core/SoloTests.cpp
+    core/StatusTests.cpp
     core/TableTests.cpp
 )
 target_include_directories(core_tests PRIVATE core)
@@ -76,6 +77,7 @@ add_executable(app_tests
     app/ServerTests.cpp
     app/SpikeTests.cpp
     app/ShutdownTests.cpp
+    app/StatusLogTests.cpp
 )
 target_compile_options(app_tests PRIVATE ${WHIST_SERVER_WARNINGS})
 target_link_libraries(app_tests PRIVATE whist_app Catch2::Catch2WithMain)

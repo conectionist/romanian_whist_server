@@ -46,6 +46,8 @@ add_library(whist_session STATIC
     Service.cpp
     Session.h
     Session.cpp
+    Status.h
+    Status.cpp
     Settings.h
     Settings.cpp
     Table.h

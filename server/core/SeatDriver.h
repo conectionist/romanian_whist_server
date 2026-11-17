@@ -39,10 +39,11 @@ public:
 
     // A seat with a member asks that member, and its computer player (if any) stands in when a
     // turn times out or the member is gone. A seat with no member is played by its computer player
-    // alone.
+    // alone. `standInMoves`, when given, counts the moves a computer player makes for a member.
     SeatDriver(romanian_whist::Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
-               std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed = {});
+               std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed = {},
+               std::shared_ptr<std::atomic<std::uint64_t>> standInMoves = {});
 
     SeatDriver(const SeatDriver&) = delete;
     SeatDriver& operator=(const SeatDriver&) = delete;
@@ -113,6 +114,10 @@ private:
 
     void notifyTable() const;
 
+    // The move a computer player makes in place of the member.
+    template<typename Move>
+    auto standIn(Move&& move);
+
     const romanian_whist::Seat seat_;
     const std::optional<MemberId> member_;
     const ComputerPlayer computer_;
@@ -121,6 +126,7 @@ private:
     const std::shared_ptr<std::atomic<std::uint64_t>> promptIds_;
     const romanian_whist::CardValidator validator_{};
     const Changed onChange_;
+    const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_;
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;

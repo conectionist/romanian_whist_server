@@ -61,6 +61,10 @@ public:
     // True when it was, and is now gone.
     bool detach(MemberId member, const Connection* connection);
 
+    // How many links are open: a connection that has not said hello yet counts, one that has been
+    // closed does not.
+    std::size_t openLinks() const;
+
     bool isConnected(MemberId member) const;
     bool isCurrent(MemberId member, const Connection* connection) const;
 

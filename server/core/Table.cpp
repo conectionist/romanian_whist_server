@@ -192,6 +192,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
         setup.instantFloor = options_.instantFloor;
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
+        setup.standInMoves = options_.standInMoves;
         setup.slot = std::move(slot);
         setup.changed = [self = weak_from_this(), game = setup.game]
         {

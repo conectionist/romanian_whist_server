@@ -4,6 +4,7 @@
 #include "core/Limits.h"
 #include "core/Outbox.h"
 #include "core/Registry.h"
+#include "core/Status.h"
 
 #include <chrono>
 #include <string>
@@ -41,6 +42,9 @@ public:
     Limits& limits();
     const std::string& version() const;
     const std::string& commit() const;
+
+    // What the server is doing: everything of a ServerStatus but the processor and the memory.
+    ServerStatus status() const;
 
     // Closes every table and joins every game thread, then stops the Outbox, so nothing is sent
     // after it returns. Call it before Drogon quits.

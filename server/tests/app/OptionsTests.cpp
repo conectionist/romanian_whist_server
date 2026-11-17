@@ -40,6 +40,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.pingInterval == std::chrono::milliseconds(10000));
     CHECK(options.pongTimeout == std::chrono::milliseconds(30000));
     CHECK(options.reapInterval == std::chrono::milliseconds(1000));
+    CHECK(options.statusLogInterval == std::chrono::milliseconds(60000));
     CHECK(options.gracePeriod == std::chrono::milliseconds(30000));
     CHECK(options.onlineIdle == std::chrono::minutes(10));
     CHECK(options.soloIdle == std::chrono::minutes(30));
@@ -64,6 +65,7 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
     const whist::ServerOptions sample = whist::loadOptions(path);
     const whist::ServerOptions defaults;
 
+    CHECK(sample.statusLogInterval == defaults.statusLogInterval);
     CHECK(sample.messagesPerSecond == defaults.messagesPerSecond);
     CHECK(sample.messageBurst == defaults.messageBurst);
     CHECK(sample.maxConnections == defaults.maxConnections);
@@ -80,7 +82,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     const whist::ServerOptions options = parseOptions(R"({
         "address": "::1", "port": 9000, "document_root": "/srv/whist",
         "io_threads": 4, "max_message_bytes": 1024, "ping_interval_ms": 250,
-        "pong_timeout_ms": 900, "reap_interval_ms": 50, "grace_period_ms": 700,
+        "pong_timeout_ms": 900, "reap_interval_ms": 50, "status_log_interval_ms": 250, "grace_period_ms": 700,
         "online_idle_ms": 8000, "solo_idle_ms": 9000, "forget_member_ms": 7000,
         "shutdown_delay_ms": 900000, "instant_floor_ms": 0, "log_level": "debug",
         "messages_per_second": 5, "message_burst": 7, "max_connections": 100, "max_connections_per_ip": 3,
@@ -96,6 +98,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.pingInterval == std::chrono::milliseconds(250));
     CHECK(options.pongTimeout == std::chrono::milliseconds(900));
     CHECK(options.reapInterval == std::chrono::milliseconds(50));
+    CHECK(options.statusLogInterval == std::chrono::milliseconds(250));
     CHECK(options.gracePeriod == std::chrono::milliseconds(700));
     CHECK(options.onlineIdle == std::chrono::milliseconds(8000));
     CHECK(options.soloIdle == std::chrono::milliseconds(9000));
@@ -154,7 +157,7 @@ TEST_CASE("A limit is refused when it is 0, negative or not a number", "[options
 {
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
                            "tables_per_ip_per_hour", "failed_joins_per_ip", "failed_join_window_ms",
-                           "max_running_games"})
+                           "max_running_games", "status_log_interval_ms"})
     {
         for(const char* value : {"0", "-1", "\"20\"", "true", "1.5", "null"})
         {

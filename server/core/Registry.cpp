@@ -26,9 +26,11 @@ std::function<std::uint64_t()> systemRandom()
     };
 }
 
-TableOptions withGames(TableOptions options, std::shared_ptr<RunningGames> games)
+TableOptions withCounters(TableOptions options, std::shared_ptr<RunningGames> games,
+                          std::shared_ptr<std::atomic<std::uint64_t>> standInMoves)
 {
     options.runningGames = std::move(games);
+    options.standInMoves = std::move(standInMoves);
     return options;
 }
 
@@ -37,7 +39,7 @@ TableOptions withGames(TableOptions options, std::shared_ptr<RunningGames> games
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
       runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
-      tableOptions_(withGames(options.table, runningGames_)),
+      tableOptions_(withCounters(options.table, runningGames_, standInMoves_)),
       forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
@@ -311,6 +313,35 @@ std::size_t Registry::tableCount() const
 std::size_t Registry::runningGames() const
 {
     return runningGames_->count();
+}
+
+std::uint64_t Registry::standInMoves() const
+{
+    return standInMoves_->load();
+}
+
+Registry::TableCounts Registry::tableCounts() const
+{
+    std::vector<std::shared_ptr<Table>> tables;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [code, table] : tables_)
+            tables.push_back(table);
+    }
+
+    // Each table's state is read under its own lock, which this one is not held for.
+    TableCounts counts;
+    for(const std::shared_ptr<Table>& table : tables)
+    {
+        switch(table->state())
+        {
+            case TableState::Lobby: counts.lobby++; break;
+            case TableState::Playing: counts.playing++; break;
+            case TableState::Finished: counts.finished++; break;
+            case TableState::Closed: break;
+        }
+    }
+    return counts;
 }
 
 void Registry::closeTable(std::string_view code)

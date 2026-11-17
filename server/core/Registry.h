@@ -7,6 +7,7 @@
 #include "core/Settings.h"
 #include "core/Table.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -87,6 +88,19 @@ public:
     // How many game threads are running now.
     std::size_t runningGames() const;
 
+    // How many moves computer players have made for members, since the Registry was made.
+    std::uint64_t standInMoves() const;
+
+    struct TableCounts
+    {
+        std::size_t lobby = 0;
+        std::size_t playing = 0;
+        std::size_t finished = 0;
+    };
+
+    // The tables there are, by what they are doing.
+    TableCounts tableCounts() const;
+
     void closeTable(std::string_view code);
 
     // Called every second or so. Closes tables that have been idle too long, and forgets members who
@@ -117,6 +131,7 @@ private:
 
     Outbox& outbox_;
     const std::shared_ptr<RunningGames> runningGames_;
+    const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_ = std::make_shared<std::atomic<std::uint64_t>>(0);
     const TableOptions tableOptions_;
     const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();

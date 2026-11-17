@@ -44,6 +44,9 @@ struct TableOptions
 
     // Shared by every table. None: any number of games may run.
     std::shared_ptr<RunningGames> runningGames;
+
+    // Shared by every table. None: nothing is counted.
+    std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's

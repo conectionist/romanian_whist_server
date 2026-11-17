@@ -3,6 +3,7 @@
 #include "app/GameController.h"
 #include "core/BuildInfo.h"
 #include "core/Service.h"
+#include "core/Status.h"
 
 #include <drogon/drogon.h>
 
@@ -85,6 +86,20 @@ void watchForSilence(std::chrono::milliseconds interval)
     {
         if(service())
             service()->reap(Clock::now());
+    });
+}
+
+// Logs what the server is doing, so that a quiet day and a busy one can be told apart afterwards.
+void watchStatus(std::chrono::milliseconds interval)
+{
+    drogon::app().getLoop()->runEvery(interval, [meter = CpuMeter()]() mutable
+    {
+        if(!service())
+            return;
+
+        ServerStatus status = service()->status();
+        meter.measure(status);
+        LOG_INFO << statusLine(status);
     });
 }
 
@@ -183,10 +198,11 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
                                                            TrustedProxies(options.trustedProxies)))
         .disableSigtermHandling()
         .registerBeginningAdvice([shutdownDelay = options.shutdownDelay, reapInterval = options.reapInterval,
-                                  onListening = std::move(onListening)]
+                                  statusInterval = options.statusLogInterval, onListening = std::move(onListening)]
         {
             watchForStop(shutdownDelay);
             watchForSilence(reapInterval);
+            watchStatus(statusInterval);
             whenListening([onListening]
             {
                 announce();
