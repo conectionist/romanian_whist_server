@@ -36,8 +36,8 @@ struct TableOptions
     std::chrono::milliseconds gracePeriod{30000};
 
     // How long a table is kept once nobody at it is connected.
-    std::chrono::milliseconds onlineIdle{10 * 60 * 1000};
-    std::chrono::milliseconds soloIdle{30 * 60 * 1000};
+    std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
+    std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
     // For tests: the turn timer of every online table that has one, whatever its settings allow.
     std::optional<std::chrono::milliseconds> turnTimerOverride;

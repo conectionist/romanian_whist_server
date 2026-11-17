@@ -35,9 +35,9 @@ struct ServerOptions
     // computer player takes their seat.
     std::chrono::milliseconds gracePeriod{30000};
 
-    // How long a table is kept once nobody at it is connected: ten minutes online, half an hour solo.
-    std::chrono::milliseconds onlineIdle{10 * 60 * 1000};
-    std::chrono::milliseconds soloIdle{30 * 60 * 1000};
+    // How long a table is kept once nobody at it is connected: five minutes online, ten solo.
+    std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
+    std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
     // How long a member who is at no table and not connected is remembered.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};

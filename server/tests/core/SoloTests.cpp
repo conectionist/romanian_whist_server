@@ -481,7 +481,7 @@ TEST_CASE("A watched game holds while its watcher is away, and goes on when they
     CHECK(solo.waitFor(gameEvent("gameOver")));
 }
 
-TEST_CASE("A solo table nobody returns to closes after half an hour, and its game's thread is joined", "[solo][away]")
+TEST_CASE("A solo table nobody returns to closes after ten minutes, and its game's thread is joined", "[solo][away]")
 {
     Solo solo(milliseconds(10));
     solo.create(test::tableSettings(3, {}));
@@ -490,9 +490,9 @@ TEST_CASE("A solo table nobody returns to closes after half an hour, and its gam
 
     Registry& registry = solo.service->registry();
     const std::size_t joined = registry.joiner().joined();
-    solo.service->reap(Clock::now() + std::chrono::minutes(29));
+    solo.service->reap(Clock::now() + std::chrono::minutes(9));
     CHECK(registry.tableCount() == 1);
-    solo.service->reap(Clock::now() + std::chrono::minutes(31));
+    solo.service->reap(Clock::now() + std::chrono::minutes(11));
     CHECK(registry.tableCount() == 0);
 
     const auto end = Clock::now() + milliseconds(1000 * test::slowdown);

@@ -42,8 +42,8 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.reapInterval == std::chrono::milliseconds(1000));
     CHECK(options.statusLogInterval == std::chrono::milliseconds(60000));
     CHECK(options.gracePeriod == std::chrono::milliseconds(30000));
-    CHECK(options.onlineIdle == std::chrono::minutes(10));
-    CHECK(options.soloIdle == std::chrono::minutes(30));
+    CHECK(options.onlineIdle == std::chrono::minutes(5));
+    CHECK(options.soloIdle == std::chrono::minutes(10));
     CHECK(options.forgetMember == std::chrono::hours(1));
     CHECK(options.drainTime == std::chrono::minutes(15));
     CHECK(options.instantFloor == std::chrono::milliseconds(30));
@@ -66,6 +66,8 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
     const whist::ServerOptions sample = whist::loadOptions(path);
     const whist::ServerOptions defaults;
 
+    CHECK(sample.onlineIdle == defaults.onlineIdle);
+    CHECK(sample.soloIdle == defaults.soloIdle);
     CHECK(sample.statusLogInterval == defaults.statusLogInterval);
     CHECK(sample.drainTime == defaults.drainTime);
     CHECK(sample.messagesPerSecond == defaults.messagesPerSecond);

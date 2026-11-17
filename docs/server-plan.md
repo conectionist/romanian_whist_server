@@ -516,9 +516,9 @@ Lobby ──start──> Playing ──last round scored──> Finished ──n
 
 - **Lobby.** Members join and choose seats and profiles; the host sets up the seats and settings
   and starts the game. If the host leaves, the human who has been there longest becomes host; if
-  no human is left, the table closes after 10 minutes.
+  no human is left, the table closes after 5 minutes.
 - **Playing.** One `GameRun`. While no human at the table is connected, the game holds (there is
-  no point in computers playing for nobody). The table closes after 10 minutes unless someone
+  no point in computers playing for nobody). The table closes after 5 minutes unless someone
   returns.
 - **Finished.** The standings are shown, and the host can start a new game with the same seats: a
   new `GameRun` at the same table, so nobody needs a new link.
@@ -552,7 +552,7 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   thread, and `attended_games` is the ones the maximum counts.
 - **A second maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
   or not, since a table holds its memory for as long as it is kept, a parked game included, until the
-  idle timeouts end it. `createSolo` and `createTable` past it are refused with `busy`, and the
+  idle timeouts (5 minutes online, 10 solo) end it. `createSolo` and `createTable` past it are refused with `busy`, and the
   address's quota of new tables is given back. Joining a table that exists is not making one, and a
   player coming back to theirs is never refused.
 
@@ -607,7 +607,7 @@ controller's `handleNewMessage`, as phase 1's spike showed.
 ### 5.4 Solo is different
 
 Nobody else is waiting, so a solo game never replaces you. When you go away, the game holds where
-it is, and goes on when you come back, for up to 30 minutes, after which the table closes. There is
+it is, and goes on when you come back, for up to 10 minutes, after which the table closes. There is
 no turn timer. A watched game of computer players holds in the same way when its watcher goes away:
 it is a table with no human here.
 
@@ -2326,7 +2326,7 @@ The plan assumes each default until the owner decides otherwise.
 | D14 | Phones? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D15 | Spectators at others' tables? | Later, and never seeing hands while humans play |
 | D16 | Seeds in online games? | Not offered |
-| D17 | A solo player who goes away? | The game holds for up to 30 minutes |
+| D17 | A solo player who goes away? | The game holds for up to 10 minutes |
 | D18 | Which look? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D19 | Chat? | None |
 | D20 | Hosting? | **Decided by the owner, 2026-11-10:** Docker Compose with the two images (recommended), with Caddy in the page's image, or behind the user's own proxy with the server serving the page; by hand with Caddy and systemd stays possible |
