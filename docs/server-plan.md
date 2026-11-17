@@ -1171,9 +1171,11 @@ should claim ports or fetch certificates.
 | `/t/{code}` | Caddy's rewrite | the server | same |
 | MIME types | Caddy | Drogon (`woff2` as `application/font-woff2`, which browsers accept) | same |
 | Compression | zstd and gzip | Drogon's gzip | same |
-| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server |
-| `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server |
-| Dotfiles | hidden | `dist/` has none | refused by the server |
+| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400 and 413 that Drogon's parser writes itself, which have no body |
+| `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server, on 2xx and 304 only: `/assets/*` a year and immutable; `/`, `/index.html` and `/t/*` `no-cache`; `/version` and `/health` `no-store`; the rest an hour |
+| Dotfiles | hidden | `dist/` has none | refused by the server: a path with a segment that starts with a dot, `%2e` included, is a 404 |
+| Files over 200 KB | Caddy | Drogon's sendfile | read whole by the server (`enableSendfile(false)`), so one that changes is never served cut short |
+| `/version`, `/health` | passed on, never cached | the server | the server |
 
 That is acceptable without a server change now: the examples carry the headers until phase 9.
 
@@ -1387,9 +1389,12 @@ request. The commits after it change only this plan.
 
   Deploys wait for a quiet moment.
 - **Health:**
-  - `GET /health` (`app().registerHandler`), for uptime monitoring;
-  - one log line a minute with counters: connections, tables by state, game threads, moves made by
-    stand-ins, CPU.
+  - `GET /health` (`app().registerHandler`), for uptime monitoring: 200 `{"status":"ok"}`, and 503
+    `{"status":"draining"}` from the moment the server is asked to stop. `GET /version` gives
+    `{"version", "commit", "protocol"}`;
+  - one log line a minute (`status_log_interval_ms`), starting with `status `, of `key=value`
+    pairs: connections, tables by state, game threads, moves made by stand-ins, the share of a core
+    used since the last line, processor seconds and peak memory.
 - **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to this
   repository at that commit, which covers the AGPL's section 13 for the server and the engine. It
   links `romanian_whist_web` too, at the commit the page was built from.

@@ -55,7 +55,10 @@ docker compose up -d
 
 - **Updating:** `docker compose pull && docker compose up -d`. A service whose image is new is
   restarted; the server's restart ends the games that are running.
-- **Logs:** `docker compose logs -f server`, or `web`.
+- **Logs:** `docker compose logs -f server`, or `web`. The server writes a line that starts with
+  `status` once a minute (`status_log_interval_ms`): connections, tables by state, game threads,
+  moves made for players who went away, the share of a core it used since the last line, and its
+  processor time and peak memory.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
 - **Stopping the server** takes a few seconds: on SIGTERM it ends every game and closes every
   connection. The compose file allows it 30 s.
@@ -177,10 +180,11 @@ networks:
     external: true
 ```
 
-**Why the examples add headers.** The server does not send a content-security-policy, `nosniff`, a
-referrer policy or cache rules yet; phase 9 adds them. The Caddy image sets them for the full stack,
-and the examples set them for your proxy, with the same values, so the page behaves the same. Once
-the server sends them, the lines in the examples become redundant.
+**The headers.** The server sends a content-security-policy, `nosniff`, a referrer policy and cache
+rules itself: on every answer but the 400 and 413 that its parser writes, which have no body. The
+cache rules are on successful answers only. The lines in the examples repeat them, with the same
+values, and are redundant; an nginx that includes them sends each header twice, which browsers
+accept.
 
 - **Updating:** `docker compose pull && docker compose up -d` runs `page` again, which copies the
   files that changed. The server restarts only when its own image is new, which ends the games that
@@ -220,6 +224,11 @@ Then open http://127.0.0.1:8080, which shows the debug page in `server/www/`: pi
 the settings if you like, and play or watch a solo game.
 `server/app/config.json` lists every setting with its default. To serve the browser page instead,
 set `document_root` to its built `dist/` folder.
+
+The server answers two small questions about itself. `GET /version` gives the version, the commit
+and the protocol number, as `{"commit": "…", "protocol": 1, "version": "…"}`. `GET /health` gives 200
+`{"status":"ok"}` while it runs, and 503 `{"status":"draining"}` once it has been asked to stop: that
+is the address for an uptime monitor.
 
 ## Building the image yourself
 
