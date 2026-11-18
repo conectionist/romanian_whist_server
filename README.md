@@ -58,8 +58,9 @@ docker compose up -d
   `tmux` or `nohup` keeps the command alive if your connection drops.
 - **Logs:** `docker compose logs -f server`, or `web`. The server writes a line that starts with
   `status` once a minute (`status_log_interval_ms`): connections, tables by state, game threads,
-  moves made for players who went away, the share of a core it used since the last line, and its
-  processor time and peak memory.
+  the games someone is at (`attended_games`, which `max_running_games` limits), moves made for
+  players who went away, the share of a core it used since the last line, and its processor time
+  and peak memory.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
 - **Stopping the server** is a drain. On SIGTERM it takes no new tables or games, tells everyone it
   is restarting, and waits for the games that someone is at to end, for at most `drain_ms` (15
@@ -215,7 +216,8 @@ everything, as the examples below do. It answers `{"status":"ok"}`, or 503 `{"st
 while a stop is being waited out. Pause the monitor for a deploy, or expect one alert.
 
 On the machine itself, `docker compose logs server` shows a line that starts with `status` every
-minute: connections, tables, game threads and the share of a core the server used.
+minute: connections, tables, game threads, the games someone is at (`attended_games`) and the share
+of a core the server used.
 
 ## Behind your own reverse proxy
 

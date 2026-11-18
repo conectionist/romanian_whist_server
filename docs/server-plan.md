@@ -418,7 +418,8 @@ The rules:
 3. **A game thread never waits for an I/O thread.** It sends through the `Outbox`, which queues.
 4. **Locks are taken in one order: `Registry`, then `Table`, then `SeatDriver`, then the
    publisher's cache.** Never the reverse. No lock is held while sending, while calling into the
-   engine, or while a computer player decides.
+   engine, or while a computer player decides. `GameRun`'s `slotMutex_`, which guards the slot the
+   game counts by, is taken under the `Table` lock and takes no other lock.
 5. **Every wait on a game thread has a deadline or a cancel.** The seat driver's wait has the turn
    timer, the grace period and abandonment. The publisher's pacing has cancellation and the round
    hold's timeout. The desktop client learned this with `GameBridge::setPaused()`: a wait with no
