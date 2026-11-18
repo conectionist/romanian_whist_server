@@ -508,17 +508,22 @@ curl -fsSL -o tools/smoke/smoke.mjs $base/tools/smoke/smoke.mjs
 curl -fsSL -o load-config.json $base/deploy/load-config.json
 printf 'services:\n  server:\n    volumes:\n      - ./load-config.json:/etc/whist/config.json:ro\n' > docker-compose.load.yml
 
-docker compose -f docker-compose.yml -f docker-compose.load.yml up -d server
-docker compose -f docker-compose.yml -f docker-compose.load.yml logs -f --no-log-prefix --tail 0 server > server.log &
-
-docker run --rm --network whist_default -v "$PWD/tools:/tools:ro" -v "$PWD/server.log:/server.log:ro" \
-    node:26 nice -n 19 node /tools/load/load.mjs --url http://server:8080 --status-log /server.log \
-    --kind solo --cores 2
+load="docker compose -f docker-compose.yml -f docker-compose.load.yml"
+for kind in solo instant online; do
+    $load up -d --force-recreate --wait server
+    $load logs -f --no-log-prefix --tail 0 server > server.log &
+    follow=$!
+    docker run --rm --network whist_default -v "$PWD/tools:/tools:ro" -v "$PWD/server.log:/server.log:ro" \
+        node:26 nice -n 19 node /tools/load/load.mjs --url http://server:8080 --status-log /server.log \
+        --kind $kind --cores 2
+    kill $follow
+done
 ```
 
-Replace `master` with the commit the server runs. Run the last command again with `--kind instant`
-and `--kind online`, then stop the log with `kill %1` and put the stack back with
-`docker compose up -d`. The cap that the three runs agree on, the smallest of them, goes into
+Replace `master` with the commit the server runs. Each kind starts on a server of its own, because the
+status line gives the most memory the server has held, which never comes down, and the memory per
+table is measured above the idle server's. Put the stack back with `docker compose up -d` after the
+three runs. The cap that the three runs agree on, the smallest of them, goes into
 `"max_running_games"` in [`server/app/config.json`](server/app/config.json) and
 [`deploy/docker-config.json`](deploy/docker-config.json).
 
