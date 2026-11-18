@@ -529,7 +529,8 @@ Lobby ──start──> Playing ──last round scored──> Finished ──n
 
 ### 4.10 Capacity
 
-These are estimates; phase 9 measures them.
+These are estimates, except the cap: `max_running_games` is 40, which the load test of
+[§10.6](#106-load-phase-9) gave on the VPS.
 
 - **A game thread spends its life parked, or asleep between beats.** CPU goes to the Reckoners. By
   their design document's estimates, the Gamma preset takes up to about 80 ms for a bid and 1 to
@@ -2295,7 +2296,7 @@ is merged before the page's part needs it.
 | A table stalls on a wait with no way out | Every wait has a deadline or a cancel (rule 4), with a test for each, and a log line when a wait outlives its deadline |
 | A stand-in plays badly after taking over mid-round | Phase 0's stand-in tests: legal moves, and no Cyborg fallbacks |
 | A restart loses games | The drain (phase 9), and recovery by replay (phase 11) |
-| Reckoners load a small server | The running-game cap, the lower thread priority, and the measurements of phase 9 |
+| Reckoners load a small server | The running-game cap, 40 by the load test, and the lower thread priority |
 | Abuse: floods of tables or messages | The limits of [§9](#9-security-and-fairness) |
 | Silent disconnects | Detection by pong, checked in phase 1 |
 | Names that spoof or inject | Text-only rendering, the Content-Security-Policy, the name rules of [§7.3](#73-names-genders-and-portraits) |

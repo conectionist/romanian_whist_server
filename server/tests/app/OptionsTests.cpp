@@ -55,7 +55,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.tablesPerIpPerHour == 30);
     CHECK(options.failedJoinsPerIp == 10);
     CHECK(options.failedJoinWindow == std::chrono::minutes(10));
-    CHECK(options.maxRunningGames == 50);
+    CHECK(options.maxRunningGames == 40);
     CHECK(options.maxTables == 400);
     CHECK(options.trustedProxies == std::vector<std::string>{"127.0.0.1", "::1"});
 }

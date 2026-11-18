@@ -446,7 +446,8 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 
 `max_running_games` is how many games someone is at that the server runs at once before it answers
 `busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
-holds the games nobody is at. The number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
+holds the games nobody is at. The default is 40, which the load test below gave on the VPS. The number
+is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
 ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
 packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is
 the Docker image's configuration with every limit per address lifted (the script plays from one
