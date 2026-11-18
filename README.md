@@ -150,7 +150,8 @@ sudo ufw enable
 ```
 
 Docker publishes the ports a compose file names whatever `ufw` says, which is why the stack
-publishes only 80 and 443.
+publishes only 80 and 443. [`docs/vps-hardening.md`](docs/vps-hardening.md) has a provider's
+firewall in place of `ufw`, and SSH with keys only, which the machine needs too.
 
 **3. The domain:** make an `A` record for `whist.example.org` that points at the machine's IPv4
 address, and wait until `dig +short whist.example.org` shows it. Caddy asks for the certificate when
