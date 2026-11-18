@@ -1,0 +1,14 @@
+// Made by CMake from protocol/catalogues/; edit those files instead.
+#include <string_view>
+
+namespace whist::catalogueData
+{
+
+// Declared extern first, so the definitions below are seen from Catalogue.cpp.
+extern const std::string_view playerNames;
+extern const std::string_view avatars;
+
+const std::string_view playerNames = R"whist_catalogue(@WHIST_PLAYER_NAMES@)whist_catalogue";
+const std::string_view avatars = R"whist_catalogue(@WHIST_AVATARS@)whist_catalogue";
+
+} // namespace whist::catalogueData

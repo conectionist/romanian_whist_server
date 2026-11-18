@@ -1,0 +1,67 @@
+{
+  "code" : "JFXB3J",
+  "host" : 0,
+  "mode" : "online",
+  "paused" : false,
+  "seats" : 
+  [
+    {
+      "avatar" : "woman-long-red-hair",
+      "gender" : "female",
+      "kind" : "human",
+      "name" : "Ana",
+      "presence" : "here",
+      "you" : true
+    },
+    {
+      "avatar" : "man-dark-hair-beard",
+      "gender" : "male",
+      "kind" : "human",
+      "name" : "Bogdan",
+      "presence" : "replaced",
+      "you" : false
+    },
+    {
+      "avatar" : "woman-long-red-hair",
+      "gender" : "female",
+      "kind" : "computer",
+      "level" : "cyborg",
+      "name" : "Cora"
+    }
+  ],
+  "seq" : 14,
+  "settings" : 
+  {
+    "allOneCardForehead" : false,
+    "botSpeed" : 4,
+    "foreheadAndHidden" : true,
+    "replacement" : "reckoner-beta",
+    "seats" : 
+    [
+      {
+        "avatar" : "woman-long-red-hair",
+        "gender" : "female",
+        "kind" : "human",
+        "name" : "Ana"
+      },
+      {
+        "avatar" : "man-dark-hair-beard",
+        "gender" : "male",
+        "kind" : "human",
+        "name" : "Bogdan"
+      },
+      {
+        "avatar" : "woman-long-red-hair",
+        "gender" : "female",
+        "kind" : "computer",
+        "level" : "cyborg",
+        "name" : "Cora"
+      }
+    ],
+    "structure" : "1-8-1",
+    "turnTimer" : 60000,
+    "waitAfterRound" : false
+  },
+  "state" : "playing",
+  "type" : "tableState"
+}

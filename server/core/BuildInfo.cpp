@@ -1,0 +1,23 @@
+#include "core/BuildInfo.h"
+
+#include <romanian_whist/Version.h>
+
+namespace whist
+{
+
+std::string_view serverVersion()
+{
+    return WHIST_SERVER_VERSION;
+}
+
+std::string_view serverCommit()
+{
+    return WHIST_SERVER_COMMIT;
+}
+
+std::string_view engineVersion()
+{
+    return romanian_whist::VersionString;
+}
+
+} // namespace whist

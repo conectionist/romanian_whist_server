@@ -1,0 +1,139 @@
+#ifndef WHIST_TESTS_TESTSUPPORT_H
+#define WHIST_TESTS_TESTSUPPORT_H
+
+#include <drogon/HttpResponse.h>
+#include <drogon/HttpTypes.h>
+#include <drogon/WebSocketClient.h>
+#include <json/value.h>
+#include <trantor/net/EventLoopThread.h>
+
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace whist::test
+{
+
+// A directory of its own under the system's temporary directory, removed with everything in it.
+class TempDir
+{
+public:
+    TempDir();
+    ~TempDir();
+    TempDir(const TempDir&) = delete;
+    TempDir& operator=(const TempDir&) = delete;
+
+    const std::filesystem::path& path() const { return path_; }
+    void write(const std::string& name, const std::string& contents) const;
+
+private:
+    std::filesystem::path path_;
+};
+
+// The server main() runs, started in this process on first use, on a free port. Drogon allows one
+// app() per process, so every test in the process shares it. Its document root holds an index.html
+// containing indexMarker, servedFiles() and unservedFiles().
+struct TestServer
+{
+    std::uint16_t port = 0;
+    std::filesystem::path documentRoot;
+};
+
+inline constexpr const char* indexMarker = "whist-test-index";
+
+// One file of each type the server serves, and the content type it answers with.
+struct ServedFile
+{
+    std::string path;
+    std::string contents;
+    drogon::ContentType type;
+};
+
+const std::vector<ServedFile>& servedFiles();
+
+// The one of them that is over 200 KB, where Drogon would send a file without reading it.
+inline constexpr const char* bigFilePath = "assets/big.js";
+inline constexpr std::size_t bigFileSize = 300 * 1024;
+
+// Files of a served type that sit in or under a folder whose name starts with a dot, or are named so.
+// Each holds sourceMarker.
+const std::vector<std::string>& hiddenFiles();
+
+// Files of types Drogon serves by default and the server does not. Each holds sourceMarker.
+inline constexpr const char* sourceMarker = "whist-test-source";
+const std::vector<std::string>& unservedFiles();
+
+const TestServer& testServer();
+
+using Headers = std::vector<std::pair<std::string, std::string>>;
+
+// One request to a server on 127.0.0.1, and its answer.
+std::pair<drogon::ReqResult, drogon::HttpResponsePtr> fetch(std::uint16_t port, const std::string& path,
+                                                            const Headers& headers = {},
+                                                            drogon::HttpMethod method = drogon::Get);
+
+// The text of an HTTP request sent to the server as it is, and everything it answers until it closes
+// the connection. For a path a client would tidy before sending.
+std::string rawRequest(std::uint16_t port, const std::string& request);
+
+// A port nothing listens on just now. Servers are never given port 0, which would give each of
+// their I/O threads a different port.
+std::uint16_t freePort();
+
+// A WebSocket client on a loop of its own. The constructor connects or fails the test.
+class TestClient
+{
+public:
+    // `headers` are added to the handshake, as a proxy in front would add them.
+    TestClient(std::uint16_t port, const std::string& path, const Headers& headers = {});
+    ~TestClient();
+    TestClient(const TestClient&) = delete;
+    TestClient& operator=(const TestClient&) = delete;
+
+    void send(const std::string& text);
+    void sendJson(const Json::Value& message);
+    void close();
+
+    // Each waits until its condition holds or the timeout passes, and says which.
+    bool waitForMessages(std::size_t count, std::chrono::milliseconds timeout);
+    bool waitForClose(std::chrono::milliseconds timeout);
+
+    std::vector<std::string> messages();
+    bool sawCloseFrame();
+
+    // The messages as JSON; one that does not parse is null.
+    std::vector<Json::Value> json();
+
+    // Waits for the first message at or after `from` that matches, and returns its index.
+    std::optional<std::size_t> waitFor(const std::function<bool(const Json::Value&)>& match,
+                                       std::chrono::milliseconds timeout, std::size_t from = 0);
+
+private:
+    // Shared with the client's callbacks, which can outlive the constructor and the client: Drogon's
+    // client reconnects by itself a second after a drop, and answers the connect callback again.
+    struct State
+    {
+        std::mutex mutex;
+        std::condition_variable changed;
+        std::optional<drogon::ReqResult> connected;
+        std::vector<std::string> messages;
+        bool closed = false;
+        bool closeFrame = false;
+    };
+
+    trantor::EventLoopThread loop_;
+    std::shared_ptr<State> state_ = std::make_shared<State>();
+    drogon::WebSocketClientPtr client_;
+};
+
+} // namespace whist::test
+
+#endif

@@ -1,0 +1,114 @@
+#ifndef WHIST_CORE_OUTBOX_H
+#define WHIST_CORE_OUTBOX_H
+
+#include "core/Connection.h"
+#include "core/Protocol.h"
+
+#include <json/value.h>
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
+#include <vector>
+
+namespace whist
+{
+
+// Every message to a connection goes through here, from any thread. It is the server's own record of
+// who is connected, so nothing ever asks a connection whether it is still open.
+class Outbox
+{
+public:
+    // One connection, numbered on its own: seq counts from 1 on each connection, whoever it belongs to.
+    class Link
+    {
+    public:
+        explicit Link(std::shared_ptr<Connection> connection);
+
+        const Connection* connection() const;
+
+    private:
+        friend class Outbox;
+
+        const std::shared_ptr<Connection> connection_;
+        std::mutex mutex_;
+        std::uint64_t seq_ = 0;
+        bool closed_ = false;
+        std::atomic<Clock::time_point> heard_{Clock::now()};
+
+        // Whether the announcement has been sent on this link.
+        bool announced_ = false;
+    };
+
+    std::shared_ptr<Link> open(std::shared_ptr<Connection> connection);
+
+    // Makes the link the member's, posting `first` on it before any message to the member can reach
+    // it. A link the member had before is sent openElsewhere and closed: the newer tab wins. Returns
+    // false, and attaches nothing, once the Outbox has stopped or the link has closed.
+    bool attach(MemberId member, const std::shared_ptr<Link>& link, Json::Value first);
+
+    // Sends the message `make` builds to every link a member holds now, and right after the first
+    // message of each link a member takes later, once each. `make` runs when it is sent, so a countdown
+    // says what is left then. A second announcement replaces the first for the links that have not had it.
+    void announce(std::function<Json::Value()> make);
+
+    // Opens a link for the connection and attaches it, with no first message.
+    void attach(MemberId member, std::shared_ptr<Connection> connection);
+
+    // Notes that the link's peer is alive: any frame from it, a pong included. Any thread.
+    void heard(Link& link, Clock::time_point now = Clock::now());
+
+    // Aborts every link not heard from since `cutoff`, one that no member has yet claimed too, and
+    // detaches the members it was theirs. Returns those members, so their tables can be told.
+    std::vector<MemberId> closeSilent(Clock::time_point cutoff);
+
+    // Only if that connection is still the member's, so a late close of an old tab is harmless.
+    // True when it was, and is now gone.
+    bool detach(MemberId member, const Connection* connection);
+
+    // How many links are open: a connection that has not said hello yet counts, one that has been
+    // closed does not.
+    std::size_t openLinks() const;
+
+    bool isConnected(MemberId member) const;
+    bool isCurrent(MemberId member, const Connection* connection) const;
+
+    // Stamps the connection's next seq and posts, in one step under that link's lock, so messages
+    // leave in seq order. A member with no connection misses the message. Never blocks.
+    void send(MemberId member, Json::Value message);
+
+    // To one link, whoever it belongs to now.
+    void post(Link& link, Json::Value message);
+
+    // Closes the link after what was posted on it; anything posted later is dropped.
+    void close(Link& link);
+
+    // For shutdown. Once it returns, nothing is posted or attached again, so nothing reaches a
+    // connection after Drogon's loops are gone.
+    void stop();
+
+private:
+    void postLocked(Link& link, Json::Value message);
+    void closeLocked(Link& link);
+    void announceLocked(Link& link, const std::function<Json::Value()>& make);
+
+    // Every post holds it shared; stop() holds it alone.
+    mutable std::shared_mutex gate_;
+    bool stopped_ = false;
+
+    mutable std::mutex mutex_;
+    std::unordered_map<MemberId, std::shared_ptr<Link>> links_;
+
+    // Every link opened, held weakly, so a silent one is found whether or not a member holds it.
+    std::vector<std::weak_ptr<Link>> opened_;
+
+    std::function<Json::Value()> announcement_;
+};
+
+} // namespace whist
+
+#endif

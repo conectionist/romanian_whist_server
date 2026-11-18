@@ -1,0 +1,421 @@
+#include "core/Codec.h"
+#include "core/GameRun.h"
+
+#include "support/Games.h"
+#include "support/Recorder.h"
+#include "support/ScriptedHuman.h"
+#include "support/ServerMessages.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <memory>
+#include <thread>
+
+using namespace whist;
+using std::chrono::milliseconds;
+
+namespace
+{
+
+constexpr MemberId ana = 1;
+constexpr MemberId bogdan = 2;
+constexpr MemberId watcher = 9;
+const milliseconds patience(60000 * test::slowdown);
+
+struct Game
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    std::unique_ptr<GameRun> run;
+
+    explicit Game(GameRunSetup setup)
+    {
+        for(MemberId member : {ana, bogdan, watcher})
+            outbox.attach(member, recorder.connect(member));
+        for(MemberId member : setup.watchers)
+            outbox.attach(member, recorder.connect(member));
+        run = std::make_unique<GameRun>(std::move(setup), outbox);
+    }
+
+    // Answers as Table::answer does from an I/O thread, error replies included.
+    test::ScriptedHuman::Answerer answerer(MemberId member)
+    {
+        return [this, member](const Answer& answer)
+        {
+            const SeatDriver::Submitted submitted = run->submit(member, answer);
+            if(submitted == SeatDriver::Submitted::Stale)
+                outbox.send(member, errorMessage(ErrorCode::StalePrompt));
+            else if(submitted == SeatDriver::Submitted::NotYourTurn)
+                outbox.send(member, errorMessage(ErrorCode::NotYourTurn));
+        };
+    }
+
+    // Closes the game, then times how long its thread takes to join.
+    milliseconds closeAndJoin()
+    {
+        const auto started = Clock::now();
+        run->close();
+        run.reset();
+        return std::chrono::duration_cast<milliseconds>(Clock::now() - started);
+    }
+
+    bool waitUntilFinished()
+    {
+        const auto deadline = Clock::now() + patience;
+        while(!run->finished())
+        {
+            if(Clock::now() > deadline)
+                return false;
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+        return true;
+    }
+
+    bool waitFor(MemberId member, const std::string& eventKind)
+    {
+        return recorder.waitFor(member, [&](const Json::Value& m)
+        {
+            return m["type"] == "game" && m["event"]["kind"] == eventKind;
+        }, patience).has_value();
+    }
+};
+
+void checkEveryMessage(const test::Recorder& recorder, MemberId member)
+{
+    for(const Json::Value& message : recorder.messagesTo(member))
+    {
+        const std::string error = test::shapeError(message);
+        INFO(message.toStyledString());
+        CHECK(error.empty());
+    }
+}
+
+} // namespace
+
+TEST_CASE("A solo game runs to the end with a scripted human", "[game]")
+{
+    Settings settings = test::tableSettings(3, {0}, Level::Random);
+    Game game(test::quickGame(settings, {ana}));
+    test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Good);
+    game.run->start();
+
+    REQUIRE(human.waitUntilOver(patience));
+    game.run.reset();
+
+    CHECK(human.problems().empty());
+    const auto counts = human.counts();
+    CHECK(counts.prompts > 0);
+    CHECK(counts.closedByYou == counts.prompts);
+    CHECK(counts.closedByComputer == 0);
+    CHECK(counts.illegal == 0);
+
+    const auto messages = game.recorder.messagesTo(ana);
+    REQUIRE_FALSE(messages.empty());
+    const Json::Value& last = messages.back();
+    CHECK(last["event"]["kind"] == "gameOver");
+    CHECK(last["snapshot"]["status"] == "finished");
+    CHECK(last["event"]["standings"].size() == 3);
+    CHECK(last["event"]["winners"].size() >= 1);
+
+    // Seq numbers the member's messages without a gap.
+    for(std::size_t i = 0 ; i < messages.size() ; i++)
+        CHECK(messages[i]["seq"].asUInt64() == i + 1);
+    checkEveryMessage(game.recorder, ana);
+}
+
+TEST_CASE("Bad answers are refused and re-prompted, and the game goes on", "[game]")
+{
+    Settings settings = test::tableSettings(4, {1}, Level::LowRisk);
+    Game game(test::quickGame(settings, {std::nullopt, ana}, 21));
+    test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Garbage);
+    game.run->start();
+
+    REQUIRE(human.waitUntilOver(patience));
+    REQUIRE(game.waitFor(ana, "gameOver"));
+    CHECK(human.problems().empty());
+
+    // Each prompt: one stale answer, one illegal answer and its re-prompt, then the answer twice.
+    const auto counts = human.counts();
+    CHECK(counts.prompts > 0);
+    CHECK(counts.illegal == counts.prompts);
+    CHECK(counts.closedByYou == counts.prompts);
+    CHECK(counts.stale == 2 * counts.prompts);
+    checkEveryMessage(game.recorder, ana);
+}
+
+TEST_CASE("Closing a game joins its thread at once", "[game][close]")
+{
+    const milliseconds bound(1000 * test::slowdown);
+
+    SECTION("while a human is thinking")
+    {
+        Settings settings = test::tableSettings(3, {0});
+        Game game(test::quickGame(settings, {ana}));
+        test::ScriptedHuman human(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+        game.run->start();
+        REQUIRE(human.waitForPrompt(patience));
+
+        const auto started = Clock::now();
+        game.run->close();
+        REQUIRE(game.waitUntilFinished());
+        CHECK(game.run->outcome() == RunOutcome::Abandoned);
+        game.run.reset();
+        CHECK(Clock::now() - started < bound);
+    }
+
+    SECTION("while resting on a finished trick")
+    {
+        Settings settings = test::tableSettings(3, {});
+        settings.botSpeed = slowestSpeed;
+        GameRunSetup setup = test::quickGame(settings, {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->start();
+        REQUIRE(game.waitFor(watcher, "trickWon"));
+
+        CHECK(game.closeAndJoin() < bound);
+        CHECK(game.recorder.messagesTo(watcher).back()["event"]["kind"] == "gameStopped");
+    }
+
+    SECTION("while a Reckoner thinks")
+    {
+        Settings settings = test::tableSettings(6, {}, Level::ReckonerGamma);
+        GameRunSetup setup = test::quickGame(settings, {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->start();
+        REQUIRE(game.waitFor(watcher, "betRequested"));
+
+        CHECK(game.closeAndJoin() < bound);
+    }
+
+    SECTION("while paused")
+    {
+        GameRunSetup setup = test::quickGame(test::tableSettings(3, {}), {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->setPaused(true);
+        game.run->start();
+        REQUIRE(game.waitFor(watcher, "betPlaced"));
+        std::this_thread::sleep_for(milliseconds(50));
+
+        CHECK(game.closeAndJoin() < bound);
+    }
+
+    SECTION("during the hold after a round")
+    {
+        Settings settings = test::tableSettings(3, {});
+        settings.waitAfterRound = true;
+        GameRunSetup setup = test::quickGame(settings, {});
+        setup.watchers = {watcher};
+        Game game(std::move(setup));
+        game.run->start();
+        REQUIRE(game.recorder.waitFor(watcher, [](const Json::Value& m) { return m["type"] == "held"; }, patience));
+
+        CHECK(game.closeAndJoin() < bound);
+        CHECK(game.recorder.messagesTo(watcher).back()["event"]["kind"] == "gameStopped");
+    }
+
+    SECTION("before it ever started")
+    {
+        Game game(test::quickGame(test::tableSettings(3, {0}), {ana}));
+        CHECK(game.closeAndJoin() < bound);
+    }
+
+    SECTION("after it finished")
+    {
+        Game game(test::quickGame(test::tableSettings(2, {}), {}));
+        game.run->start();
+        REQUIRE(game.waitUntilFinished());
+        CHECK(game.run->outcome() == RunOutcome::Finished);
+        CHECK(game.closeAndJoin() < bound);
+    }
+}
+
+TEST_CASE("Online, a turn that times out is played by the seat's computer player", "[game][timer]")
+{
+    Settings settings = test::tableSettings(3, {0, 1});
+    settings.replacement = Level::Cyborg;
+    settings.turnTimer = milliseconds(3);
+
+    // A table refuses a timer this short; a run takes what it is given, which keeps this test quick.
+    const auto refused = checkSettings(settings, Mode::Online);
+    REQUIRE(refused);
+    CHECK(refused->field == "turnTimer");
+
+    Game game(test::quickGame(settings, {ana, bogdan}));
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+    test::ScriptedHuman good(game.recorder, bogdan, game.answerer(bogdan), test::Behaviour::Good);
+    game.run->start();
+
+    REQUIRE(silent.waitUntilOver(patience));
+    REQUIRE(good.waitUntilOver(patience));
+    game.run.reset();
+
+    const auto missed = silent.counts();
+    CHECK(missed.prompts > 0);
+    CHECK(missed.closedByComputer == missed.prompts);
+    CHECK(missed.closedByYou == 0);
+    CHECK(silent.problems().empty());
+
+    // The other human answers in time, at least nearly always.
+    const auto answered = good.counts();
+    CHECK(answered.closedByYou + answered.closedByComputer == answered.prompts);
+    CHECK(good.problems().empty());
+}
+
+TEST_CASE("Each viewer gets their own snapshot, and a watcher sees no hand", "[game][publisher]")
+{
+    Settings settings = test::tableSettings(3, {0, 2});
+    GameRunSetup setup = test::quickGame(settings, {ana, std::nullopt, bogdan});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+    test::ScriptedHuman first(game.recorder, ana, game.answerer(ana), test::Behaviour::Good);
+    test::ScriptedHuman second(game.recorder, bogdan, game.answerer(bogdan), test::Behaviour::Good);
+    game.run->start();
+    REQUIRE(first.waitUntilOver(patience));
+    REQUIRE(second.waitUntilOver(patience));
+    REQUIRE(game.waitFor(watcher, "gameOver"));
+
+    for(const auto& [member, seat] : {std::pair{ana, 0}, std::pair{bogdan, 2}})
+    {
+        for(const Json::Value& message : game.recorder.messagesTo(member))
+        {
+            if(message["type"] != "game")
+                continue;
+            CHECK(message["snapshot"]["you"] == seat);
+            const Json::Value& round = message["snapshot"]["round"];
+            for(unsigned int s = 0 ; s < 3 ; s++)
+            {
+                const bool hasHand = message["snapshot"]["seats"][s].isMember("hand");
+                const bool own = static_cast<int>(s) == seat;
+                if(round["type"] == "normal")
+                    CHECK(hasHand == own);
+                else if(round["type"] == "forehead")
+                    CHECK(hasHand == !own);
+                else
+                    CHECK_FALSE(hasHand);
+            }
+        }
+    }
+
+    for(const Json::Value& message : game.recorder.messagesTo(watcher))
+    {
+        CHECK(message["snapshot"]["you"].isNull());
+        for(const Json::Value& seat : message["snapshot"]["seats"])
+            CHECK_FALSE(seat.isMember("hand"));
+    }
+
+    game.run.reset();
+}
+
+TEST_CASE("The publisher keeps every scored round and the last trick across rounds", "[game][publisher]")
+{
+    Game game(test::quickGame(test::tableSettings(3, {}), {}));
+    game.run->start();
+    REQUIRE(game.waitUntilFinished());
+
+    const std::vector<RoundResult> history = game.run->publisher().history();
+    REQUIRE(history.size() == 23);
+    for(unsigned int i = 0 ; i < history.size() ; i++)
+    {
+        CHECK(history[i].index == i);
+        CHECK(history[i].seats.size() == 3);
+    }
+    CHECK(history.back().type == romanian_whist::RoundType::Hidden);
+    CHECK_FALSE(history.back().nextCountsForStreaks);
+
+    const std::optional<LastTrick> last = game.run->publisher().lastTrick();
+    REQUIRE(last);
+    CHECK(last->round == 22);
+    CHECK(last->cards.size() == 3);
+    CHECK(last->winning);
+}
+
+TEST_CASE("A game nobody is here to watch holds at its next rest, and goes on once someone is", "[game][away]")
+{
+    GameRunSetup setup = test::quickGame(test::tableSettings(2, {}), {});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+
+    game.run->setNobodyHere(true);
+    game.run->start();
+    std::this_thread::sleep_for(milliseconds(300 * test::slowdown));
+    const std::size_t held = game.recorder.messagesTo(watcher).size();
+    CHECK(held > 0);
+    std::this_thread::sleep_for(milliseconds(300 * test::slowdown));
+    CHECK(game.recorder.messagesTo(watcher).size() == held);
+    CHECK_FALSE(game.run->finished());
+
+    game.run->setNobodyHere(false);
+    REQUIRE(game.waitUntilFinished());
+    CHECK(game.run->outcome() == RunOutcome::Finished);
+}
+
+TEST_CASE("Closing a game that holds for nobody joins its thread at once", "[game][away][close]")
+{
+    GameRunSetup setup = test::quickGame(test::tableSettings(2, {}), {});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+
+    game.run->setNobodyHere(true);
+    game.run->start();
+    std::this_thread::sleep_for(milliseconds(100 * test::slowdown));
+    CHECK(game.closeAndJoin() < milliseconds(1000 * test::slowdown));
+}
+
+TEST_CASE("A seat replaced silently is sent nothing more, and the others see the game through", "[game][away]")
+{
+    Settings settings = test::tableSettings(2, {0});
+    settings.replacement = Level::FirstCard;
+    GameRunSetup setup = test::quickGame(settings, {ana});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+
+    game.run->start();
+    REQUIRE(silent.waitForPrompt(patience));
+
+    game.run->replace(ana, true);
+    const std::size_t sent = game.recorder.messagesTo(ana).size();
+    REQUIRE(game.waitUntilFinished());
+    CHECK(game.run->outcome() == RunOutcome::Finished);
+    CHECK(game.run->replaced(0));
+    CHECK(game.recorder.messagesTo(ana).size() == sent);
+    CHECK(game.waitFor(watcher, "gameOver"));
+}
+
+TEST_CASE("A seat taken back is sent the game again, and asked for its next turn", "[game][away]")
+{
+    Settings settings = test::tableSettings(2, {0});
+    settings.replacement = Level::FirstCard;
+    GameRunSetup setup = test::quickGame(settings, {ana});
+    setup.watchers = {watcher};
+    Game game(std::move(setup));
+    test::ScriptedHuman silent(game.recorder, ana, game.answerer(ana), test::Behaviour::Silent);
+
+    game.run->start();
+    REQUIRE(silent.waitForPrompt(patience));
+    const std::uint64_t first = game.recorder.messagesTo(ana).back()["id"].asUInt64();
+    REQUIRE(first > 0);
+
+    // Held at the next rest, so the seat can be taken back before the game goes on. Once the
+    // computer player has made the bid, the seat has been replaced for good.
+    game.run->setNobodyHere(true);
+    game.run->replace(ana, true);
+    REQUIRE(game.recorder.waitFor(watcher, [](const Json::Value& m)
+    {
+        return m["type"] == "game" && m["event"]["kind"] == "betPlaced" && m["event"]["seat"] == 0;
+    }, patience));
+
+    CHECK_FALSE(game.run->reclaim(bogdan));
+    CHECK(game.run->reclaim(ana));
+    CHECK_FALSE(game.run->reclaim(ana));
+    CHECK_FALSE(game.run->replaced(0));
+    game.run->setNobodyHere(false);
+
+    CHECK(game.recorder.waitFor(ana, [first](const Json::Value& m)
+    {
+        return m["type"] == "prompt" && m["id"].asUInt64() > first;
+    }, patience));
+}

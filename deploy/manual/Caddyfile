@@ -1,0 +1,6 @@
+# Passes everything, /ws included, to the server, which sends the page's headers and caching rules itself.
+# Caddy adds the X-Forwarded-For that the server needs to tell its clients apart. Put your own domain in
+# place of whist.example.org, with an A record that points at this machine.
+whist.example.org {
+	reverse_proxy 127.0.0.1:8080
+}

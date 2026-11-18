@@ -1,0 +1,19 @@
+[
+    { "id": "man-dark-hair-beard",   "gender": "male",   "file": "man-dark-hair-beard.svg" },
+    { "id": "man-hat-mustache",      "gender": "male",   "file": "man-hat-mustache.svg" },
+    { "id": "woman-long-brown-hair", "gender": "female", "file": "woman-long-brown-hair.svg" },
+    { "id": "man-white-hair-hat",    "gender": "male",   "file": "man-white-hair-hat.svg" },
+    { "id": "woman-long-red-hair",   "gender": "female", "file": "woman-long-red-hair.svg" },
+    { "id": "man-black-hair-beard",  "gender": "male",   "file": "man-black-hair-beard.svg" },
+    { "id": "man-stubble",           "gender": "male",   "file": "man-stubble.png" },
+    { "id": "man-short-hair",        "gender": "male",   "file": "man-short-hair.png" },
+    { "id": "woman-long-dark-hair",  "gender": "female", "file": "woman-long-dark-hair.png" },
+    { "id": "woman-shoulder-hair",   "gender": "female", "file": "woman-shoulder-hair.png" },
+    { "id": "cyborg-man-bald",       "gender": "male",   "strategy": "cyborg", "file": "cyborg-man-bald.png" },
+    { "id": "cyborg-man-half",       "gender": "male",   "strategy": "cyborg", "file": "cyborg-man-half.png" },
+    { "id": "cyborg-man-eye",        "gender": "male",   "strategy": "cyborg", "file": "cyborg-man-eye.png" },
+    { "id": "cyborg-woman-eye",      "gender": "female", "strategy": "cyborg", "file": "cyborg-woman-eye.png" },
+    { "id": "man-black-tee",         "gender": "male",   "file": "man-black-tee.png" },
+    { "id": "woman-wavy-black-hair", "gender": "female", "file": "woman-wavy-black-hair.png" },
+    { "id": "cyborg-man-gold",       "gender": "male",   "strategy": "cyborg", "file": "cyborg-man-gold.png" }
+]
