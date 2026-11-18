@@ -1,12 +1,14 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 8b are complete (2026-11-17). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 9 are complete (2026-11-18). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
 > are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
 > `romanian_whist_web` (its PR #3). Phase 7, the sheets, the menus and online tables, is the
 > page's (its PR #7), and so is phase 8, its Romanian, keyboard, screen readers and touch (its
-> PR #8), and phase 8b, its phone layout (its PR #11). Phases 9 to 11 are not built yet.**
+> PR #8), and phase 8b, its phone layout (its PR #11). Phase 9, hardening and deployment, is
+> complete (2026-11-18, PR #18, with the page's PR #13): version 1.0.0 runs on the owner's VPS.
+> Phases 10 and 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -2251,7 +2253,7 @@ the page's submodule stays at `df37bd8`.
 The owner approved it on 2026-11-17, after finishing a solo game and an online game on their phone
 in full screen.
 
-### Phase 9: hardening and deployment — M
+### Phase 9: hardening and deployment — M ✅ COMPLETE
 
 - **Work:**
   - the limits and rate limits, the Content-Security-Policy;
@@ -2271,7 +2273,7 @@ in full screen.
 
 **Outcome** (branch `web/phase-9-hardening`, PR #18, parent `ccr-c8ac042f-e6e18n`, the last commit
 `69c4663`). The page's share is under phase 9 in
-[the page's plan](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-9s-share-the-footer-about-and-the-page-deployed--m),
+[the page's plan](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-9s-share-the-footer-about-and-the-page-deployed--m--complete),
 on its branch `web/phase-9-deployment` (PR #13).
 
 - **The branch.**
@@ -2379,7 +2381,8 @@ on its branch `web/phase-9-deployment` (PR #13).
 - **Tests:** 275 in the default suite, and the load test's 18.
 - **Builds and CI.** The default preset builds and its suite passes at `69c4663`. CI (Build (Linux),
   Build (Ubuntu 26.04) and the Docker image) is green at `0344e44`, and the manual runs that published
-  `sha-0344e44` passed.
+  `sha-0344e44` passed, as did those that published `sha-69c4663` and the page's `sha-377e771`.
+  - **The owner approved** the phase on 2026-11-18.
 
 ### Phase 10 (optional): offline solo — M to L
 
