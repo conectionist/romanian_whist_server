@@ -215,11 +215,12 @@ Online, except where it says solo.
   seat back, with a `sync`; the profile sent is not used, since the engine fixed the names when the
   game started. Once the game is over their seat is open.
 - **Nobody connected.** A game nobody at the table is connected to holds at its next rest, and goes
-  on once someone is. A table nobody has been connected to for five minutes, or ten in a solo game, is closed, game and all.
+  on once someone is. A table nobody has been connected to for five minutes, or ten in a solo game,
+  is closed, game and all.
 - **The host** who is away past the grace period hands over to whoever has been there longest and
   is connected.
 - **Solo** never replaces the player. When they go away the game holds where it is, and goes on
-  when they come back. The table is closed after thirty minutes of nobody being there.
+  when they come back. The table is closed after ten minutes of nobody being there.
 
 ### The round hold
 
