@@ -323,6 +323,8 @@ std::string shapeError(const Json::Value& message)
         return object(with({{"id", whole()}, {"by", oneOf({"you", "computer"})}}))(message);
     if(type == "held")
         return object(with({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", nullable(whole())}}))(message);
+    if(type == "restarting")
+        return object(with({{"deadline", whole()}}))(message);
     if(type == "sync")
         return object(with({{"table", nullable(object(tableFields(), tableOptional()))},
                             {"game", nullable(whole())},
@@ -334,7 +336,7 @@ std::string shapeError(const Json::Value& message)
     if(type == "error")
         return object(with({{"code", oneOf({"badMessage", "version", "notFound", "tableFull", "nameTaken", "notHost",
                                             "notYourTurn", "stalePrompt", "illegal", "rateLimited", "draining",
-                                            "openElsewhere"})}}),
+                                            "busy", "openElsewhere"})}}),
                       {{"detail", text()}})(message);
 
     return "unknown type " + type;

@@ -2,6 +2,7 @@
 
 #include "core/Codec.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace whist
@@ -89,8 +90,16 @@ bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Va
         if(!first.isNull())
             postLocked(*link, std::move(first));
 
-        std::lock_guard lock(mutex_);
-        previous = std::exchange(links_[member], link);
+        // Read in the step that makes the link the member's, so that an announcement made meanwhile
+        // reaches it either here or through links_, and the link's flag keeps it to one.
+        std::function<Json::Value()> announcement;
+        {
+            std::lock_guard lock(mutex_);
+            previous = std::exchange(links_[member], link);
+            announcement = announcement_;
+        }
+        if(announcement)
+            announceLocked(*link, announcement);
     }
 
     if(previous && previous != link)
@@ -103,6 +112,34 @@ bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Va
         closeLocked(*previous);
     }
     return true;
+}
+
+void Outbox::announce(std::function<Json::Value()> make)
+{
+    std::vector<std::shared_ptr<Link>> links;
+    {
+        std::lock_guard lock(mutex_);
+        announcement_ = make;
+        for(const auto& [member, link] : links_)
+            links.push_back(link);
+    }
+
+    std::shared_lock gate(gate_);
+    if(stopped_)
+        return;
+    for(const std::shared_ptr<Link>& link : links)
+    {
+        std::lock_guard linkLock(link->mutex_);
+        announceLocked(*link, make);
+    }
+}
+
+void Outbox::announceLocked(Link& link, const std::function<Json::Value()>& make)
+{
+    if(link.announced_ || link.closed_)
+        return;
+    link.announced_ = true;
+    postLocked(link, make());
 }
 
 void Outbox::attach(MemberId member, std::shared_ptr<Connection> connection)
@@ -118,6 +155,26 @@ bool Outbox::detach(MemberId member, const Connection* connection)
         return false;
     links_.erase(found);
     return true;
+}
+
+std::size_t Outbox::openLinks() const
+{
+    std::vector<std::shared_ptr<Link>> links;
+    {
+        std::lock_guard lock(mutex_);
+        for(const std::weak_ptr<Link>& weak : opened_)
+        {
+            if(std::shared_ptr<Link> link = weak.lock())
+                links.push_back(std::move(link));
+        }
+    }
+
+    // A link's lock comes before the Outbox's, so each is taken with the Outbox's let go.
+    return static_cast<std::size_t>(std::ranges::count_if(links, [](const std::shared_ptr<Link>& link)
+    {
+        std::lock_guard lock(link->mutex_);
+        return !link->closed_;
+    }));
 }
 
 bool Outbox::isConnected(MemberId member) const

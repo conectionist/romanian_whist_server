@@ -1,5 +1,7 @@
 #include "TestSupport.h"
 
+#include "core/Protocol.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <set>
@@ -32,7 +34,7 @@ Json::Value typed(const std::string& type)
 Json::Value hello(const std::optional<std::string>& token = std::nullopt)
 {
     Json::Value message = typed("hello");
-    message["protocol"] = 1;
+    message["protocol"] = whist::protocolVersion;
     message["lang"] = "en";
     if(token)
         message["token"] = *token;

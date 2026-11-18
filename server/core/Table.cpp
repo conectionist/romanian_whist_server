@@ -171,6 +171,17 @@ std::optional<Refusal> Table::startGame(MemberId by)
         if(const std::optional<SettingsError> error = checkSettings(seating_.settings(), mode_))
             return Refusal(ErrorCode::Illegal, error->field);
 
+        // The last checks, so a refusal for any other reason never uses a place up. The drain is read
+        // after the place is taken, and it counts the games after it is set, so a game that starts
+        // during the drain is either refused here or counted by it.
+        std::optional<RunningGames::Slot> slot;
+        if(options_.runningGames)
+            slot = options_.runningGames->take();
+        if(options_.draining && options_.draining->load())
+            return ErrorCode::Draining;
+        if(options_.runningGames && !slot)
+            return ErrorCode::Busy;
+
         const Settings& settings = seating_.settings();
         GameRunSetup setup;
         setup.game = game_ + 1;
@@ -187,6 +198,8 @@ std::optional<Refusal> Table::startGame(MemberId by)
         setup.instantFloor = options_.instantFloor;
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
+        setup.standInMoves = options_.standInMoves;
+        setup.slot = std::move(slot);
         setup.changed = [self = weak_from_this(), game = setup.game]
         {
             if(const std::shared_ptr<Table> table = self.lock())
@@ -238,7 +251,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
             state_ = before;
             paused_ = pausedBefore;
             broadcastLocked();
-            return ErrorCode::Draining;
+            return ErrorCode::Busy;
         }
 
         // It has sent gameOver; whatever it might still send must not follow the new game's start.
@@ -416,7 +429,12 @@ void Table::refreshPresenceLocked()
         idleSince_ = Clock::now();
 
     if(run_)
+    {
         run_->setNobodyHere(!here);
+        // A player who comes back is never refused for the cap: their game counts again at once.
+        if(here)
+            run_->setAttended(true);
+    }
 }
 
 void Table::back(MemberId member)
@@ -446,6 +464,11 @@ bool Table::reap(Clock::time_point now)
     std::lock_guard lock(mutex_);
     if(state_ == TableState::Closed)
         return false;
+
+    // A game nobody has been at for the grace period stops counting against the most games that may
+    // run: it holds, uses no processor, and a refusal for it would turn a visitor away for nothing.
+    if(run_)
+        run_->setAttended(attendedLocked(now));
 
     const std::chrono::milliseconds idleLimit = mode_ == Mode::Solo ? options_.soloIdle : options_.onlineIdle;
     if(idleSince_ && now - *idleSince_ >= idleLimit)
@@ -484,6 +507,19 @@ bool Table::reap(Clock::time_point now)
     if(changed)
         broadcastLocked();
     return false;
+}
+
+bool Table::attended(Clock::time_point now) const
+{
+    std::lock_guard lock(mutex_);
+    return attendedLocked(now);
+}
+
+bool Table::attendedLocked(Clock::time_point now) const
+{
+    if(!run_ || run_->finished())
+        return false;
+    return !idleSince_ || now - *idleSince_ < options_.gracePeriod;
 }
 
 void Table::close()

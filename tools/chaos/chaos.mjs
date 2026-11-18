@@ -1,20 +1,6 @@
 #!/usr/bin/env node
-// A few online tables of people who answer, disconnect, come back, leave and join again at random,
-// against a running server, to see that every game finishes and no table stalls.
-//
-//   nice -n 19 node tools/chaos/chaos.mjs --server build/server/app/whist_server --minutes 60
-//   nice -n 19 node tools/chaos/chaos.mjs --url ws://127.0.0.1:8080/ws --minutes 5
-//
-// With --server it starts that program with a configuration of its own (short grace, ping and
-// pong timeouts) and stops it at the end. With --url the server is yours, and its grace period
-// should be short too, and its pong timeout under 10 s. Node 22 or later, no packages.
-//
-// It passes when, after the last disruption, every table finishes a game, and:
-//   - no table went without progress for longer than any wait of the server's allows;
-//   - every tab that went silent without closing was closed by the server;
-//   - no snapshot held a hand its viewer may not see, and no blind prompt held one;
-//   - every message parsed, and the server sent no error a person could not have caused.
-// The exit status is 0 on a pass and 1 otherwise.
+// Online tables of people who answer, disconnect, come back, leave and join at random, against a running
+// server, to see that every game finishes and no table stalls. Node 22 or later, no packages.
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -228,7 +214,7 @@ class Person {
     this.ws = ws;
     ws.onopen = () => {
       this.connected = true;
-      this.send({ type: "hello", protocol: 1, lang: "en", ...(this.token ? { token: this.token } : {}) });
+      this.send({ type: "hello", protocol: 2, lang: "en", ...(this.token ? { token: this.token } : {}) });
     };
     ws.onmessage = (event) => {
       let message;
@@ -324,6 +310,9 @@ class Person {
         return;
       case "held":
         this.onHeld(message);
+        return;
+      case "restarting":
+        world.count("restarting");
         return;
       case "error":
         world.count(`error ${message.code}`);
@@ -496,7 +485,7 @@ class Person {
       received += chunk.toString("latin1");
       if (received.includes("\r\n\r\n")) {
         upgraded = true;
-        socket.write(textFrame(JSON.stringify({ type: "hello", protocol: 1, lang: "en", token: this.token })));
+        socket.write(textFrame(JSON.stringify({ type: "hello", protocol: 2, lang: "en", token: this.token })));
       }
     });
     socket.on("connect", () => {
@@ -577,7 +566,10 @@ async function startServer(program) {
     port, document_root: directory,
     ping_interval_ms: 1000, pong_timeout_ms: 5000, reap_interval_ms: 250,
     grace_period_ms: 2000, online_idle_ms: 30000, solo_idle_ms: 60000,
-    instant_floor_ms: 10, log_level: "info",
+    instant_floor_ms: 10, drain_ms: 1000, log_level: "info",
+    // Everyone connects from 127.0.0.1, makes tables again and again, and answers as fast as the game asks.
+    messages_per_second: 10000, message_burst: 10000, max_connections_per_ip: 10000,
+    tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000, max_tables: 10000,
   }));
 
   const child = spawn(program, ["--config", join(directory, "config.json")], { stdio: ["ignore", "pipe", "inherit"] });

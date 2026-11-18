@@ -1,8 +1,10 @@
 #ifndef WHIST_CORE_SERVICE_H
 #define WHIST_CORE_SERVICE_H
 
+#include "core/Limits.h"
 #include "core/Outbox.h"
 #include "core/Registry.h"
+#include "core/Status.h"
 
 #include <chrono>
 #include <string>
@@ -13,6 +15,7 @@ namespace whist
 struct ServiceOptions
 {
     RegistryOptions registry;
+    LimitOptions limits;
 
     // A connection with nothing heard from it for this long is closed, and its member is away.
     std::chrono::milliseconds pongTimeout{30000};
@@ -36,8 +39,25 @@ public:
 
     Outbox& outbox();
     Registry& registry();
+    Limits& limits();
     const std::string& version() const;
     const std::string& commit() const;
+
+    // The games a drain finds: those running, and those someone is at.
+    struct DrainCounts
+    {
+        std::size_t running = 0;
+        std::size_t attended = 0;
+    };
+
+    // Begins the drain: no table is made and no game starts, and every connection is told, now and when it
+    // says hello later, that its games have until `deadline`. Games running, joining and coming back go
+    // on. Counts the games after the drain is set, so one that starts meanwhile is refused or counted.
+    DrainCounts beginDrain(Clock::time_point deadline);
+    bool draining() const;
+
+    // What the server is doing: everything of a ServerStatus but the processor and the memory.
+    ServerStatus status() const;
 
     // Closes every table and joins every game thread, then stops the Outbox, so nothing is sent
     // after it returns. Call it before Drogon quits.
@@ -52,6 +72,8 @@ private:
     const std::string version_;
     const std::string commit_;
     const std::chrono::milliseconds pongTimeout_;
+
+    Limits limits_;
 
     // The Registry's tables send through the Outbox, so it is declared first and outlives them.
     Outbox outbox_;

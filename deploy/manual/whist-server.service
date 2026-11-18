@@ -1,0 +1,50 @@
+# Romanian Whist's server as a systemd service, run as the user whist.
+[Unit]
+Description=Romanian Whist game server
+Documentation=https://github.com/conectionist/romanian_whist_server
+After=network.target
+
+[Service]
+Type=simple
+User=whist
+Group=whist
+ExecStart=/opt/whist/bin/whist_server --config /etc/whist/config.json
+
+# A stop is a drain: on SIGTERM the server takes no new games and waits up to drain_ms (15 minutes) for
+# the ones someone is at, then exits with 0. TimeoutStopSec must be longer. Only a failure is restarted.
+KillSignal=SIGTERM
+TimeoutStopSec=16min
+Restart=on-failure
+RestartSec=2s
+
+# One socket for each connection, and some for the page's files.
+LimitNOFILE=65536
+
+# The server reads its program, its configuration and the page, and writes nothing but a folder in
+# /tmp, which is its own here. Logs go to the journal.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RemoveIPC=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

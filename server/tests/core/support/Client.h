@@ -24,10 +24,12 @@ namespace whist::test
 class Client
 {
 public:
-    Client(std::shared_ptr<Service> service, Recorder& recorder, MemberId label);
+    // `address` is what the limits count this tab under; empty is not limited.
+    Client(std::shared_ptr<Service> service, Recorder& recorder, MemberId label, std::string address = {});
 
     void sendText(std::string_view text);
     void send(const Json::Value& message);
+    void sendBinary();
 
     // Sends hello, and waits for the sync that always follows the welcome. Returns the welcome.
     Json::Value hello(const std::optional<std::string>& token = std::nullopt);

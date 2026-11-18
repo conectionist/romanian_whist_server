@@ -52,7 +52,8 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
             throw std::invalid_argument("a human seat needs its member");
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
-                                                       turnTimer, outbox, setup.promptIds, setup.changed));
+                                                       turnTimer, outbox, setup.promptIds, setup.changed,
+                                                       setup.standInMoves));
     }
     return drivers;
 }
@@ -92,6 +93,8 @@ GameRun::GameRun(GameRunSetup setup, Outbox& outbox)
       publisher_(setup.game, viewers_, pacingFor(setup.settings.botSpeed, setup.instantFloor),
                  setup.settings.waitAfterRound, setup.roundHold, drivers_, outbox, setup.changed)
 {
+    slot_ = std::move(setup.slot);
+
     GameSetup engineSetup;
     for(unsigned int i = 0 ; i < drivers_.size() ; i++)
         engineSetup.seats.push_back({setup.settings.seats[i].profile.name,
@@ -133,17 +136,17 @@ void GameRun::play(GameSetup setup)
 
         engine_.start(std::move(setup));
         engine_.run();
-        outcome_ = engine_.getStatus() == GameStatus::Finished ? RunOutcome::Finished : RunOutcome::Stopped;
+        end(engine_.getStatus() == GameStatus::Finished ? RunOutcome::Finished : RunOutcome::Stopped);
     }
     catch(const GameAbandoned&)
     {
-        outcome_ = RunOutcome::Abandoned;
+        end(RunOutcome::Abandoned);
     }
     catch(const std::exception& failure)
     {
         log(LogLevel::Error, std::string("game ") + std::to_string(game_) + " failed: " + failure.what());
         publisher_.announceFailure();
-        outcome_ = RunOutcome::Failed;
+        end(RunOutcome::Failed);
         if(changed_)
             changed_();
     }
@@ -151,10 +154,19 @@ void GameRun::play(GameSetup setup)
     {
         log(LogLevel::Error, "game " + std::to_string(game_) + " failed");
         publisher_.announceFailure();
-        outcome_ = RunOutcome::Failed;
+        end(RunOutcome::Failed);
         if(changed_)
             changed_();
     }
+}
+
+void GameRun::end(RunOutcome outcome)
+{
+    {
+        std::lock_guard lock(slotMutex_);
+        slot_.reset();
+    }
+    outcome_ = outcome;
 }
 
 void GameRun::close()
@@ -255,6 +267,13 @@ std::optional<WaitingFor> GameRun::waitingFor() const
 void GameRun::setNobodyHere(bool nobodyHere)
 {
     publisher_.setNobodyHere(nobodyHere);
+}
+
+void GameRun::setAttended(bool attended)
+{
+    std::lock_guard lock(slotMutex_);
+    if(slot_)
+        slot_->setAttended(attended);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

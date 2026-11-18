@@ -16,8 +16,9 @@ services:
     security_opt: [no-new-privileges:true]
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-    # Longer than shutdown_delay_ms, plus the time to end every game.
-    stop_grace_period: 30s
+    # It must outlast the server's drain_ms (15 minutes): after SIGTERM the server lets the games
+    # that someone is at end for up to that long, and Docker kills it when this runs out.
+    stop_grace_period: 16m
     # To change the settings: copy the image's /etc/whist/config.json beside this file, then
     # volumes: [./config.json:/etc/whist/config.json:ro]
     logging: *logging

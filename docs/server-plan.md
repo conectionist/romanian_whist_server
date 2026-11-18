@@ -1,12 +1,14 @@
 # Romanian Whist online: the server's implementation plan
 
-> **Status: phases 0 to 8b are complete (2026-11-17). Engine 5.1.0 carries phase 0. This
+> **Status: phases 0 to 9 are complete (2026-11-18). Engine 5.1.0 carries phase 0. This
 > repository's skeleton is phase 1, its core, `server/core`, is phase 2, solo play end to end,
 > through `/ws` and a debug page, is phase 3, online tables are phase 4, and drops and replacement
 > are phase 5. Phase 6 is the fixture tool here (§10.5, PR #9) and the table page in
 > `romanian_whist_web` (its PR #3). Phase 7, the sheets, the menus and online tables, is the
 > page's (its PR #7), and so is phase 8, its Romanian, keyboard, screen readers and touch (its
-> PR #8), and phase 8b, its phone layout (its PR #11). Phases 9 to 11 are not built yet.**
+> PR #8), and phase 8b, its phone layout (its PR #11). Phase 9, hardening and deployment, is
+> complete (2026-11-18, PR #18, with the page's PR #13): version 1.0.0 runs on the owner's VPS.
+> Phases 10 and 11 are not built yet.**
 >
 > The plan spans three repositories. Phase 0 changes the engine,
 > [`romanian_whist_engine`](https://github.com/conectionist/romanian_whist_engine). Phases 1 to 5,
@@ -352,13 +354,14 @@ romanian_whist_server/              AGPL-3.0-or-later, like the engine
 │   ├── PROTOCOL.md                 every message, kept beside the code
 │   ├── fixtures/                   sample messages written by server tests, read by clients' tests
 │   └── look/                       the fixture tool's snapshots, for the page's comparisons (§10.5)
-├── tools/                          the fixture tool for the page's screenshots (§10.5), and smoke/:
-│                                   the smoke test of a running server (§12.1)
+├── tools/                          the fixture tool for the page's screenshots (§10.5), and smoke/,
+│                                   chaos/ and load/: the scripts that play against a running server
+│                                   (§12.1, §10.6)
 ├── Dockerfile, .dockerignore       the server's image (§12.1)
 ├── compose.yaml                    the server built from this checkout
 ├── deploy/                         the compose files for the images, their .env.example, the image's
-│                                   config.json and the proxy examples (§12.1); phase 9's Caddyfile
-│                                   and systemd unit (§12.2)
+│                                   config.json, the load test's and the proxy examples (§12.1);
+│                                   manual/: the Caddyfile and the systemd unit (§12.2)
 ├── docs/
 └── CLAUDE.md                       the owner's machine rules (§11)
 ```
@@ -417,7 +420,8 @@ The rules:
 3. **A game thread never waits for an I/O thread.** It sends through the `Outbox`, which queues.
 4. **Locks are taken in one order: `Registry`, then `Table`, then `SeatDriver`, then the
    publisher's cache.** Never the reverse. No lock is held while sending, while calling into the
-   engine, or while a computer player decides.
+   engine, or while a computer player decides. `GameRun`'s `slotMutex_`, which guards the slot the
+   game counts by, is taken under the `Table` lock and takes no other lock.
 5. **Every wait on a game thread has a deadline or a cancel.** The seat driver's wait has the turn
    timer, the grace period and abandonment. The publisher's pacing has cancellation and the round
    hold's timeout. The desktop client learned this with `GameBridge::setPaused()`: a wait with no
@@ -515,9 +519,9 @@ Lobby ──start──> Playing ──last round scored──> Finished ──n
 
 - **Lobby.** Members join and choose seats and profiles; the host sets up the seats and settings
   and starts the game. If the host leaves, the human who has been there longest becomes host; if
-  no human is left, the table closes after 10 minutes.
+  no human is left, the table closes after 5 minutes.
 - **Playing.** One `GameRun`. While no human at the table is connected, the game holds (there is
-  no point in computers playing for nobody). The table closes after 10 minutes unless someone
+  no point in computers playing for nobody). The table closes after 5 minutes unless someone
   returns.
 - **Finished.** The standings are shown, and the host can start a new game with the same seats: a
   new `GameRun` at the same table, so nobody needs a new link.
@@ -527,7 +531,8 @@ Lobby ──start──> Playing ──last round scored──> Finished ──n
 
 ### 4.10 Capacity
 
-These are estimates; phase 9 measures them.
+These are estimates, except the cap: `max_running_games` is 40, which the load test of
+[§10.6](#106-load-phase-9) gave on the VPS.
 
 - **A game thread spends its life parked, or asleep between beats.** CPU goes to the Reckoners. By
   their design document's estimates, the Gamma preset takes up to about 80 ms for a bid and 1 to
@@ -541,6 +546,19 @@ These are estimates; phase 9 measures them.
 - **Memory** is thread stacks (reserved, barely touched) and kilobytes of game state.
 
 Configure a maximum number of running games, rather than relying on the CPU running out first.
+
+- **The maximum counts the games someone is at.** A game whose members are all gone for the grace
+  period holds, in the publisher's `nobodyHere_`, and takes no processor, so it does not count: a
+  crowd of abandoned games never turns a visitor away with `busy`. A table counts again the moment
+  a member connects, and that is never refused, so the maximum is soft for people coming back;
+  `createSolo` and `startGame` are what it refuses. The table counts the game at each reap, so the
+  count lags the grace period by up to a second. `game_threads` in the status line is every game
+  thread, and `attended_games` is the ones the maximum counts.
+- **A second maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
+  or not, since a table holds its memory for as long as it is kept, a parked game included, until the
+  idle timeouts (5 minutes online, 10 solo) end it. `createSolo` and `createTable` past it are refused with `busy`, and the
+  address's quota of new tables is given back. Joining a table that exists is not making one, and a
+  player coming back to theirs is never refused.
 
 ---
 
@@ -593,7 +611,7 @@ controller's `handleNewMessage`, as phase 1's spike showed.
 ### 5.4 Solo is different
 
 Nobody else is waiting, so a solo game never replaces you. When you go away, the game holds where
-it is, and goes on when you come back, for up to 30 minutes, after which the table closes. There is
+it is, and goes on when you come back, for up to 10 minutes, after which the table closes. There is
 no turn timer. A watched game of computer players holds in the same way when its watcher goes away:
 it is a table with no human here.
 
@@ -669,6 +687,7 @@ it is a table with no human here.
 | `prompt` | [§6.6](#66-prompts-and-answers) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor`, `deadline` | Everyone, during the round hold |
+| `restarting` | `deadline` | Every connection, once the server drains; each that says hello later, right after its `welcome` |
 | `sync` | [§6.7](#67-resynchronising) | On joining or rejoining |
 | `error` | `code`, sometimes `detail` | The connection |
 
@@ -773,8 +792,10 @@ The page drops whatever it had queued and renders the sync.
   against (§12), so a mismatch can happen only across a deploy. The server answers
   `error {code: "version"}` and the page reloads itself once.
 - **Codes:** `badMessage`, `version`, `notFound`, `tableFull`, `nameTaken`, `notHost`,
-  `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`. Several `badMessage` errors
-  close the connection.
+  `notYourTurn`, `stalePrompt`, `illegal`, `rateLimited`, `draining`, `busy`. Several `badMessage`
+  errors close the connection. `draining` is for a server that restarts and `busy` for one that is
+  running as many games, someone is at, or holding as many tables, as it may. `rateLimited` has no `detail` for a connection over its rate, and
+  `connections`, `tables` or `joins` for the per-address limits.
 
 ### 6.9 Keeping the two sides in step
 
@@ -890,7 +911,8 @@ there too.
 **Untrusted input:**
 
 - **Size and rate.** Messages are capped at 4 KiB. Each connection may send about 20 messages a
-  second, with bursts to 40; beyond that it gets an error, then is closed. HTTP request bodies are
+  second, with bursts to 40; beyond that it gets an error, and is closed if it goes over again
+  within 10 s. HTTP request bodies are
   capped at 16 KiB, Drogon's in-memory limit, so Drogon never writes one to disk.
 - **Strict decoding.** Unknown types and unknown fields are rejected.
 - **Every answer is checked** by its seat driver ([§4.7](#47-a-seats-driver)).
@@ -903,8 +925,14 @@ there too.
 - **A join code** is six characters from an alphabet without look-alikes (about 30 bits), so
   failed joins are rate-limited per IP address, and tables expire.
 
-**Limits:** connections per IP address (`setMaxConnectionNumPerIP`), tables created per IP address
-per hour, a maximum number of running games, and members per table no more than its seats.
+**Limits:** connections per client address, tables created per client address per hour, joins that
+found no table per client address, a maximum number of running games someone is at and a maximum
+number of tables (`busy` past either), and members per table no more than its seats. Drogon's
+`setMaxConnectionNumPerIP` counts TCP peers, which behind a proxy is the proxy, so the server counts
+its own. The client's address is the rightmost
+`X-Forwarded-For` entry that is not in `trusted_proxies`, read only when the connection itself comes
+from one of them; when every entry is in that list the leftmost is it, as nginx's `real_ip_recursive`
+has it, and with no header, or one that is not an address, the peer's. An IPv6 address counts by its /64.
 
 **The page:**
 
@@ -981,9 +1009,22 @@ the page's repository.
 
 ### 10.6 Load (phase 9)
 
-- **Tables of six Reckoner Gammas**, at normal speed and at Instant.
-- **Measured:** CPU per table, the time from a prompt being sent to it arriving, and memory.
-- **The result sets the maximum number of running games.**
+`tools/load/load.mjs` does this, on the smoke test's protocol code, against a server running with
+`deploy/load-config.json` (every limit per address lifted).
+
+- **Tables of one scripted human and five Reckoner Gammas**, at normal speed and at Instant, and
+  **online tables of six scripted humans** who answer at once. Ramped in steps (10, 20, 40, 60, 80,
+  100 tables), each held for a few minutes.
+- **Measured:** the server's CPU and memory, from its status line, `/proc` or `docker stats`, and
+  the time from an answer being sent to the echo of its move arriving (betPlaced or cardPlayed),
+  as p50, p95 and p99. The memory is labelled by what it is, the peak since the server started or
+  the current one, and the memory of each table is what a step holds above the idle server's,
+  shared by its tables, so that `max_tables` can be checked against the machine. The echo waits for the server's own pacing, so an idle server gives about
+  40 ms. Timing from a prompt being sent would need a timestamp on the wire.
+- **The result sets the maximum number of running games:** the largest step whose p99 is under
+  250 ms, whose CPU is under 70% of the machine's cores, and that went without an error, a closed
+  connection or a table that would not start, with every step before it as good, rounded down to a
+  multiple of 10.
 
 ---
 
@@ -1092,22 +1133,29 @@ with `libjsoncpp25`, and recording the failing log.
   no `.git`, so the build is told, through the CMake option `WHIST_SERVER_COMMIT`, and the smoke
   test checks it.
 - **`.dockerignore`** keeps `.git`, build trees, editor folders, `.env` files, `docs`, the markdown
-  files in the root, the tests, the fixtures, `tools/chaos`, `tools/smoke` and the deploy files out
-  of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
+  files in the root, the tests, the fixtures, `tools/chaos`, `tools/load`, `tools/smoke` and the deploy
+  files, the load configuration and the by-hand ones included, out of the context, so editing them does not rebuild the image. `tools/look` stays, because the build
   adds it.
 - **Configuration.** `server/app/config.json` listens on `127.0.0.1`, which does not work inside a
-  container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"` and
-  `"document_root": "/opt/whist/www"`, and is the image's `/etc/whist/config.json`. A test
-  (`[options]`) fails when the two differ in anything else, or when the image's cannot be loaded.
+  container. `deploy/docker-config.json` is a copy of it with `"address": "0.0.0.0"`,
+  `"document_root": "/opt/whist/www"` and `trusted_proxies` widened to the private ranges, where
+  Caddy and a proxy on the same host connect from. It is the image's `/etc/whist/config.json`. A
+  test (`[options]`) fails when the two differ in anything else, or when the image's cannot be
+  loaded.
   Settings have no environment overrides: to change one, mount a file over
   `/etc/whist/config.json`. The address and port 8080 must stay, since the health check uses them.
   The port on the host is `WHIST_LISTEN`, in the own-proxy compose file; the full stack's server
   publishes none.
 - **Stopping.** `STOPSIGNAL SIGTERM`: the server's handlers only set a flag, and a timer on the main
-  loop then ends the games and exits with 0 within about 5 s ([§4.6](#46-threads-and-locks), and
-  `ShutdownTests`), so it is safe as PID 1. The compose files allow 30 s. CI checks that
-  `docker stop -t 30` gives exit code 0.
-- **Health** is a TCP check on the port, because the server has no health route yet.
+  loop then drains ([§12.3](#123-either-way)) and exits with 0, so it is safe as PID 1. With nobody
+  at its games it is at once; otherwise it waits for them, at most `drain_ms` (15 minutes). The
+  compose files allow 16 minutes (`stop_grace_period: 16m`), which outlasts it, so Docker does not
+  kill a drain. CI checks that a stop with nobody at the games and one with a game someone is at
+  both give exit code 0, and that `drain_ms` is under the grace period.
+- **Health** is `GET /health`, asked by the server itself: the image's `HEALTHCHECK` runs
+  `whist_server --health-check --config /etc/whist/config.json`, which prints `ok`, `draining` or
+  what went wrong, and exits 0 for a server that is ok or draining, which is alive, and 1 for
+  anything else, a flag or a configuration it cannot read included. Never 2, which Docker reserves.
 - **Hardening** in the compose files: a read-only root with a tmpfs on `/tmp` (Drogon's upload
   folder is under it), all capabilities dropped, `no-new-privileges`, and 65536 open files.
 - **Size:** CI fails the build above 150 MB, counted as the sum of the layers. The Ubuntu base is
@@ -1125,9 +1173,12 @@ is [§12.1.1](#1211-behind-your-own-proxy). `compose.yaml` builds the server fro
 - **`build-ubuntu-26`:** the same build and tests inside an `ubuntu:26.04` container, on the
   image's toolchain (g++ 15, CMake 4.2), which is newer than the first job's. Warnings are not
   errors there.
-- **`docker`:** builds the image, runs it with the hardening flags, plays a game with
-  `tools/smoke/smoke.mjs`, checks `docker stop -t 30` and the compose files, and holds the size to
-  its budget. A tag must equal the `VERSION` in `CMakeLists.txt`.
+- **`docker`:** builds the image, runs it with the hardening flags, and plays a game with
+  `tools/smoke/smoke.mjs` and a short run of the load test. It checks the health check and
+  `/health`, a stop with nobody at the games and one with a game someone is at (exit code 0, the
+  second after a drain, with `/health` saying 503 meanwhile), and the compose files' grace period
+  against `drain_ms`. It holds the size to its budget. A tag must equal the `VERSION` in
+  `CMakeLists.txt`.
 - **`publish`:** needs the three jobs above, and runs only on a push to `master` or to a version
   tag, or when a manual run asks for it, which tags the image `sha-<commit>` and with the branch's
   name, never `latest`. A pull request never publishes.
@@ -1165,9 +1216,11 @@ should claim ports or fetch certificates.
 | `/t/{code}` | Caddy's rewrite | the server | same |
 | MIME types | Caddy | Drogon (`woff2` as `application/font-woff2`, which browsers accept) | same |
 | Compression | zstd and gzip | Drogon's gzip | same |
-| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server |
-| `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server |
-| Dotfiles | hidden | `dist/` has none | refused by the server |
+| CSP, `nosniff`, `Referrer-Policy` | Caddy | the user's proxy, from the examples | the server, on every answer that goes through Drogon's sending: pages and files, 304 and 404, `/t/`, `/version`, `/health` and the WebSocket's 101. Not the 400, 405 (a method it does not know) and 413 that Drogon's parser writes itself, which have no body and no headers. No answer has a `Server` header, and the 404 page is a plain one that names no version |
+| `Cache-Control` | Caddy | the user's proxy, from the examples; old hashed files stay in the volume, so an old `index.html` still works | the server, on 2xx and 304 only: `/assets/*` a year and immutable; `/`, `/index.html` and `/t/*` `no-cache`; `/version` and `/health` `no-store`; the rest an hour |
+| Dotfiles | hidden | `dist/` has none | refused by the server: a path with a segment that starts with a dot, `%2e` included, is a 404 |
+| Files over 200 KB | Caddy | Drogon's sendfile | read whole by the server (`enableSendfile(false)`), so one that changes is never served cut short |
+| `/version`, `/health` | passed on, never cached | the server | the server |
 
 That is acceptable without a server change now: the examples carry the headers until phase 9.
 
@@ -1185,14 +1238,14 @@ That is acceptable without a server change now: the examples carry the headers u
   the rename. Hashed files never change, and the page's largest file is under 100 KB. Phase 9
   closes it (below).
 - **The examples,** in `deploy/examples/`: `whist.caddy`, to import inside a site block, and
-  `nginx/whist.conf` with `nginx/whist-headers.conf`, to include inside a server block.
-  `whist.caddy` needs Caddy 2.9.1 or later: an older one accepts it but reads its `match` lines as
-  headers, which puts the cache rules on error answers too. The headers are a file of their own
-  because a location's `add_header` drops the ones it inherits. The cache rules are kept off error
-  answers, so that a 404 or a 502 is not cached for long. The game needs a host of its own: a
-  sub-path is not supported, since the page's links start at the root. The CSP string is the page's.
-  The page's CI is to compare every copy of it against one constant; that check is planned for the
-  page's pull request.
+  `nginx/whist.conf`, to include inside a server block. Each forwards everything, `/health` and
+  `/version` included, passes the WebSocket on, and sends `X-Forwarded-For`. Neither adds a header
+  or a cache rule: the server sends them, on every answer but the three its parser writes, and its
+  rules keep errors and `/version` and `/health` out of every cache. Before the server did, the
+  examples carried the headers, in files of their own because an nginx location's `add_header`
+  drops the ones it inherits. The game needs a host of its own: a sub-path is not supported, since
+  the page's links start at the root. The CSP string is the page's, and the server's copy is
+  `server/app/PageHeaders.h`, which the page's CI reads.
 - **Upgrades:** `pull && up -d` runs `page` again, which copies the files that changed.
   Drogon's file cache lasts 5 s. To clear the old files, `docker compose down && docker volume rm
   whist_page`.
@@ -1364,26 +1417,53 @@ request. The commits after it change only this plan.
   left open across a deploy (§6.8).
 - **Caddy in front** gives HTTPS automatically. `reverse_proxy localhost:8080` passes WebSockets
   through as they are. Drogon listens on localhost only.
-- **A systemd unit** restarts the server if it fails and raises its file limit. Logs go to the
-  journal.
+- **A systemd unit,** `deploy/manual/whist-server.service`, runs the server as a user of its own
+  with `LimitNOFILE=65536`, `KillSignal=SIGTERM`, `TimeoutStopSec=16min` (a stop is a drain, §12.3)
+  and `Restart=on-failure`, which restarts a failure and never a clean stop. It adds the hardening
+  options a server that writes only to `/tmp` allows: a read-only system, no home folders, a
+  private `/tmp` and no devices, no capabilities, and only IP and Unix sockets. It sets no system
+  call filter and no `MemoryDenyWriteExecute`, which nothing here has tried the server under. Logs
+  go to the journal. `deploy/manual/Caddyfile` is the site block: `reverse_proxy` to
+  `127.0.0.1:8080`, and nothing else.
+- **A deploy configures afresh:** the commit the server reports is recorded when CMake configures
+  (`server/core/CMakeLists.txt`), so every deploy runs `cmake --preset release` again, or passes
+  `-DWHIST_SERVER_COMMIT`, or the page's source link would name the commit of the last configure.
 
 ### 12.3 Either way
 
-- **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only set a
-  flag, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log line
-  inside the signal handler, which can allocate memory, and so hang. A timer on the main loop sees
-  the flag and drains:
-  1. refuse new tables;
-  2. tell everyone the server is restarting;
-  3. wait for running games to end, or for at most 15 minutes, then abandon and join any still
-     running ([§4.6](#46-threads-and-locks), rule 7);
-  4. quit.
+- **A drain on SIGTERM.** The server installs its own SIGTERM and SIGINT handlers, which only count
+  the signals, and turns Drogon's off (`disableSigtermHandling()`). Drogon's handlers write a log
+  line inside the signal handler, which can allocate memory, and so hang. A timer on the main loop
+  sees the first signal and drains:
+  1. refuse new tables and new games with `draining` (`createSolo`, `createTable`, `startGame`);
+     joining a table and coming back to one still work, and so does `/health`, which says 503
+     `draining`;
+  2. tell everyone the server is restarting, with `restarting {deadline}`: every connection now,
+     and each that says hello later, right after its welcome, with the time left then, which counts
+     down from the stop;
+  3. wait until no *attended* game runs, or until `drain_ms` (15 minutes) has passed, then abandon
+     and join any still running ([§4.6](#46-threads-and-locks), rule 7). A game is attended while a
+     member of its table is connected (a watcher of a game of computer players counts), and for the
+     grace period (D8, 30 s) after the last one went. A game nobody is at holds, and cannot end, so
+     waiting for it only costs the deploy its time; it is ended with the rest. A player who comes
+     back during the drain makes their game count again, until it ends or the deadline;
+  4. quit, with exit code 0.
 
-  Deploys wait for a quiet moment.
+  This departs from the first plan, which waited until no game ran at all: a smoke test or a closed
+  tab leaves a parked game, and every deploy would then have waited the whole 15 minutes.
+
+  A second SIGTERM or SIGINT ends the games at once. The first line of each step is logged, with
+  how many games run and how many are attended, so the journal shows how long a drain took and how
+  many games it cut. The container's stop grace period has to outlast `drain_ms`. Deploys wait for
+  a quiet moment.
 - **Health:**
-  - `GET /health` (`app().registerHandler`), for uptime monitoring;
-  - one log line a minute with counters: connections, tables by state, game threads, moves made by
-    stand-ins, CPU.
+  - `GET /health` (`app().registerHandler`), for uptime monitoring: 200 `{"status":"ok"}`, and 503
+    `{"status":"draining"}` from the moment the server is asked to stop. `GET /version` gives
+    `{"version", "commit", "protocol"}`;
+  - one log line a minute (`status_log_interval_ms`), starting with `status `, of `key=value`
+    pairs: connections, tables by state, game threads, the attended games that
+    `max_running_games` limits, moves made by stand-ins, the share of a core used since the last
+    line, processor seconds and peak memory.
 - **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to this
   repository at that commit, which covers the AGPL's section 13 for the server and the engine. It
   links `romanian_whist_web` too, at the commit the page was built from.
@@ -2173,7 +2253,7 @@ the page's submodule stays at `df37bd8`.
 The owner approved it on 2026-11-17, after finishing a solo game and an online game on their phone
 in full screen.
 
-### Phase 9: hardening and deployment — M
+### Phase 9: hardening and deployment — M ✅ COMPLETE
 
 - **Work:**
   - the limits and rate limits, the Content-Security-Policy;
@@ -2190,6 +2270,119 @@ in full screen.
   - it is deployed;
   - the load test has set the running-game cap;
   - a restart drains cleanly.
+
+**Outcome** (branch `web/phase-9-hardening`, PR #18, parent `ccr-c8ac042f-e6e18n`, the last commit
+`69c4663`). The page's share is under phase 9 in
+[the page's plan](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-9s-share-the-footer-about-and-the-page-deployed--m--complete),
+on its branch `web/phase-9-deployment` (PR #13).
+
+- **The branch.**
+  - **The commits,** in the order they were made:
+    - the limits and the client's address: `d9a457f` to `9ffeda4`;
+    - the status line, the headers, dot paths, `/version` and `/health`: `72baea5` to `798d82e`;
+    - the drain and protocol 2: `6ddb382` to `c273478`;
+    - the health check, the deploy files, the load test, 1.0.0, CI and the README: `3579af4` to
+      `f79d50e`;
+    - the owner's notes after the first build: `fb53689`, `3bdd5f9`;
+    - the first review's fixes and the owner's additions: `a60e305` to `178d48e`;
+    - the second review's fixes: `9f8450e` to `0344e44`;
+    - the VPS hardening guide, `1e008d9`, and the cap the load test set, `69c4663`.
+  - **Who built it:** one implementing agent at extra-high effort, in stretches with a check
+    between them, made every change but `1e008d9`. Fresh read-only agents at extra-high effort
+    reviewed it, as §13 says.
+- **The owner's choices.**
+  - **Before the build** (2026-11-17): a subdomain of the owner's on a new VPS of 2 vCPUs and 2 GB,
+    never named in a committed file; the full stack with our Caddy, from the Docker images, published
+    by a manual CI run on the phase branches; the limits below; a drain of at most 15 minutes, told
+    to the players by a new message, so protocol 2; an About page with a contact link; an external
+    monitor on `/health`; 1.0.0 in both repositories, tagged once the parents reach `master`; the
+    proxy examples only forward, since the server now sends the headers.
+  - **After the first build:** the drain waits only for the games someone is at; no `Server` header
+    and a plain 404 page, which say nothing of what the server is.
+  - **After the first review:** fix all 14, and a second review of the fixes. Three additions in the
+    same round: `max_tables` (400), a cap on the tables that exist at once; the idle timeouts
+    shortened to 5 minutes online and 10 solo; the load test's memory per table.
+  - **After the second review:** fix all 13, and no third review: the orchestrator checks the fixes
+    and CI runs.
+  - **After the load test:** `max_running_games` is 40 (#19 is open on Instant games' CPU).
+- **Built.**
+  - **The client's address** (`ClientAddress`): from a peer in `trusted_proxies`, the rightmost
+    `X-Forwarded-For` entry not in that list, or the leftmost when every one is; an IPv6 address
+    counts by its /64. Drogon keeps only the first of two `X-Forwarded-For` lines, so the README asks
+    a proxy to send one.
+  - **The limits** (`Limits`, §9): a token bucket per connection (20 a second, bursts of 40; the
+    first excess gets `rateLimited`, a second within 10 s closes the connection); per address, 16
+    connections, 30 new tables an hour and 10 joins that found no table in 10 minutes; 2000
+    connections in all; `max_running_games`, which counts only the games someone is at, so a game
+    nobody is at, which holds and takes no processor, never makes `busy`; `max_tables`, every table
+    attended or not. A player coming back to their game is never refused.
+  - **HTTP:** every answer carries the content-security-policy, `nosniff` and `no-referrer` from one
+    constant (`PageHeaders.h`), and `Cache-Control` on 2xx and 304; a path with a segment that
+    starts with `.` is a 404, `%2e` included; `/version` gives the version, commit and protocol, and
+    `/health` 200, or 503 while draining. No `Server` header and a plain 404 page. Drogon's parser
+    answers a malformed request (400, 413, 405) itself, with none of the headers.
+  - **The drain** on SIGTERM: creates and starts are refused with `draining`, everyone is sent
+    `restarting {deadline}`, and the server waits up to `drain_ms` (15 minutes) for the games
+    someone is at, then ends the rest and exits 0. A second signal stops at once.
+  - **The status line,** once a minute: connections, tables by state, game threads, attended games,
+    stand-in moves, the share of a core, processor time and peak memory.
+  - **`whist_server --health-check`** for the image, which has no curl: 0 for ok or draining, 1
+    otherwise.
+  - **Deploy files:** `stop_grace_period: 16m` in every compose file, `deploy/load-config.json`, the
+    by-hand `deploy/manual/Caddyfile` and `whist-server.service`, the proxy examples forwarding
+    `/health` and adding nothing, the README's VPS steps and monitor, and `docs/vps-hardening.md`.
+  - **The load test,** `tools/load/load.mjs`, with 18 unit tests of its own.
+- **The deploy** (2026-11-18), on the owner's subdomain, by the owner over SSH, with the images
+  `sha-0344e44` and the page's `sha-fcc2bc7`:
+  - **The smoke test** from the owner's computer passed every check, the `/ws` handshake's missing
+    `Server` header through Caddy included.
+  - **The monitor** is the owner's own Uptime Kuma, on `/health`.
+  - **"Add to Home screen"** works on the owner's phone.
+  - **A redeploy during a live game** (`up -d --force-recreate server`): the banner showed, the game
+    went on, a new one was refused, the drain ended once the game's tab had been closed past the
+    grace period, and the old server exited 0. The page's Caddy kept running.
+  - **The firewall** is the provider's, with 22, 80, 443 and 443/udp let in. SSH still takes
+    passwords; `docs/vps-hardening.md` has the steps to change that.
+- **The load test** on the VPS, 180 s at each step, on 2 cores, no errors, drops or tables that
+  failed to start in any run:
+
+  | Kind | Result | Suggested |
+  |---|---|---|
+  | Solo, normal speed | 100 tables: p99 21 ms, 66% CPU | 100 |
+  | Instant | 10 tables: p99 16 ms, 88% CPU; 20: 38 ms, 96%, and the ramp stopped | none |
+  | Online, six people answering at once | 40: p99 64 ms, 53%; 60: 109 ms, 72%; 100: 260 ms, 83% | 40 |
+
+  Memory per table was 0.06 MB solo, 0.20 Instant and 0.23 online, so 400 tables take about 92 MB
+  above an idle server of 15 MB: `max_tables` is far from the 2 GB.
+- **Departures from the plan.**
+  - **The cap counts attended games only,** and `max_tables` was added (see the owner's choices).
+  - **The latency** is from an answer sent to its echo coming back, not from a prompt to its arrival,
+    which would need a time on the wire.
+  - **The idle timeouts** are 5 and 10 minutes, not 30.
+- **Left out, and open:**
+  - **#19:** Instant games take about a sixth of a core each, which the running-game cap does not
+    weigh.
+  - **The page's #14 and #15,** found on the phone during the deploy: the side panels go in full
+    screen, and the restart banner covers the top seat's plate.
+  - **`tsan`** was not run in this phase.
+  - **`SeatDriverTests.cpp:471`** failed once at the start of the phase, and not since.
+- **Reviews.**
+  - **The first,** of the branch at `3bdd5f9`, found 14 problems. The worst, severity 4: with the
+    README's `AAAA` advice, every IPv6 player would reach Caddy from the bridge's trusted gateway and
+    share one address's limits. Severity 3: abandoned games held running-game slots, so `busy` could
+    refuse everyone on an idle machine; a proxy adding a second `X-Forwarded-For` line let a client
+    choose its address. The rest, severity 2 and 1: the drain counted games before setting its flag,
+    everyone on a trusted network counted as Caddy, the load test's cap ignored errors, the health
+    check's exit code 2, and documents and comments. All fixed, in `a60e305` to `5d60ec6`.
+  - **The second,** one reviewer for both repositories' fix commits, found 13, none above severity 3.
+    This repository's five, all severity 2 and 1: a solo table's timeout, the load test reusing one
+    server for three kinds, the idle reading giving up early, two comments and two documents. All
+    fixed, in `9f8450e` to `0344e44`.
+- **Tests:** 275 in the default suite, and the load test's 18.
+- **Builds and CI.** The default preset builds and its suite passes at `69c4663`. CI (Build (Linux),
+  Build (Ubuntu 26.04) and the Docker image) is green at `0344e44`, and the manual runs that published
+  `sha-0344e44` passed, as did those that published `sha-69c4663` and the page's `sha-377e771`.
+  - **The owner approved** the phase on 2026-11-18.
 
 ### Phase 10 (optional): offline solo — M to L
 
@@ -2218,7 +2411,7 @@ is merged before the page's part needs it.
 | A table stalls on a wait with no way out | Every wait has a deadline or a cancel (rule 4), with a test for each, and a log line when a wait outlives its deadline |
 | A stand-in plays badly after taking over mid-round | Phase 0's stand-in tests: legal moves, and no Cyborg fallbacks |
 | A restart loses games | The drain (phase 9), and recovery by replay (phase 11) |
-| Reckoners load a small server | The running-game cap, the lower thread priority, and the measurements of phase 9 |
+| Reckoners load a small server | The running-game cap, 40 by the load test, and the lower thread priority |
 | Abuse: floods of tables or messages | The limits of [§9](#9-security-and-fairness) |
 | Silent disconnects | Detection by pong, checked in phase 1 |
 | Names that spoof or inject | Text-only rendering, the Content-Security-Policy, the name rules of [§7.3](#73-names-genders-and-portraits) |
@@ -2253,7 +2446,7 @@ The plan assumes each default until the owner decides otherwise.
 | D14 | Phones? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D15 | Spectators at others' tables? | Later, and never seeing hands while humans play |
 | D16 | Seeds in online games? | Not offered |
-| D17 | A solo player who goes away? | The game holds for up to 30 minutes |
+| D17 | A solo player who goes away? | The game holds for up to 10 minutes |
 | D18 | Which look? | In [the page's plan, §17](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#17-decisions-with-defaults) |
 | D19 | Chat? | None |
 | D20 | Hosting? | **Decided by the owner, 2026-11-10:** Docker Compose with the two images (recommended), with Caddy in the page's image, or behind the user's own proxy with the server serving the page; by hand with Caddy and systemd stays possible |

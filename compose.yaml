@@ -11,4 +11,6 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    stop_grace_period: 30s
+    # It must outlast the server's drain_ms (15 minutes): after SIGTERM the server lets the games
+    # that someone is at end for up to that long, and Docker kills it when this runs out.
+    stop_grace_period: 16m

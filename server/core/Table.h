@@ -5,6 +5,7 @@
 #include "core/Joiner.h"
 #include "core/Outbox.h"
 #include "core/Protocol.h"
+#include "core/RunningGames.h"
 #include "core/Seating.h"
 #include "core/Settings.h"
 
@@ -35,11 +36,20 @@ struct TableOptions
     std::chrono::milliseconds gracePeriod{30000};
 
     // How long a table is kept once nobody at it is connected.
-    std::chrono::milliseconds onlineIdle{10 * 60 * 1000};
-    std::chrono::milliseconds soloIdle{30 * 60 * 1000};
+    std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
+    std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
     // For tests: the turn timer of every online table that has one, whatever its settings allow.
     std::optional<std::chrono::milliseconds> turnTimerOverride;
+
+    // Shared by every table. None: any number of games may run.
+    std::shared_ptr<RunningGames> runningGames;
+
+    // Shared by every table. None: nothing is counted.
+    std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
+
+    // Shared by every table. Once it is set, no game starts. None: never set.
+    std::shared_ptr<const std::atomic<bool>> draining;
 };
 
 // The settings, seats, people and current game of one table. Its lock comes after the Registry's
@@ -65,9 +75,9 @@ public:
     bool hasMember(MemberId member) const;
     Settings settings() const;
 
-    // The host starts the first game, or a new one once the last is over. The old game goes to
-    // the joiner, and everyone is sent the new tableState. When no thread can be made for the game,
-    // the table is left as it was and the answer is Draining.
+    // The host starts the first game, or a new one once the last is over. The old game goes to the
+    // joiner, and everyone is sent the new tableState. A drain refuses it with Draining, and the most games
+    // that may run, or a game thread that cannot start, with Busy; the table is left as it was.
     std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
@@ -106,6 +116,11 @@ public:
     void runChanged(unsigned int game);
 
     TableView viewFor(MemberId member) const;
+
+    // Whether the game this table runs is one someone is there for: a member is connected, or the
+    // last to be left within the grace period. False when no game is running. A game nobody is at
+    // holds, and cannot go on until someone comes back.
+    bool attended(Clock::time_point now) const;
 
     // Ends the game, if one is running, and tells everyone the table is closed. That is the last
     // message anyone gets from this table.
@@ -166,6 +181,9 @@ private:
 
     // Works out whether anybody is connected, for the idle timer and for a game that holds for nobody.
     void refreshPresenceLocked();
+
+    // Table::attended, with the lock held.
+    bool attendedLocked(Clock::time_point now) const;
 
     const std::string code_;
     const Mode mode_;

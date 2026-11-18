@@ -32,12 +32,15 @@ struct Seat0
     // How often the driver told the table something had changed.
     std::atomic<int> changes{0};
 
+    // How many moves the computer player made for the member.
+    const std::shared_ptr<std::atomic<std::uint64_t>> standIns = std::make_shared<std::atomic<std::uint64_t>>(0);
+
     explicit Seat0(std::optional<milliseconds> turnTimer = std::nullopt)
     {
         outbox.attach(ana, recorder.connect(ana));
         driver = std::make_unique<SeatDriver>(Seat{0}, ana, makeComputerPlayer(Level::LowRisk, Seat{0}, std::nullopt),
                                               turnTimer, outbox, std::make_shared<std::atomic<std::uint64_t>>(0),
-                                              [this] { changes++; });
+                                              [this] { changes++; }, standIns);
     }
 
     // Asks for a bid on another thread, as the engine would on the game thread.
@@ -232,6 +235,41 @@ TEST_CASE("When the turn timer runs out, the computer player moves", "[seat]")
     CHECK(closed["type"] == "promptClosed");
     CHECK(closed["by"] == "computer");
     CHECK(seat.driver->submit(seat.answer(PromptKind::Play, 1, 1)) == SeatDriver::Submitted::Stale);
+}
+
+TEST_CASE("A move a computer player makes for the member is counted, and one the member makes is not", "[seat][count]")
+{
+    Seat0 seat(milliseconds(20));
+
+    auto answered = seat.bid();
+    const Json::Value prompt = seat.next();
+    REQUIRE(seat.driver->submit(seat.answer(PromptKind::Bet, prompt["id"].asUInt64(), 2)) == SeatDriver::Submitted::Taken);
+    CHECK(answered.get() == 2);
+    CHECK(*seat.standIns == 0);
+
+    // The timer runs out, and the computer player bids.
+    auto timedOut = seat.bid();
+    seat.next();
+    timedOut.get();
+    CHECK(*seat.standIns == 1);
+
+    // From then on every move of a replaced seat is the computer player's.
+    seat.driver->replace(false);
+    seat.bid().get();
+    seat.play().get();
+    CHECK(*seat.standIns == 3);
+}
+
+TEST_CASE("A seat with no member is not counted, for no computer player stands in for anyone", "[seat][count]")
+{
+    Outbox outbox;
+    const auto count = std::make_shared<std::atomic<std::uint64_t>>(0);
+    SeatDriver driver(Seat{0}, std::nullopt, makeComputerPlayer(Level::LowRisk, Seat{0}, std::nullopt), std::nullopt,
+                      outbox, std::make_shared<std::atomic<std::uint64_t>>(0), {}, count);
+
+    BetContext context{{Card{Rank::Ace, Suit::Hearts}, Card{Rank::Ten, Suit::Spades}}};
+    driver.makeBet(context, false);
+    CHECK(*count == 0);
 }
 
 TEST_CASE("Nonsense for ever is answered by the computer player", "[seat]")

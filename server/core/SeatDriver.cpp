@@ -14,15 +14,25 @@ using namespace romanian_whist;
 
 SeatDriver::SeatDriver(Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                        std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
-                       std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed)
+                       std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed,
+                       std::shared_ptr<std::atomic<std::uint64_t>> standInMoves)
     : seat_(seat),
       member_(member),
       computer_(std::move(computer)),
       turnTimer_(turnTimer),
       outbox_(outbox),
       promptIds_(std::move(promptIds)),
-      onChange_(std::move(changed))
+      onChange_(std::move(changed)),
+      standInMoves_(std::move(standInMoves))
 {
+}
+
+template<typename Move>
+auto SeatDriver::standIn(Move&& move)
+{
+    if(standInMoves_)
+        standInMoves_->fetch_add(1);
+    return move();
 }
 
 unsigned int SeatDriver::makeBet(const BetContext& context, bool blind)
@@ -50,7 +60,7 @@ unsigned int SeatDriver::makeBet(const BetContext& context, bool blind)
 
     if(const std::optional<std::uint64_t> answer = ask(std::move(prompt), valid))
         return static_cast<unsigned int>(*answer);
-    return computer_.provider->makeBet(context);
+    return standIn([&] { return computer_.provider->makeBet(context); });
 }
 
 std::optional<std::size_t> SeatDriver::playCard(const PlayContext& context, bool blind)
@@ -82,7 +92,7 @@ std::optional<std::size_t> SeatDriver::playCard(const PlayContext& context, bool
 
     if(const std::optional<std::uint64_t> answer = ask(std::move(prompt), valid))
         return static_cast<std::size_t>(*answer);
-    return computer_.provider->playCard(context);
+    return standIn([&] { return computer_.provider->playCard(context); });
 }
 
 std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<bool(const Pending&)>& valid)

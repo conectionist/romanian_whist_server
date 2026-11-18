@@ -1,6 +1,7 @@
 #ifndef WHIST_TESTS_TESTSUPPORT_H
 #define WHIST_TESTS_TESTSUPPORT_H
 
+#include <drogon/HttpResponse.h>
 #include <drogon/HttpTypes.h>
 #include <drogon/WebSocketClient.h>
 #include <json/value.h>
@@ -15,6 +16,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace whist::test
@@ -57,11 +59,30 @@ struct ServedFile
 
 const std::vector<ServedFile>& servedFiles();
 
+// The one of them that is over 200 KB, where Drogon would send a file without reading it.
+inline constexpr const char* bigFilePath = "assets/big.js";
+inline constexpr std::size_t bigFileSize = 300 * 1024;
+
+// Files of a served type that sit in or under a folder whose name starts with a dot, or are named so.
+// Each holds sourceMarker.
+const std::vector<std::string>& hiddenFiles();
+
 // Files of types Drogon serves by default and the server does not. Each holds sourceMarker.
 inline constexpr const char* sourceMarker = "whist-test-source";
 const std::vector<std::string>& unservedFiles();
 
 const TestServer& testServer();
+
+using Headers = std::vector<std::pair<std::string, std::string>>;
+
+// One request to a server on 127.0.0.1, and its answer.
+std::pair<drogon::ReqResult, drogon::HttpResponsePtr> fetch(std::uint16_t port, const std::string& path,
+                                                            const Headers& headers = {},
+                                                            drogon::HttpMethod method = drogon::Get);
+
+// The text of an HTTP request sent to the server as it is, and everything it answers until it closes
+// the connection. For a path a client would tidy before sending.
+std::string rawRequest(std::uint16_t port, const std::string& request);
 
 // A port nothing listens on just now. Servers are never given port 0, which would give each of
 // their I/O threads a different port.
@@ -71,7 +92,8 @@ std::uint16_t freePort();
 class TestClient
 {
 public:
-    TestClient(std::uint16_t port, const std::string& path);
+    // `headers` are added to the handshake, as a proxy in front would add them.
+    TestClient(std::uint16_t port, const std::string& path, const Headers& headers = {});
     ~TestClient();
     TestClient(const TestClient&) = delete;
     TestClient& operator=(const TestClient&) = delete;

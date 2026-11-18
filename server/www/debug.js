@@ -1,7 +1,7 @@
 // A plain page for trying the server: it shows what the server sends and answers its prompts.
 // Text from the server only ever goes in through textContent.
 
-const protocol = 1;
+const protocol = 2;
 const tokenKey = "whist.debug.token";
 const reloadedKey = "whist.debug.reloaded";
 
@@ -188,6 +188,10 @@ function receive(message) {
       return;
     case "error":
       receiveError(message);
+      return;
+    case "restarting":
+      // About the server, not the table, so a sync does not make it older.
+      setStatus(`the server restarts: games may go on for ${Math.ceil(message.deadline / 1000)} s, and no new one can start`);
       return;
     default:
       break;

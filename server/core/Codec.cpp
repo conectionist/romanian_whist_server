@@ -459,6 +459,7 @@ std::string_view errorName(ErrorCode code)
         case ErrorCode::Illegal: return "illegal";
         case ErrorCode::RateLimited: return "rateLimited";
         case ErrorCode::Draining: return "draining";
+        case ErrorCode::Busy: return "busy";
         case ErrorCode::OpenElsewhere: return "openElsewhere";
     }
     return "badMessage";
@@ -852,6 +853,13 @@ Json::Value heldMessage(const HoldView& hold, Clock::time_point now)
 {
     Json::Value message = encodeHold(hold, now);
     message["type"] = "held";
+    return message;
+}
+
+Json::Value restartingMessage(Clock::time_point deadline, Clock::time_point now)
+{
+    Json::Value message = typed("restarting");
+    message["deadline"] = timeLeft(deadline, now);
     return message;
 }
 

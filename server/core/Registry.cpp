@@ -1,5 +1,6 @@
 #include "core/Registry.h"
 
+#include <algorithm>
 #include <array>
 #include <random>
 #include <utility>
@@ -26,11 +27,23 @@ std::function<std::uint64_t()> systemRandom()
     };
 }
 
+TableOptions withShared(TableOptions options, std::shared_ptr<RunningGames> games,
+                        std::shared_ptr<std::atomic<std::uint64_t>> standInMoves,
+                        std::shared_ptr<const std::atomic<bool>> draining)
+{
+    options.runningGames = std::move(games);
+    options.standInMoves = std::move(standInMoves);
+    options.draining = std::move(draining);
+    return options;
+}
+
 } // namespace
 
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
-      tableOptions_(options.table),
+      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
+      tableOptions_(withShared(options.table, runningGames_, standInMoves_, draining_)),
+      maxTables_(options.maxTables),
       forgetMember_(options.forgetMember),
       random_(options.random ? std::move(options.random) : systemRandom())
 {
@@ -117,7 +130,7 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
     std::shared_ptr<Table> table;
     {
         std::lock_guard lock(mutex_);
-        if(closing_)
+        if(closing_ || draining_->load())
             return {nullptr, ErrorCode::Draining, {}};
 
         const auto record = members_.find(member);
@@ -125,6 +138,8 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
             return {nullptr, ErrorCode::NotFound, {}};
         if(!record->second.table.empty())
             return {nullptr, ErrorCode::Illegal, {}};
+        if(maxTables_ != 0 && tables_.size() >= maxTables_)
+            return {nullptr, ErrorCode::Busy, {}};
 
         std::optional<unsigned int> seat;
         for(unsigned int i = 0 ; i < settings.seats.size() ; i++)
@@ -173,7 +188,7 @@ Registry::Created Registry::createTable(MemberId member, Settings settings, Prof
     std::shared_ptr<Table> table;
     {
         std::lock_guard lock(mutex_);
-        if(closing_)
+        if(closing_ || draining_->load())
             return {nullptr, ErrorCode::Draining, {}};
 
         const auto record = members_.find(member);
@@ -181,6 +196,8 @@ Registry::Created Registry::createTable(MemberId member, Settings settings, Prof
             return {nullptr, ErrorCode::NotFound, {}};
         if(!record->second.table.empty())
             return {nullptr, ErrorCode::Illegal, {}};
+        if(maxTables_ != 0 && tables_.size() >= maxTables_)
+            return {nullptr, ErrorCode::Busy, {}};
 
         std::string code;
         do
@@ -301,6 +318,61 @@ std::size_t Registry::tableCount() const
     return tables_.size();
 }
 
+std::size_t Registry::runningGames() const
+{
+    return runningGames_->count();
+}
+
+std::size_t Registry::countedGames() const
+{
+    return runningGames_->attended();
+}
+
+std::uint64_t Registry::standInMoves() const
+{
+    return standInMoves_->load();
+}
+
+std::size_t Registry::attendedGames(Clock::time_point now) const
+{
+    std::vector<std::shared_ptr<Table>> tables;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [code, table] : tables_)
+            tables.push_back(table);
+    }
+
+    // Each table is read under its own lock, which this one is not held for.
+    return static_cast<std::size_t>(std::ranges::count_if(tables, [now](const std::shared_ptr<Table>& table)
+    {
+        return table->attended(now);
+    }));
+}
+
+Registry::TableCounts Registry::tableCounts() const
+{
+    std::vector<std::shared_ptr<Table>> tables;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [code, table] : tables_)
+            tables.push_back(table);
+    }
+
+    // Each table's state is read under its own lock, which this one is not held for.
+    TableCounts counts;
+    for(const std::shared_ptr<Table>& table : tables)
+    {
+        switch(table->state())
+        {
+            case TableState::Lobby: counts.lobby++; break;
+            case TableState::Playing: counts.playing++; break;
+            case TableState::Finished: counts.finished++; break;
+            case TableState::Closed: break;
+        }
+    }
+    return counts;
+}
+
 void Registry::closeTable(std::string_view code)
 {
     std::shared_ptr<Table> table;
@@ -362,6 +434,18 @@ void Registry::reap(Clock::time_point now)
         else
             ++it;
     }
+}
+
+bool Registry::beginDrain()
+{
+    // Under the lock, so a table being made now is made or refused, never half of each.
+    std::lock_guard lock(mutex_);
+    return !draining_->exchange(true);
+}
+
+bool Registry::draining() const
+{
+    return draining_->load();
 }
 
 void Registry::shutdown()

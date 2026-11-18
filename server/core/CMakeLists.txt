@@ -8,6 +8,8 @@ add_library(whist_session STATIC
     Catalogue.h
     Catalogue.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/CatalogueData.cpp
+    ClientAddress.h
+    ClientAddress.cpp
     Codec.h
     Codec.cpp
     ComputerPlayer.h
@@ -18,6 +20,8 @@ add_library(whist_session STATIC
     GameRun.cpp
     Joiner.h
     Joiner.cpp
+    Limits.h
+    Limits.cpp
     Log.h
     Log.cpp
     Names.h
@@ -31,6 +35,8 @@ add_library(whist_session STATIC
     Publisher.cpp
     Registry.h
     Registry.cpp
+    RunningGames.h
+    RunningGames.cpp
     SeatDriver.h
     SeatDriver.cpp
     SeatProvider.h
@@ -40,6 +46,8 @@ add_library(whist_session STATIC
     Service.cpp
     Session.h
     Session.cpp
+    Status.h
+    Status.cpp
     Settings.h
     Settings.cpp
     Table.h

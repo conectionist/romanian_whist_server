@@ -7,6 +7,7 @@
 #include "core/Settings.h"
 #include "core/Table.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -30,6 +31,12 @@ struct RegistryOptions
 
     // A member nobody has been connected as, and who is at no table, is forgotten after this long.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};
+
+    // The most games someone is at that may run at once. 0: any number.
+    std::size_t maxRunningGames = 0;
+
+    // The most tables that may exist at once, whoever is at them. 0: any number.
+    std::size_t maxTables = 0;
 };
 
 // Every table and every member the server knows. Its lock comes first: the Registry may take a
@@ -81,11 +88,40 @@ public:
     std::shared_ptr<Table> tableOf(MemberId member) const;
     std::size_t tableCount() const;
 
+    // How many game threads are running now, a game nobody is at included.
+    std::size_t runningGames() const;
+
+    // How many of them count against the most that may run: the games someone is at, or was within
+    // the grace period as of the last reap, and none that has ended.
+    std::size_t countedGames() const;
+
+    // How many of the running games are attended, as Table::attended says: the ones a drain waits
+    // for, since a game nobody is at cannot go on.
+    std::size_t attendedGames(Clock::time_point now) const;
+
+    // How many moves computer players have made for members, since the Registry was made.
+    std::uint64_t standInMoves() const;
+
+    struct TableCounts
+    {
+        std::size_t lobby = 0;
+        std::size_t playing = 0;
+        std::size_t finished = 0;
+    };
+
+    // The tables there are, by what they are doing.
+    TableCounts tableCounts() const;
+
     void closeTable(std::string_view code);
 
     // Called every second or so. Closes tables that have been idle too long, and forgets members who
     // are at no table and have not been connected for long.
     void reap(Clock::time_point now);
+
+    // From now on no table is made and no game starts; everything else goes on. Returns false when
+    // it had begun already.
+    bool beginDrain();
+    bool draining() const;
 
     // Refuses new tables, closes every table, and joins every game thread. Call it before the
     // Outbox's connections are gone.
@@ -110,7 +146,11 @@ private:
     std::shared_ptr<Table> removeLocked(std::string_view code);
 
     Outbox& outbox_;
+    const std::shared_ptr<RunningGames> runningGames_;
+    const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_ = std::make_shared<std::atomic<std::uint64_t>>(0);
+    const std::shared_ptr<std::atomic<bool>> draining_ = std::make_shared<std::atomic<bool>>(false);
     const TableOptions tableOptions_;
+    const std::size_t maxTables_;
     const std::chrono::milliseconds forgetMember_;
     const std::shared_ptr<Joiner> joiner_ = std::make_shared<Joiner>();
 

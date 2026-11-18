@@ -9,11 +9,28 @@
 namespace whist
 {
 
-Session::Session(std::shared_ptr<Service> service, std::shared_ptr<Connection> connection)
+Session::Session(std::shared_ptr<Service> service, std::shared_ptr<Connection> connection, std::string address)
     : service_(std::move(service)),
       connection_(std::move(connection)),
-      link_(service_->outbox().open(connection_))
+      link_(service_->outbox().open(connection_)),
+      address_(std::move(address)),
+      bucket_(service_->limits().messageBucket())
 {
+    if(address_.empty())
+        return;
+
+    if(service_->limits().admitConnection(address_))
+        counted_ = true;
+    else
+    {
+        refuse(ErrorCode::RateLimited, "connections");
+        closeConnection();
+    }
+}
+
+Session::~Session()
+{
+    giveUpAddress();
 }
 
 std::optional<MemberId> Session::member() const
@@ -23,7 +40,7 @@ std::optional<MemberId> Session::member() const
 
 void Session::receive(std::string_view text)
 {
-    if(closing_)
+    if(closing_ || !withinRate())
         return;
 
     Decoded decoded = decodeClientMessage(text);
@@ -48,8 +65,48 @@ void Session::receive(std::string_view text)
 
 void Session::receiveBinary()
 {
-    if(!closing_)
+    if(!closing_ && withinRate())
         refuseMalformed(ErrorCode::BadMessage, {});
+}
+
+bool Session::withinRate()
+{
+    const Clock::time_point now = service_->limits().now();
+    if(bucket_.take(now))
+        return true;
+
+    const bool repeated = excessAt_ && now - *excessAt_ < excessWindow;
+    excessAt_ = now;
+    refuse(ErrorCode::RateLimited);
+    if(repeated)
+        closeConnection();
+    return false;
+}
+
+void Session::giveUpAddress()
+{
+    if(counted_)
+    {
+        counted_ = false;
+        service_->limits().releaseConnection(address_);
+    }
+}
+
+void Session::create(const std::function<Registry::Created()>& make)
+{
+    Limits& limits = service_->limits();
+    if(!limits.takeTable(address_))
+    {
+        refuse(ErrorCode::RateLimited, "tables");
+        return;
+    }
+
+    const Registry::Created created = make();
+    if(created.error)
+    {
+        limits.refundTable(address_);
+        refuse(*created.error, created.detail);
+    }
 }
 
 void Session::heard()
@@ -60,6 +117,7 @@ void Session::heard()
 void Session::closed()
 {
     closing_ = true;
+    giveUpAddress();
     detach();
 }
 
@@ -92,19 +150,22 @@ void Session::handle(const ClientMessage& message)
         if constexpr(std::is_same_v<M, Hello>)
             hello(m);
         else if constexpr(std::is_same_v<M, CreateSolo>)
-        {
-            const Registry::Created created = registry.createSolo(member, m.settings);
-            if(created.error)
-                refuse(*created.error, created.detail);
-        }
+            create([&] { return registry.createSolo(member, m.settings); });
         else if constexpr(std::is_same_v<M, CreateTable>)
-        {
-            const Registry::Created created = registry.createTable(member, m.settings, m.profile);
-            if(created.error)
-                refuse(*created.error, created.detail);
-        }
+            create([&] { return registry.createTable(member, m.settings, m.profile); });
         else if constexpr(std::is_same_v<M, JoinTable>)
-            refuse(registry.joinTable(member, m.code, m.profile));
+        {
+            if(service_->limits().joinsBlocked(address_))
+            {
+                refuse(ErrorCode::RateLimited, "joins");
+                return;
+            }
+
+            const std::optional<Refusal> refused = registry.joinTable(member, m.code, m.profile);
+            if(refused == ErrorCode::NotFound)
+                service_->limits().noteFailedJoin(address_);
+            refuse(refused);
+        }
         else if constexpr(std::is_same_v<M, UpdateProfile>)
         {
             const auto at = table();

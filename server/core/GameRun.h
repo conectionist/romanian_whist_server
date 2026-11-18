@@ -4,6 +4,7 @@
 #include "core/Outbox.h"
 #include "core/Protocol.h"
 #include "core/Publisher.h"
+#include "core/RunningGames.h"
 #include "core/SeatDriver.h"
 #include "core/Settings.h"
 
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -46,6 +48,13 @@ struct GameRunSetup
     int threadNiceness = 10;
 
     std::shared_ptr<std::atomic<std::uint64_t>> promptIds;
+
+    // Counts the moves computer players make for members.
+    std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
+
+    // The place this game holds among the running ones, given back when its thread is done with the
+    // engine.
+    std::optional<RunningGames::Slot> slot;
 
     // Called on the game thread, with no lock held, when a seat that waits for a member who is away
     // changes, and once the game is over: the table has something new to tell everyone.
@@ -132,6 +141,10 @@ public:
     // Any thread. Whether nobody who sees the game is connected: it holds at its next rest.
     void setNobodyHere(bool nobodyHere);
 
+    // Any thread. Whether the game counts against the most that may run: it does while someone is at
+    // it, or was lately. Counting again is never refused.
+    void setAttended(bool attended);
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 
@@ -143,12 +156,19 @@ public:
 private:
     void play(romanian_whist::GameSetup setup);
 
+    // Gives the slot back, then says how the game ended, so a game that reads as finished has
+    // already made room for the next.
+    void end(RunOutcome outcome);
+
     const unsigned int game_;
     const int threadNiceness_;
     const std::function<void()> changed_;
     const std::vector<romanian_whist::IGameObserver*> firstObservers_;
     const std::vector<Viewer> viewers_;
     std::optional<romanian_whist::GameSetup> engineSetup_;
+    // The game thread gives the slot back as the table counts the game or not.
+    std::mutex slotMutex_;
+    std::optional<RunningGames::Slot> slot_;
 
     // The order is the design: destruction runs in reverse, so the thread is joined first, and the
     // engine goes before the observers it points at.

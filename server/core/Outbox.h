@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -38,6 +39,9 @@ public:
         std::uint64_t seq_ = 0;
         bool closed_ = false;
         std::atomic<Clock::time_point> heard_{Clock::now()};
+
+        // Whether the announcement has been sent on this link.
+        bool announced_ = false;
     };
 
     std::shared_ptr<Link> open(std::shared_ptr<Connection> connection);
@@ -46,6 +50,11 @@ public:
     // it. A link the member had before is sent openElsewhere and closed: the newer tab wins. Returns
     // false, and attaches nothing, once the Outbox has stopped or the link has closed.
     bool attach(MemberId member, const std::shared_ptr<Link>& link, Json::Value first);
+
+    // Sends the message `make` builds to every link a member holds now, and right after the first
+    // message of each link a member takes later, once each. `make` runs when it is sent, so a countdown
+    // says what is left then. A second announcement replaces the first for the links that have not had it.
+    void announce(std::function<Json::Value()> make);
 
     // Opens a link for the connection and attaches it, with no first message.
     void attach(MemberId member, std::shared_ptr<Connection> connection);
@@ -60,6 +69,10 @@ public:
     // Only if that connection is still the member's, so a late close of an old tab is harmless.
     // True when it was, and is now gone.
     bool detach(MemberId member, const Connection* connection);
+
+    // How many links are open: a connection that has not said hello yet counts, one that has been
+    // closed does not.
+    std::size_t openLinks() const;
 
     bool isConnected(MemberId member) const;
     bool isCurrent(MemberId member, const Connection* connection) const;
@@ -81,6 +94,7 @@ public:
 private:
     void postLocked(Link& link, Json::Value message);
     void closeLocked(Link& link);
+    void announceLocked(Link& link, const std::function<Json::Value()>& make);
 
     // Every post holds it shared; stop() holds it alone.
     mutable std::shared_mutex gate_;
@@ -91,6 +105,8 @@ private:
 
     // Every link opened, held weakly, so a silent one is found whether or not a member holds it.
     std::vector<std::weak_ptr<Link>> opened_;
+
+    std::function<Json::Value()> announcement_;
 };
 
 } // namespace whist

@@ -17,6 +17,7 @@ add_executable(core_tests
     core/support/Fixtures.cpp
     core/support/Games.h
     core/support/Games.cpp
+    core/support/ManualClock.h
     core/support/Online.h
     core/support/Oracle.h
     core/support/Oracle.cpp
@@ -26,7 +27,9 @@ add_executable(core_tests
     core/support/ScriptedHuman.cpp
     core/support/ServerMessages.h
     core/support/ServerMessages.cpp
+    core/AddressTests.cpp
     core/CardsTests.cpp
+    core/DrainTests.cpp
     core/CatalogueTests.cpp
     core/CodecTests.cpp
     core/DropTests.cpp
@@ -35,15 +38,18 @@ add_executable(core_tests
     core/GameRunTests.cpp
     core/HoldTests.cpp
     core/LeakScanTests.cpp
+    core/LimitsTests.cpp
     core/LookTests.cpp
     core/OnlineTests.cpp
     core/NamesTests.cpp
     core/OutboxTests.cpp
     core/SeatDriverTests.cpp
     core/SeatingTests.cpp
+    core/SessionLimitsTests.cpp
     core/SessionTests.cpp
     core/SettingsTests.cpp
     core/SoloTests.cpp
+    core/StatusTests.cpp
     core/TableTests.cpp
 )
 target_include_directories(core_tests PRIVATE core)
@@ -66,11 +72,15 @@ add_executable(app_tests
     app/SpikeController.cpp
     app/DropTests.cpp
     app/GameTests.cpp
+    app/HealthCheckTests.cpp
+    app/HttpTests.cpp
+    app/LimitTests.cpp
     app/OnlineTests.cpp
     app/OptionsTests.cpp
     app/ServerTests.cpp
     app/SpikeTests.cpp
     app/ShutdownTests.cpp
+    app/StatusLogTests.cpp
 )
 target_compile_options(app_tests PRIVATE ${WHIST_SERVER_WARNINGS})
 target_link_libraries(app_tests PRIVATE whist_app Catch2::Catch2WithMain)

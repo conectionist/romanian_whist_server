@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <poll.h>
 #include <spawn.h>
@@ -122,6 +123,64 @@ private:
     std::string pending_;
     std::string log_;
 };
+
+// whist_server run to its end with these arguments, such as `--health-check --config <file>`: what it
+// printed, and its exit status. It is killed if it takes more than ten seconds.
+struct RunResult
+{
+    int status = -1;
+    std::string output;
+};
+
+inline RunResult runServer(const std::vector<std::string>& arguments)
+{
+    int fds[2];
+    REQUIRE(::pipe(fds) == 0);
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, fds[0]);
+    posix_spawn_file_actions_addclose(&actions, fds[1]);
+
+    std::string path = WHIST_SERVER_PATH;
+    std::vector<std::string> owned = arguments;
+    std::vector<char*> argv{path.data()};
+    for(std::string& argument : owned)
+        argv.push_back(argument.data());
+    argv.push_back(nullptr);
+
+    pid_t pid = -1;
+    const int spawned = posix_spawn(&pid, path.c_str(), &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    ::close(fds[1]);
+    REQUIRE(spawned == 0);
+
+    RunResult result;
+    const auto end = std::chrono::steady_clock::now() + 10s;
+    for(;;)
+    {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(end - std::chrono::steady_clock::now());
+        pollfd readable{fds[0], POLLIN, 0};
+        if(left <= 0ms || ::poll(&readable, 1, static_cast<int>(left.count())) <= 0)
+        {
+            ::kill(pid, SIGKILL);
+            break;
+        }
+
+        char buffer[1024];
+        const ssize_t got = ::read(fds[0], buffer, sizeof buffer);
+        if(got <= 0)
+            break;
+        result.output.append(buffer, static_cast<std::size_t>(got));
+    }
+    ::close(fds[0]);
+
+    int status = 0;
+    ::waitpid(pid, &status, 0);
+    result.status = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+    return result;
+}
 
 } // namespace whist::test
 

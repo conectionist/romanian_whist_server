@@ -1,12 +1,15 @@
 # The Romanian Whist protocol
 
-Version **1**. This is the reference every client follows. The server's code is in
+Version **2**. This is the reference every client follows. The server's code is in
 `server/core/Codec.cpp`. A real sample of every server message is in [`fixtures/`](fixtures/),
 written by the server's tests (`core_tests "[fixtures]"`). A client's tests should decode each one.
 The names and portraits players may have are in [`catalogues/`](catalogues/). The states the
 browser page draws its tables from, for comparing its look with the desktop client's, are in
 [`look/`](look/): each file holds a `shot` header and a `state`, which is a sync's fields without
 the envelope, not a message.
+
+Version 2 added the server message `restarting` and the error code `busy`. A client that says hello
+with version 1 gets `error {code: "version"}` and is closed.
 
 ## Transport
 
@@ -132,7 +135,9 @@ connection at that moment, which may be a newer tab.
 - **No `token`, or one the server does not know** (it has restarted since), makes a new member.
   Keep the `welcome`'s token, whichever it is.
 - **The answer is a `welcome`, then always a `sync`:** with `table: null` when the member is at no
-  table. Wait for the sync and render it; anything that came between the two is older than it.
+  table. Wait for the sync and render it; anything that came between the two is older than it,
+  except `restarting`, which is about the server and is never older than anything.
+- **During a drain,** a `restarting` comes right after the `welcome`, before the `sync`.
 
 ### Solo, while a game is on
 
@@ -210,11 +215,12 @@ Online, except where it says solo.
   seat back, with a `sync`; the profile sent is not used, since the engine fixed the names when the
   game started. Once the game is over their seat is open.
 - **Nobody connected.** A game nobody at the table is connected to holds at its next rest, and goes
-  on once someone is. A table nobody has been connected to for ten minutes is closed, game and all.
+  on once someone is. A table nobody has been connected to for five minutes, or ten in a solo game,
+  is closed, game and all.
 - **The host** who is away past the grace period hands over to whoever has been there longest and
   is connected.
 - **Solo** never replaces the player. When they go away the game holds where it is, and goes on
-  when they come back. The table is closed after thirty minutes of nobody being there.
+  when they come back. The table is closed after ten minutes of nobody being there.
 
 ### The round hold
 
@@ -240,6 +246,7 @@ game waits for `continue {round}`.
 | `prompt` | see [Prompts](#prompts) | The seat's member |
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor` (seats), `deadline` | Everyone, during the round hold |
+| `restarting` | `deadline` | Every connection, once the server is asked to stop; and each that says hello after that, right after its `welcome` |
 | `sync` | see [Sync](#sync) | After every `welcome`, and on making, joining or leaving an online table |
 | `error` | `code`, sometimes `detail` | The connection |
 
@@ -386,6 +393,23 @@ The order, for one move: the `game` event asking for it (`betRequested` or `card
 - **A hold ends with the game's next message** (`roundComplete`), or, when you `continue` while
   paused, with your `continue`: a `sync` then shows no hold.
 
+### restarting
+
+The server has been asked to stop, usually for an update, and drains.
+
+- From now on no table is made and no game starts: `createSolo`, `createTable` and `startGame` get
+  `error {code: "draining"}`. Games that are running go on, and so do joining a table and coming
+  back to one.
+- `deadline`: the milliseconds left, when it was sent, until the server ends the games that still
+  run and quits. Count down from when you received it. It is the time left, not a new time: a
+  connection that comes later is sent what is left then. The server quits sooner when no game is
+  left that someone is at: a game nobody is at cannot go on, and is ended with the rest. So the
+  games may end before the deadline, and a game whose player is gone for longer than the server's
+  grace period (30 s) may be cut at once.
+- It is about the server, not a table, so a `sync` does not make it old. Everyone is sent it once.
+- The connection closes when the server quits. A client may reconnect as it does after any drop;
+  the new server has the `welcome` of a member it does not know.
+
 ### Sync
 
 Sent to a member who joins or comes back. It holds everything needed to show the table now:
@@ -406,7 +430,11 @@ you do not hold can be ignored.
 
 ## Errors
 
-`error {code, detail}`. `detail` only ever names a field.
+`error {code, detail}`. `detail` names the field at fault; for `rateLimited` it names the limit.
+
+**The message rate.** A connection may send 20 messages a second on average, in bursts of up to 40.
+A message past that is not carried out: the server answers `rateLimited`, with no `detail`, and
+drops it. A second one within 10 seconds of the last closes the connection.
 
 | Code | |
 |---|---|
@@ -419,8 +447,9 @@ you do not hold can be ignored.
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
-| `rateLimited` | Too many messages |
-| `draining` | The server is restarting, or cannot start a game just now, and takes no new games |
+| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`) or joins that found no table (`joins`). The page waits before it tries again |
+| `draining` | The server is restarting: no table is made and no game starts. See [restarting](#restarting) |
+| `busy` | The server is running as many games, that someone is at, as it may, or holds as many tables as it may, so `createSolo`, `createTable` or `startGame` is refused. A game nobody is at does not count against the first, and a table does against the second whoever is at it. Joining a table that exists, and a player coming back to their game or table, are never refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |
 
 ## Catalogues

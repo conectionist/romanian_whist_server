@@ -1,5 +1,7 @@
 #include "app/ServerOptions.h"
 
+#include "core/ClientAddress.h"
+
 #include <json/json.h>
 
 #include <arpa/inet.h>
@@ -48,6 +50,32 @@ bool isIpAddress(const std::string& text)
     return ::inet_pton(AF_INET, text.c_str(), &parsed) == 1 || ::inet_pton(AF_INET6, text.c_str(), &parsed) == 1;
 }
 
+// A list of addresses and ranges, each of which TrustedProxies accepts. The list may be empty: no
+// proxy is believed.
+std::vector<std::string> readAddresses(const Json::Value& value, const std::string& key)
+{
+    if(!value.isArray())
+        refuse(key, "must be a list of addresses and ranges, such as [\"127.0.0.1\", \"10.0.0.0/8\"]");
+
+    std::vector<std::string> entries;
+    for(const Json::Value& entry : value)
+    {
+        if(!entry.isString())
+            refuse(key, "must hold only strings");
+        entries.push_back(entry.asString());
+    }
+
+    try
+    {
+        const TrustedProxies checked(entries);
+    }
+    catch(const std::invalid_argument& error)
+    {
+        refuse(key, error.what());
+    }
+    return entries;
+}
+
 } // namespace
 
 ServerOptions parseOptions(std::string_view json)
@@ -91,6 +119,8 @@ ServerOptions parseOptions(std::string_view json)
             options.pongTimeout = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "reap_interval_ms")
             options.reapInterval = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "status_log_interval_ms")
+            options.statusLogInterval = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "grace_period_ms")
             options.gracePeriod = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "online_idle_ms")
@@ -99,10 +129,30 @@ ServerOptions parseOptions(std::string_view json)
             options.soloIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "forget_member_ms")
             options.forgetMember = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
-        else if(key == "shutdown_delay_ms")
-            options.shutdownDelay = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
+        else if(key == "drain_ms")
+            options.drainTime = std::chrono::milliseconds(readCount(value, key, 0, maxMs));
         else if(key == "instant_floor_ms")
             options.instantFloor = std::chrono::milliseconds(readCount(value, key, 0, 1000));
+        else if(key == "messages_per_second")
+            options.messagesPerSecond = static_cast<unsigned int>(readCount(value, key, 1, 100000));
+        else if(key == "message_burst")
+            options.messageBurst = static_cast<unsigned int>(readCount(value, key, 1, 100000));
+        else if(key == "max_connections")
+            options.maxConnections = readCount(value, key, 1, 1000000);
+        else if(key == "max_connections_per_ip")
+            options.maxConnectionsPerIp = static_cast<unsigned int>(readCount(value, key, 1, 1000000));
+        else if(key == "tables_per_ip_per_hour")
+            options.tablesPerIpPerHour = static_cast<unsigned int>(readCount(value, key, 1, 1000000));
+        else if(key == "failed_joins_per_ip")
+            options.failedJoinsPerIp = static_cast<unsigned int>(readCount(value, key, 1, 1000000));
+        else if(key == "failed_join_window_ms")
+            options.failedJoinWindow = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "max_running_games")
+            options.maxRunningGames = readCount(value, key, 1, 1000000);
+        else if(key == "max_tables")
+            options.maxTables = readCount(value, key, 1, 1000000);
+        else if(key == "trusted_proxies")
+            options.trustedProxies = readAddresses(value, key);
         else if(key == "log_level")
         {
             options.logLevel = readString(value, key);

@@ -20,7 +20,7 @@
 namespace whist
 {
 
-inline constexpr int protocolVersion = 1;
+inline constexpr int protocolVersion = 2;
 
 using Clock = std::chrono::steady_clock;
 using MemberId = std::uint64_t;
@@ -38,6 +38,7 @@ enum class ErrorCode
     Illegal,
     RateLimited,
     Draining,
+    Busy,
     OpenElsewhere
 };
 
