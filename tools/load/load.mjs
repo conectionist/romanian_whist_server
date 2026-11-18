@@ -567,19 +567,19 @@ class Run {
   }
 }
 
-// The idle server's memory: the first reading with some, waited for as long as the readings take
-// to come, which is as long as the status log's interval.
-async function idleMemory(samples, waitMs = 8000) {
-  const until = Date.now() + waitMs;
+// The idle server's memory: the first reading that has some, waited for up to `waitMs`, which has to cover the
+// status log's interval, or no reading comes and there is no memory per table.
+export async function idleMemory(samples, waitMs, { pollMs = 250, now = Date.now, wait = sleep } = {}) {
+  const until = now() + waitMs;
   for (;;) {
     const sample = samples.latest();
     if (sample && sample.memoryMb !== null && sample.memoryMb !== undefined && sample.memoryKind) {
       return { memoryMb: sample.memoryMb, memoryKind: sample.memoryKind };
     }
-    if (Date.now() >= until) {
+    if (now() >= until) {
       return null;
     }
-    await sleep(250);
+    await wait(pollMs);
   }
 }
 
@@ -587,7 +587,7 @@ function usage() {
   return `usage: node tools/load/load.mjs --kind solo|instant|online [--url http://127.0.0.1:8080]
          [--steps 10,20,40,60,80,100] [--hold 180] [--settle 15] [--cores N]
          [--server <program> --config <file> | --status-log <file> | --pid <n> | --container <name>]
-         [--p99 250] [--cpu 70] [--stop-p99 1000] [--stop-cpu 95] [--max-tables 400] [--json <file>]`;
+         [--p99 250] [--cpu 70] [--stop-p99 1000] [--stop-cpu 95] [--max-tables 400] [--baseline-wait 12] [--json <file>]`;
 }
 
 async function main() {
@@ -598,7 +598,7 @@ async function main() {
       server: { type: "string" }, config: { type: "string" }, "status-log": { type: "string" },
       pid: { type: "string" }, container: { type: "string" }, p99: { type: "string", default: "250" },
       cpu: { type: "string", default: "70" }, "stop-p99": { type: "string", default: "1000" },
-      "stop-cpu": { type: "string", default: "95" }, "max-tables": { type: "string", default: "400" }, json: { type: "string" },
+      "stop-cpu": { type: "string", default: "95" }, "max-tables": { type: "string", default: "400" }, "baseline-wait": { type: "string", default: "12" }, json: { type: "string" },
     },
   });
   if (!(values.kind in KINDS) || (values.server && !values.config)) {
@@ -614,7 +614,8 @@ async function main() {
     return 2;
   }
   const maxTables = Number(values["max-tables"]);
-  if (!(maxTables > 0)) {
+  const baselineWait = Number(values["baseline-wait"]);
+  if (!(maxTables > 0) || !(baselineWait > 0)) {
     console.error(usage());
     return 2;
   }
@@ -662,7 +663,10 @@ async function main() {
     }
 
     if (watching) {
-      baseline = await idleMemory(samples);
+      baseline = await idleMemory(samples, baselineWait * 1000);
+      if (baseline === null) {
+        run.note(`no reading of the idle server's memory in ${baselineWait} s, so there is no memory per table: --baseline-wait must be longer than the status log's interval`);
+      }
     }
 
     for (const target of steps) {

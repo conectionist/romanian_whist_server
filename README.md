@@ -475,7 +475,10 @@ MB`). The table says which under it. The `MB/tbl` column is what each table cost
 step above the idle server's, which it reads before the first step, divided by the tables of the
 step. At the end it says what `--max-tables` (400, the server's `max_tables`) tables would take on top
 of an idle server, so the cap can be checked against the machine's memory. Peak memory never comes
-down, so measure on a server that has just started.
+down, so measure on a server that has just started. The idle reading waits for the first status
+line, up to `--baseline-wait` seconds (12, for the load configuration's status line every 5 s): a
+server that logs less often needs a longer wait, and with none the table has no `MB/tbl` column,
+which the run says in a note.
 
 | Option | Where the server is |
 |---|---|

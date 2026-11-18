@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  chooseAnswer, latencyOf, memoryForCap, memoryPerTable, onlineTable, parseDockerStats, parseStatusLine, percentile, soloGame, suggestCap,
+  chooseAnswer, idleMemory, latencyOf, memoryForCap, memoryPerTable, onlineTable, parseDockerStats, parseStatusLine, percentile, soloGame, suggestCap,
   summaryTable,
 } from "./load.mjs";
 
@@ -156,4 +156,34 @@ test("a solo table is one person and five Reckoner Gammas, and an online one six
   assert.equal(online.settings.seats.length, 6);
   assert.ok(online.settings.seats.every((seat) => seat.kind === "open"));
   assert.ok(online.profile.name);
+});
+
+// A clock of our own, so that waiting for a status line takes no time.
+function waiting() {
+  let at = 0;
+  return { now: () => at, wait: async (ms) => { at += ms; }, polled: () => at };
+}
+
+test("the idle server's memory is the first reading that has some, however long it takes within the wait", async () => {
+  const clock = waiting();
+  const sample = { memoryMb: 40, memoryKind: "peak" };
+  const samples = { latest: () => (clock.now() >= 5000 ? sample : null) };
+  assert.deepEqual(await idleMemory(samples, 12000, { pollMs: 250, ...clock }), { memoryMb: 40, memoryKind: "peak" });
+  assert.equal(clock.polled(), 5000);
+});
+
+test("a reading with no memory in it is not a baseline, and the wait ends with none", async () => {
+  const clock = waiting();
+  const samples = { latest: () => ({ memoryMb: null, memoryKind: null }) };
+  assert.equal(await idleMemory(samples, 3000, { pollMs: 500, ...clock }), null);
+  assert.equal(clock.polled(), 3000);
+  assert.equal(await idleMemory({ latest: () => null }, 1000, { pollMs: 500, ...waiting() }), null);
+});
+
+test("a server that logs once a minute gives no baseline in the default wait, and one in a longer wait", async () => {
+  const logsAt = (clock) => ({ latest: () => (clock.now() >= 60000 ? { memoryMb: 12, memoryKind: "peak" } : null) });
+  const short = waiting();
+  assert.equal(await idleMemory(logsAt(short), 12000, { pollMs: 250, ...short }), null);
+  const long = waiting();
+  assert.deepEqual(await idleMemory(logsAt(long), 70000, { pollMs: 250, ...long }), { memoryMb: 12, memoryKind: "peak" });
 });
