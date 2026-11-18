@@ -2269,6 +2269,118 @@ in full screen.
   - the load test has set the running-game cap;
   - a restart drains cleanly.
 
+**Outcome** (branch `web/phase-9-hardening`, PR #18, parent `ccr-c8ac042f-e6e18n`, the last commit
+`69c4663`). The page's share is under phase 9 in
+[the page's plan](https://github.com/conectionist/romanian_whist_web/blob/ccr-209c0806-o444sp/docs/page-plan.md#phase-9s-share-the-footer-about-and-the-page-deployed--m),
+on its branch `web/phase-9-deployment` (PR #13).
+
+- **The branch.**
+  - **The commits,** in the order they were made:
+    - the limits and the client's address: `d9a457f` to `9ffeda4`;
+    - the status line, the headers, dot paths, `/version` and `/health`: `72baea5` to `798d82e`;
+    - the drain and protocol 2: `6ddb382` to `c273478`;
+    - the health check, the deploy files, the load test, 1.0.0, CI and the README: `3579af4` to
+      `f79d50e`;
+    - the owner's notes after the first build: `fb53689`, `3bdd5f9`;
+    - the first review's fixes and the owner's additions: `a60e305` to `178d48e`;
+    - the second review's fixes: `9f8450e` to `0344e44`;
+    - the VPS hardening guide, `1e008d9`, and the cap the load test set, `69c4663`.
+  - **Who built it:** one implementing agent at extra-high effort, in stretches with a check
+    between them, made every change but `1e008d9`. Fresh read-only agents at extra-high effort
+    reviewed it, as §13 says.
+- **The owner's choices.**
+  - **Before the build** (2026-11-17): a subdomain of the owner's on a new VPS of 2 vCPUs and 2 GB,
+    never named in a committed file; the full stack with our Caddy, from the Docker images, published
+    by a manual CI run on the phase branches; the limits below; a drain of at most 15 minutes, told
+    to the players by a new message, so protocol 2; an About page with a contact link; an external
+    monitor on `/health`; 1.0.0 in both repositories, tagged once the parents reach `master`; the
+    proxy examples only forward, since the server now sends the headers.
+  - **After the first build:** the drain waits only for the games someone is at; no `Server` header
+    and a plain 404 page, which say nothing of what the server is.
+  - **After the first review:** fix all 14, and a second review of the fixes. Three additions in the
+    same round: `max_tables` (400), a cap on the tables that exist at once; the idle timeouts
+    shortened to 5 minutes online and 10 solo; the load test's memory per table.
+  - **After the second review:** fix all 13, and no third review: the orchestrator checks the fixes
+    and CI runs.
+  - **After the load test:** `max_running_games` is 40 (#19 is open on Instant games' CPU).
+- **Built.**
+  - **The client's address** (`ClientAddress`): from a peer in `trusted_proxies`, the rightmost
+    `X-Forwarded-For` entry not in that list, or the leftmost when every one is; an IPv6 address
+    counts by its /64. Drogon keeps only the first of two `X-Forwarded-For` lines, so the README asks
+    a proxy to send one.
+  - **The limits** (`Limits`, §9): a token bucket per connection (20 a second, bursts of 40; the
+    first excess gets `rateLimited`, a second within 10 s closes the connection); per address, 16
+    connections, 30 new tables an hour and 10 joins that found no table in 10 minutes; 2000
+    connections in all; `max_running_games`, which counts only the games someone is at, so a game
+    nobody is at, which holds and takes no processor, never makes `busy`; `max_tables`, every table
+    attended or not. A player coming back to their game is never refused.
+  - **HTTP:** every answer carries the content-security-policy, `nosniff` and `no-referrer` from one
+    constant (`PageHeaders.h`), and `Cache-Control` on 2xx and 304; a path with a segment that
+    starts with `.` is a 404, `%2e` included; `/version` gives the version, commit and protocol, and
+    `/health` 200, or 503 while draining. No `Server` header and a plain 404 page. Drogon's parser
+    answers a malformed request (400, 413, 405) itself, with none of the headers.
+  - **The drain** on SIGTERM: creates and starts are refused with `draining`, everyone is sent
+    `restarting {deadline}`, and the server waits up to `drain_ms` (15 minutes) for the games
+    someone is at, then ends the rest and exits 0. A second signal stops at once.
+  - **The status line,** once a minute: connections, tables by state, game threads, attended games,
+    stand-in moves, the share of a core, processor time and peak memory.
+  - **`whist_server --health-check`** for the image, which has no curl: 0 for ok or draining, 1
+    otherwise.
+  - **Deploy files:** `stop_grace_period: 16m` in every compose file, `deploy/load-config.json`, the
+    by-hand `deploy/manual/Caddyfile` and `whist-server.service`, the proxy examples forwarding
+    `/health` and adding nothing, the README's VPS steps and monitor, and `docs/vps-hardening.md`.
+  - **The load test,** `tools/load/load.mjs`, with 18 unit tests of its own.
+- **The deploy** (2026-11-18), on the owner's subdomain, by the owner over SSH, with the images
+  `sha-0344e44` and the page's `sha-fcc2bc7`:
+  - **The smoke test** from the owner's computer passed every check, the `/ws` handshake's missing
+    `Server` header through Caddy included.
+  - **The monitor** is the owner's own Uptime Kuma, on `/health`.
+  - **"Add to Home screen"** works on the owner's phone.
+  - **A redeploy during a live game** (`up -d --force-recreate server`): the banner showed, the game
+    went on, a new one was refused, the drain ended once the game's tab had been closed past the
+    grace period, and the old server exited 0. The page's Caddy kept running.
+  - **The firewall** is the provider's, with 22, 80, 443 and 443/udp let in. SSH still takes
+    passwords; `docs/vps-hardening.md` has the steps to change that.
+- **The load test** on the VPS, 180 s at each step, on 2 cores, no errors, drops or tables that
+  failed to start in any run:
+
+  | Kind | Result | Suggested |
+  |---|---|---|
+  | Solo, normal speed | 100 tables: p99 21 ms, 66% CPU | 100 |
+  | Instant | 10 tables: p99 16 ms, 88% CPU; 20: 38 ms, 96%, and the ramp stopped | none |
+  | Online, six people answering at once | 40: p99 64 ms, 53%; 60: 109 ms, 72%; 100: 260 ms, 83% | 40 |
+
+  Memory per table was 0.06 MB solo, 0.20 Instant and 0.23 online, so 400 tables take about 92 MB
+  above an idle server of 15 MB: `max_tables` is far from the 2 GB.
+- **Departures from the plan.**
+  - **The cap counts attended games only,** and `max_tables` was added (see the owner's choices).
+  - **The latency** is from an answer sent to its echo coming back, not from a prompt to its arrival,
+    which would need a time on the wire.
+  - **The idle timeouts** are 5 and 10 minutes, not 30.
+- **Left out, and open:**
+  - **#19:** Instant games take about a sixth of a core each, which the running-game cap does not
+    weigh.
+  - **The page's #14 and #15,** found on the phone during the deploy: the side panels go in full
+    screen, and the restart banner covers the top seat's plate.
+  - **`tsan`** was not run in this phase.
+  - **`SeatDriverTests.cpp:471`** failed once at the start of the phase, and not since.
+- **Reviews.**
+  - **The first,** of the branch at `3bdd5f9`, found 14 problems. The worst, severity 4: with the
+    README's `AAAA` advice, every IPv6 player would reach Caddy from the bridge's trusted gateway and
+    share one address's limits. Severity 3: abandoned games held running-game slots, so `busy` could
+    refuse everyone on an idle machine; a proxy adding a second `X-Forwarded-For` line let a client
+    choose its address. The rest, severity 2 and 1: the drain counted games before setting its flag,
+    everyone on a trusted network counted as Caddy, the load test's cap ignored errors, the health
+    check's exit code 2, and documents and comments. All fixed, in `a60e305` to `5d60ec6`.
+  - **The second,** one reviewer for both repositories' fix commits, found 13, none above severity 3.
+    This repository's five, all severity 2 and 1: a solo table's timeout, the load test reusing one
+    server for three kinds, the idle reading giving up early, two comments and two documents. All
+    fixed, in `9f8450e` to `0344e44`.
+- **Tests:** 275 in the default suite, and the load test's 18.
+- **Builds and CI.** The default preset builds and its suite passes at `69c4663`. CI (Build (Linux),
+  Build (Ubuntu 26.04) and the Docker image) is green at `0344e44`, and the manual runs that published
+  `sha-0344e44` passed.
+
 ### Phase 10 (optional): offline solo — M to L
 
 In the page's plan, [§15](https://github.com/conectionist/romanian_whist_web/blob/master/docs/page-plan.md#phase-10-optional-offline-solo--m-to-l).
