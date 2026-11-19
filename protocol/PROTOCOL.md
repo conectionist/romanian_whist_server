@@ -343,7 +343,8 @@ The game as this viewer may see it, after the event:
 ```
 
 - `total` does not include `roundScore`; the new total is their sum.
-- `wins` and `losses` already count this round.
+- `wins` and `losses` already count this round. They run from 0 to 4: a run of five pays +10 or
+  -10 and starts over at 0.
 - `nextCountsForStreaks`: whether the next round deals more than one card. One-card rounds count
   for neither streak. `false` after the last round.
 
