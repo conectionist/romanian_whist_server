@@ -5,7 +5,7 @@ The game server for Romanian Whist's online tables, built on the
 [Drogon](https://github.com/drogonframework/drogon). Its clients are the browser page, in
 [`romanian_whist_web`](https://github.com/conectionist/romanian_whist_web), and the Android app.
 
-**Status:** version 1.0.0. Solo and online games are played end to end: the server runs them at
+**Status:** version 1.0.1. Solo and online games are played end to end: the server runs them at
 `/ws`, and a plain debug page in `server/www/` plays them in a browser, reloads included. People who
 go away are replaced by a computer player, and take their seat back when they return. Tables nobody
 is at are closed. It limits connections, tables, joins and message rates per address, and drains
