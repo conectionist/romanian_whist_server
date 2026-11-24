@@ -51,6 +51,10 @@ test("the cap is the largest step that is quick and leaves room, rounded down to
   assert.equal(suggestCap([step(10, 20, 0.1), step(20, 249, 0.69)]).cap, 20);
 });
 
+test("the Instant cap is not rounded to ten", () => {
+  assert.deepEqual(suggestCap([step(2, 20, 0.2), step(4, 30, 0.4), step(6, 40, 0.8)], { roundTo: 1 }), { cap: 4, why: null });
+});
+
 test("with no step good enough, or no CPU reading, there is no cap and the reason is given", () => {
   assert.equal(suggestCap([step(10, 400, 0.1)]).cap, null);
   assert.match(suggestCap([step(10, 400, 0.1)]).why, /first step/);

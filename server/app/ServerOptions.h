@@ -73,7 +73,7 @@ struct ServerOptions
     std::size_t maxTables = 400;
 
     // Of the games that count against maxRunningGames, the most at Instant speed, past which one is
-    // refused as busy too. An Instant game takes about a sixth of a core, several times another game.
+    // refused as busy too.
     std::size_t maxInstantGames = 4;
 
     // Addresses and ranges whose X-Forwarded-For is believed. Never a range the open internet can

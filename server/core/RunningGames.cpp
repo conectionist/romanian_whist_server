@@ -90,14 +90,22 @@ void RunningGames::Slot::release()
     }
 }
 
-std::optional<RunningGames::Slot> RunningGames::take(bool instant)
+std::optional<RunningGames::Slot> RunningGames::take(bool instant, Full* full)
 {
     {
         std::lock_guard lock(mutex_);
         if(max_ != 0 && attended_ >= max_)
+        {
+            if(full)
+                *full = Full::All;
             return std::nullopt;
+        }
         if(instant && instantFullLocked())
+        {
+            if(full)
+                *full = Full::Instant;
             return std::nullopt;
+        }
 
         count_++;
         attended_++;
@@ -105,6 +113,12 @@ std::optional<RunningGames::Slot> RunningGames::take(bool instant)
             attendedInstant_++;
     }
     return Slot(shared_from_this(), instant);
+}
+
+RunningGames::Counts RunningGames::counts() const
+{
+    std::lock_guard lock(mutex_);
+    return {count_, attended_, attendedInstant_};
 }
 
 bool RunningGames::instantFullLocked() const

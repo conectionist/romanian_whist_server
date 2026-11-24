@@ -12,6 +12,23 @@
 namespace whist
 {
 
+namespace
+{
+
+// A game of people alone counts too: computers take the seats of those who stop answering, and play
+// them at the game's speed.
+bool runsAtInstant(const Settings& settings)
+{
+    return settings.botSpeed == fastestSpeed;
+}
+
+Refusal busyFor(RunningGames::Full full)
+{
+    return full == RunningGames::Full::Instant ? Refusal(ErrorCode::Busy, "instant") : Refusal(ErrorCode::Busy);
+}
+
+} // namespace
+
 Table::Table(std::string code, Mode mode, Seating seating, TableOptions options, Outbox& outbox,
              std::shared_ptr<Joiner> joiner, std::uint64_t seed)
     : code_(std::move(code)),
@@ -171,16 +188,21 @@ std::optional<Refusal> Table::startGame(MemberId by)
         if(const std::optional<SettingsError> error = checkSettings(seating_.settings(), mode_))
             return Refusal(ErrorCode::Illegal, error->field);
 
+        // The last game has sent gameOver, and its thread may not have ended yet.
+        if(run_)
+            run_->releasePlace();
+
         // The last checks, so a refusal for any other reason never uses a place up. The drain is read
         // after the place is taken, and it counts the games after it is set, so a game that starts
         // during the drain is either refused here or counted by it.
         std::optional<RunningGames::Slot> slot;
+        RunningGames::Full full = RunningGames::Full::All;
         if(options_.runningGames)
-            slot = options_.runningGames->take(seating_.settings().botSpeed == fastestSpeed);
+            slot = options_.runningGames->take(runsAtInstant(seating_.settings()), &full);
         if(options_.draining && options_.draining->load())
             return ErrorCode::Draining;
         if(options_.runningGames && !slot)
-            return ErrorCode::Busy;
+            return busyFor(full);
 
         const Settings& settings = seating_.settings();
         GameRunSetup setup;
@@ -335,13 +357,16 @@ std::optional<Refusal> Table::updateSettings(MemberId by, const Settings& settin
     if(unchanged != seating_.settings())
         return ErrorCode::Illegal;
 
-    if(run_ && !run_->setInstant(settings.botSpeed == fastestSpeed))
-        return ErrorCode::Busy;
-
-    seating_.setPacing(settings.botSpeed, settings.waitAfterRound);
+    // Refused Instant, the game keeps its speed and takes the wait, and the tableState says so to a page
+    // that showed the new speed already.
+    const bool instantRefused = run_ && !run_->setInstant(runsAtInstant(settings));
+    const int speed = instantRefused ? seating_.settings().botSpeed : settings.botSpeed;
+    seating_.setPacing(speed, settings.waitAfterRound);
     if(run_)
-        run_->setPacing(pacingFor(settings.botSpeed, options_.instantFloor), settings.waitAfterRound);
+        run_->setPacing(pacingFor(speed, options_.instantFloor), settings.waitAfterRound);
     broadcastLocked();
+    if(instantRefused)
+        return busyFor(RunningGames::Full::Instant);
     return std::nullopt;
 }
 
@@ -535,7 +560,10 @@ void Table::close()
         state_ = TableState::Closed;
         run = std::move(run_);
         if(run)
+        {
             run->silence();
+            run->releasePlace();
+        }
         broadcastLocked();
     }
     joiner_->hand(std::move(run));

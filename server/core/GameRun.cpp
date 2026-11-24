@@ -272,14 +272,22 @@ void GameRun::setNobodyHere(bool nobodyHere)
 void GameRun::setAttended(bool attended)
 {
     std::lock_guard lock(slotMutex_);
-    if(slot_)
+    if(slot_ && !placeReleased_)
         slot_->setAttended(attended);
+}
+
+void GameRun::releasePlace()
+{
+    std::lock_guard lock(slotMutex_);
+    if(slot_)
+        slot_->setAttended(false);
+    placeReleased_ = true;
 }
 
 bool GameRun::setInstant(bool instant)
 {
     std::lock_guard lock(slotMutex_);
-    return !slot_ || slot_->setInstant(instant);
+    return !slot_ || placeReleased_ || slot_->setInstant(instant);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

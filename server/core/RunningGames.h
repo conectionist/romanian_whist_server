@@ -20,6 +20,20 @@ public:
     // `max` and `maxInstant` 0 allow any number of attended games, or attended Instant games.
     explicit RunningGames(std::size_t max, std::size_t maxInstant = 0);
 
+    // Which most refused a game.
+    enum class Full
+    {
+        All,
+        Instant
+    };
+
+    struct Counts
+    {
+        std::size_t threads = 0;
+        std::size_t attended = 0;
+        std::size_t attendedInstant = 0;
+    };
+
     class Slot
     {
     public:
@@ -52,8 +66,11 @@ public:
     };
 
     // A place for one more game, or nothing when `max` attended games are running, or, for an Instant
-    // game, `maxInstant` attended Instant games.
-    std::optional<Slot> take(bool instant = false);
+    // game, `maxInstant` attended Instant games. `full`, when given, says which.
+    std::optional<Slot> take(bool instant = false, Full* full = nullptr);
+
+    // The three counts below, read together.
+    Counts counts() const;
 
     // The game threads running.
     std::size_t count() const;
@@ -71,6 +88,9 @@ private:
     bool instantFullLocked() const;
 
     const std::size_t max_;
+
+    // Instant games' computer players move back to back, so each takes several times the processor
+    // of a game at any other speed.
     const std::size_t maxInstant_;
 
     mutable std::mutex mutex_;
