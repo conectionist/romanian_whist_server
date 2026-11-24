@@ -473,6 +473,9 @@ wait until one of: a valid answer for this generation | the deadline | abandonme
                      or if this was the third move in a row made for a connected member
 ```
 
+The three is `still_here_after_timeouts`. The same turn makes the table ask the member whether they
+are still here ([§5.6](#56-here-but-gone)).
+
 The deadline is the earlier of the turn timer (online, while the member is connected) and the end
 of the grace period (while they are away). Solo games have no turn timer and no replacement
 ([§5.4](#54-solo-is-different)).
@@ -565,6 +568,12 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   next one starts, and a game whose table closes gives it back at once, even if its thread has not
   ended yet; it counts in `game_threads` until it has. `instant_games` in the status line is the
   count.
+- **One address has a maximum of its own among the Instant games.** `max_instant_games_per_ip` (1)
+  counts the Instant games above that one address started: the solo player's, or the host's who
+  pressed start online. Past it `createSolo`, `startGame` and a solo game's switch to Instant are
+  refused with `rateLimited` and `detail` `instant`, and the address's quota of new tables is given
+  back. Without it, one address that answers every question of [§5.6](#56-here-but-gone) could hold
+  every Instant place. As with the others, a player coming back is never refused.
 - **A third maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
   or not, since a table holds its memory for as long as it is kept, a parked game included, until the
   idle timeouts (5 minutes online, 10 solo) end it. `createSolo` and `createTable` past it are refused with `busy`, and the
@@ -580,7 +589,7 @@ Configure a maximum number of running games, rather than relying on the CPU runn
 | Word | Means |
 |---|---|
 | **here** | The member's WebSocket is open and answering pings |
-| **away** | The connection closed, or stopped answering pings for 30 s. The seat is still theirs |
+| **away** | The connection closed, or stopped answering pings for 30 s, or they did not answer when asked whether they are still here ([§5.6](#56-here-but-gone)). The seat is still theirs |
 | **grace period** | 30 s from going away. If their turn comes inside it, the table waits for them, and the others see a countdown |
 | **replaced** | The grace period ran out, or they left, or the turn timer ran out three times in a row. Their seat's computer player makes their moves |
 | **reclaimed** | They came back. The next decision is theirs again |
@@ -604,7 +613,8 @@ controller's `handleNewMessage`, as phase 1's spike showed.
    computer player makes the move, and the seat is replaced.
 4. **Here, but not playing** (a tab left open). The turn timer, 60 s by default, runs out, and her
    computer player makes that one move ("made for you"). Three in a row, and she is treated as gone
-   ([timeline 2](#52-timelines)). Anything she then does reclaims the seat.
+   ([timeline 2](#52-timelines)), and asked whether she is still here. Anything she then does reclaims
+   the seat. If she does not answer within 30 s she is away ([§5.6](#56-here-but-gone)).
 5. **Leaving on purpose** (Leave table). Replaced at once. Coming back by the same link reclaims
    the seat.
 6. **Coming back after being replaced.** A sync ([§6.7](#67-resynchronising)), and the seat is
@@ -623,8 +633,9 @@ controller's `handleNewMessage`, as phase 1's spike showed.
 
 Nobody else is waiting, so a solo game never replaces you. When you go away, the game holds where
 it is, and goes on when you come back, for up to 10 minutes, after which the table closes. There is
-no turn timer. A watched game of computer players holds in the same way when its watcher goes away:
-it is a table with no human here.
+no turn timer, so a tab left open is asked whether you are still there instead
+([§5.6](#56-here-but-gone)). A watched game of computer players holds in the same way when its
+watcher goes away: it is a table with no human here.
 
 ### 5.5 Edge cases
 
@@ -641,6 +652,32 @@ it is a table with no human here.
   mechanism: attach a human link to a computer seat at a round boundary. It is not in the first
   version, partly because the newcomer would play under the seat's name (the engine fixes names at
   `start()`).
+
+### 5.6 Here but gone
+
+A game counts against the caps of [§4.10](#410-capacity) while anyone at it is connected. A tab left
+open answers pings, so on its own the server would never learn that its player has gone, and a game
+waiting on that player would hold its place for ever. Solo has no turn timer, nor has an online table
+with it off; with it on, the computer players play the seat, but the game still counts.
+
+So the reaper asks. The table sends `stillHere {deadline}`:
+
+- **online, with a turn timer,** when `still_here_after_timeouts` (3) of the member's turns in a row
+  have run out, on the turn that replaces them;
+- **solo, or online with the timer off,** when the game has waited `still_here_after_ms` (5 minutes)
+  on something only the member can give, and heard nothing from them: an answer to their prompt, or,
+  solo, a Continue for a held round, or a resume.
+
+The answer is `back`, or anything else they send but `leaveTable`; pongs are the browser's and do not
+count. With no answer within `still_here_answer_ms` (30 s) the member is **absent**: the `Outbox`
+keeps sending to their tab, but no longer counts them as connected, and the table treats them as it
+treats a closed connection, from that moment. So the rest is the machinery above: the others see
+them away, a computer player takes their seat after the grace period, and a game nobody else is at
+holds, stops counting after the grace period, and closes after the idle timeout. Their next message,
+or a reload, brings them back, and is never refused.
+
+Short waits keep their place: thinking, a pause, a held round and a reload are all inside the limits,
+and one answer starts the clock again.
 
 ---
 
@@ -687,6 +724,7 @@ it is a table with no human here.
 | `continue` | `round` | During the round hold |
 | `pause`, `resume` | – | Solo |
 | `leaveTable` | – | At a table |
+| `back` | – | At a table; the answer to `stillHere` |
 
 ### 6.4 Server to client
 
@@ -699,6 +737,7 @@ it is a table with no human here.
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor`, `deadline` | Everyone, during the round hold |
 | `restarting` | `deadline` | Every connection, once the server drains; each that says hello later, right after its `welcome` |
+| `stillHere` | `deadline` | A member the game has waited on too long ([§5.6](#56-here-but-gone)) |
 | `sync` | [§6.7](#67-resynchronising) | On joining or rejoining |
 | `error` | `code`, sometimes `detail` | The connection |
 

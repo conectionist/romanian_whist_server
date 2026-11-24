@@ -15,7 +15,7 @@ using namespace romanian_whist;
 SeatDriver::SeatDriver(Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                        std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
                        std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed,
-                       std::shared_ptr<std::atomic<std::uint64_t>> standInMoves)
+                       std::shared_ptr<std::atomic<std::uint64_t>> standInMoves, int timeoutsBeforeReplacement)
     : seat_(seat),
       member_(member),
       computer_(std::move(computer)),
@@ -23,7 +23,8 @@ SeatDriver::SeatDriver(Seat seat, std::optional<MemberId> member, ComputerPlayer
       outbox_(outbox),
       promptIds_(std::move(promptIds)),
       onChange_(std::move(changed)),
-      standInMoves_(std::move(standInMoves))
+      standInMoves_(std::move(standInMoves)),
+      timeoutsBeforeReplacement_(timeoutsBeforeReplacement)
 {
 }
 
@@ -122,6 +123,7 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
     if(timed)
         prompt.deadline = Clock::now() + *turnTimer_;
     open_ = prompt;
+    openedAt_ = Clock::now();
     answer_.reset();
     lastPrompt_ = prompt.id;
     const bool openedAway = graceEnds_.has_value();
@@ -176,7 +178,7 @@ std::optional<std::uint64_t> SeatDriver::ask(Prompt prompt, const std::function<
         {
             // An away member is replaced, and so is one whose turns keep running out.
             const bool away = graceEnds_.has_value();
-            if(away || ++timedOut_ >= timeoutsBeforeReplacement)
+            if(away || ++timedOut_ >= timeoutsBeforeReplacement_)
                 replaced_ = true;
             const bool nowReplaced = replaced_;
             open_.reset();
@@ -297,6 +299,20 @@ std::optional<Clock::time_point> SeatDriver::awayDeadline() const
     if(!open_ || !graceEnds_)
         return std::nullopt;
     return deadlineOf(*open_);
+}
+
+std::optional<Clock::time_point> SeatDriver::openSince() const
+{
+    std::lock_guard lock(mutex_);
+    if(!open_)
+        return std::nullopt;
+    return openedAt_;
+}
+
+int SeatDriver::timeoutsInARow() const
+{
+    std::lock_guard lock(mutex_);
+    return timedOut_;
 }
 
 void SeatDriver::withOpenPrompt(const std::function<void(const std::optional<Prompt>&)>& use) const

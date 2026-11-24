@@ -41,7 +41,8 @@ TableOptions withShared(TableOptions options, std::shared_ptr<RunningGames> game
 
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
-      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames, options.maxInstantGames)),
+      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames, options.maxInstantGames,
+                                                   options.maxInstantGamesPerAddress)),
       tableOptions_(withShared(options.table, runningGames_, standInMoves_, draining_)),
       maxTables_(options.maxTables),
       forgetMember_(options.forgetMember),
@@ -120,7 +121,7 @@ std::optional<MemberId> Registry::findMember(std::string_view token) const
     return found->second;
 }
 
-Registry::Created Registry::createSolo(MemberId member, Settings settings)
+Registry::Created Registry::createSolo(MemberId member, Settings settings, const std::string& address)
 {
     if(const std::optional<SettingsError> error = cleanNames(settings))
         return {nullptr, ErrorCode::BadMessage, error->field};
@@ -158,7 +159,7 @@ Registry::Created Registry::createSolo(MemberId member, Settings settings)
         tables_[code] = table;
         record->second.table = code;
 
-        if(const std::optional<Refusal> refused = table->startGame(member))
+        if(const std::optional<Refusal> refused = table->startGame(member, address))
         {
             tables_.erase(code);
             record->second.table.clear();

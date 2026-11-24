@@ -856,6 +856,13 @@ Json::Value heldMessage(const HoldView& hold, Clock::time_point now)
     return message;
 }
 
+Json::Value stillHereMessage(Clock::time_point deadline, Clock::time_point now)
+{
+    Json::Value message = typed("stillHere");
+    message["deadline"] = timeLeft(deadline, now);
+    return message;
+}
+
 Json::Value restartingMessage(Clock::time_point deadline, Clock::time_point now)
 {
     Json::Value message = typed("restarting");

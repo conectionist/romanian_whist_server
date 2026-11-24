@@ -39,6 +39,19 @@ struct TableOptions
     std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
     std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
+    // Online, with a turn timer: a member whose turns run out this many times in a row is replaced,
+    // and asked whether they are still here.
+    int timeoutsBeforeReplacement = 3;
+
+    // Solo, or online with no turn timer: how long the game waits for something only a member can
+    // give, and hears nothing from them, before they are asked whether they are still here. A tab
+    // left open answers pings, so without this its game would wait for ever. 0: never.
+    std::chrono::milliseconds stillHereAfter{0};
+
+    // How long a member who was asked has to answer before they count as gone, as if their connection
+    // had closed. 0: nobody is asked.
+    std::chrono::milliseconds stillHereAnswer{0};
+
     // For tests: the turn timer of every online table that has one, whatever its settings allow.
     std::optional<std::chrono::milliseconds> turnTimerOverride;
 
@@ -75,10 +88,12 @@ public:
     bool hasMember(MemberId member) const;
     Settings settings() const;
 
-    // The host starts the first game, or a new one once the last is over. The old game goes to the
-    // joiner, and everyone is sent the new tableState. A drain refuses it with Draining, and a cap on
-    // games or a game thread that cannot start with Busy; the table is left as it was.
-    std::optional<Refusal> startGame(MemberId by);
+    // The host starts the first game, or a new one once the last is over, from `address`, which the
+    // Instant games of one address are counted by. The old game goes to the joiner, and everyone is
+    // sent the new tableState. A drain refuses it with Draining, a cap on games or a game thread that
+    // cannot start with Busy, and the address's cap on Instant games with RateLimited; the table is
+    // left as it was.
+    std::optional<Refusal> startGame(MemberId by, const std::string& address = {});
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
     // returned, which goes back to the connection it came from; a legal or illegal answer to the
@@ -102,13 +117,14 @@ public:
     // not at this table, and nothing was sent.
     bool sync(MemberId member);
 
-    // A seat a computer player took over while the member was connected is theirs again. Anything
-    // else changes nothing.
+    // The member sent something, so they are here: a member who counted as gone while their tab stayed
+    // open is back, and a seat a computer player took over is theirs again.
     void back(MemberId member);
 
-    // Called every second or so. Replaces members who are away past the grace period, hands over a
-    // host who is, and lets go of those who left a finished game. True when the table has been idle
-    // too long, and is to close.
+    // Called every second or so. Asks members the game has waited on too long whether they are still
+    // here, and counts those who did not answer as gone. Replaces members who are away past the grace
+    // period, hands over a host who is, and lets go of those who left a finished game. True when the
+    // table has been idle too long, and is to close.
     bool reap(Clock::time_point now);
 
     // The game's callback, from its own thread: something it waits for or has done is for the table
@@ -179,8 +195,16 @@ private:
     // player took over.
     void arriveLocked(MemberId member);
 
+    // The member counts as gone from `now`. Online, their turn is waited for through the grace period.
+    void goneLocked(MemberId member, Clock::time_point now);
+
+    // Asks members whether they are still here, and counts as gone those whose time to answer is up.
+    // True when anyone went.
+    bool checkStillHereLocked(Clock::time_point now);
+
     // Works out whether anybody is connected, for the idle timer and for a game that holds for nobody.
-    void refreshPresenceLocked();
+    // A table nobody is at is idle from `now`.
+    void refreshPresenceLocked(Clock::time_point now = Clock::now());
 
     // Table::attended, with the lock held.
     bool attendedLocked(Clock::time_point now) const;
@@ -200,6 +224,7 @@ private:
     std::mt19937_64 random_;
     TableState state_ = TableState::Lobby;
     bool paused_ = false;
+    Clock::time_point pausedSince_{};
     unsigned int game_ = 0;
     std::unique_ptr<GameRun> run_;
 

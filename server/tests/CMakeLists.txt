@@ -50,6 +50,7 @@ add_executable(core_tests
     core/SettingsTests.cpp
     core/SoloTests.cpp
     core/StatusTests.cpp
+    core/StillHereTests.cpp
     core/TableTests.cpp
 )
 target_include_directories(core_tests PRIVATE core)

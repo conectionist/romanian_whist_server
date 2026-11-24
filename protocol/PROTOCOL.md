@@ -9,7 +9,9 @@ browser page draws its tables from, for comparing its look with the desktop clie
 the envelope, not a message.
 
 Version 2 added the server message `restarting` and the error code `busy`. A client that says hello
-with version 1 gets `error {code: "version"}` and is closed.
+with version 1 gets `error {code: "version"}` and is closed. Later, still within version 2, came the
+server message `stillHere` and the `detail` `instant` of `rateLimited`. A page that ignores
+`stillHere` still works: its player counts as away once the time to answer is up.
 
 ## Transport
 
@@ -125,7 +127,7 @@ connection at that moment, which may be a newer tab.
 | `continue` | `round` | Once the round is scored: see [The round hold](#the-round-hold) |
 | `pause`, `resume` | – | Solo, while a game is on |
 | `leaveTable` | – | At a table. Solo: closes the table. Online: opens your seat between games; during a game a computer player takes it |
-| `back` | – | At a table: see [Going away](#going-away-and-coming-back). Ignored when there is nothing to take back |
+| `back` | – | At a table: see [Going away](#going-away-and-coming-back), and the answer to [`stillHere`](#stillhere). Ignored when there is nothing to take back |
 
 
 ### hello
@@ -149,7 +151,9 @@ connection at that moment, which may be a newer tab.
   differ from the table's (`illegal` otherwise). A new speed applies at once, even to the rest under
   way. The wait applies from the next scored round. Answered with a `tableState`. A switch to Instant,
   while the server runs as many Instant games as it may, is answered with a `tableState` that keeps
-  the speed the game had, and takes the wait sent with it, then `busy` with `detail` `instant`.
+  the speed the game had, and takes the wait sent with it, then `busy` with `detail` `instant`; while
+  your address has as many Instant games as it may, the same, then `rateLimited` with `detail`
+  `instant`.
 - **The wait after each round:** see [The round hold](#the-round-hold).
 - **`startGame`**, once a game is over, starts another with the same settings, at once.
 - **`leaveTable`** closes the table, game and all. You can then `createSolo` again.
@@ -205,9 +209,13 @@ Online, except where it says solo.
 - **Replaced.** A computer player, the table's `replacement`, makes the seat's moves from now on,
   and the seat's `presence` is `replaced`. It keeps its name, portrait and score. This happens when
   the wait above runs out, when the grace period ends before a turn of theirs comes, when they leave,
-  and when their turn timer runs out three times in a row while they are connected. A prompt open
+  and when their turn timer runs out three times in a row while they are connected (the server's
+  `still_here_after_timeouts`). Then they are also asked whether they are still here. A prompt open
   for them is closed with `promptClosed {by: "computer"}`, and a replaced seat is not awaited in the
   round hold.
+- **Asked, and no answer.** A member whose tab is open but who has stopped playing is sent
+  [`stillHere`](#stillhere). One who does not answer in time is away as if their connection had
+  closed, from that moment: the rest of this list applies, though their tab still gets every message.
 - **Reclaimed.** A `hello` with their token, `back`, or any other message from them but
   `leaveTable` gives them the seat again from the next decision. A decision that the computer player
   is making finishes first. Everyone is sent a `tableState` with `presence` `here`.
@@ -221,8 +229,9 @@ Online, except where it says solo.
   is closed, game and all.
 - **The host** who is away past the grace period hands over to whoever has been there longest and
   is connected.
-- **Solo** never replaces the player. When they go away the game holds where it is, and goes on
-  when they come back. The table is closed after ten minutes of nobody being there.
+- **Solo** never replaces the player. When they go away, or do not answer `stillHere`, the game
+  holds where it is, and goes on when they come back. The table is closed after ten minutes of
+  nobody being there.
 
 ### The round hold
 
@@ -249,6 +258,7 @@ game waits for `continue {round}`.
 | `promptClosed` | `id`, `by` (`you` or `computer`) | The seat's member |
 | `held` | `round`, `waitingFor` (seats), `deadline` | Everyone, during the round hold |
 | `restarting` | `deadline` | Every connection, once the server is asked to stop; and each that says hello after that, right after its `welcome` |
+| `stillHere` | `deadline` | A member the game has waited on too long: see [stillHere](#stillhere) |
 | `sync` | see [Sync](#sync) | After every `welcome`, and on making, joining or leaving an online table |
 | `error` | `code`, sometimes `detail` | The connection |
 
@@ -413,6 +423,28 @@ The server has been asked to stop, usually for an update, and drains.
 - The connection closes when the server quits. A client may reconnect as it does after any drop;
   the new server has the `welcome` of a member it does not know.
 
+### stillHere
+
+The game has waited on this member too long, and the server asks whether they are still there. A
+tab left open answers pings, so without the question its game would wait for ever, and hold one of
+the server's places.
+
+- It is sent:
+  - online, with a turn timer, when their turns have run out three times in a row, as their seat is
+    replaced;
+  - solo, or online with no turn timer, when the game has waited five minutes on something only
+    they can give, and heard nothing from them: an answer to their prompt, or, solo, a Continue for
+    a held round, or a `resume`.
+- `deadline`: the milliseconds left, when it was sent, to answer. It is 30 s by default.
+- **The answer** is `back`, or any other message but `leaveTable`. Pongs do not count.
+- **No answer in time,** and they count as [away](#going-away-and-coming-back) from then, as if
+  their connection had closed: the table is sent a `tableState` with their `presence` `away`, and
+  they are sent it too, since their tab is open. The grace period runs, and so on. A game nobody
+  else is at holds, and its table closes as one nobody is connected to.
+- **Coming back** after that is the same as answering: anything they send gives them their seat
+  again, and everyone is sent a `tableState` with `presence` `here`. A player coming back is never
+  refused, however busy the server is.
+
 ### Sync
 
 Sent to a member who joins or comes back. It holds everything needed to show the table now:
@@ -450,7 +482,7 @@ drops it. A second one within 10 seconds of the last closes the connection.
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
-| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`) or joins that found no table (`joins`). The page waits before it tries again |
+| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`), joins that found no table (`joins`), or Instant games that run at once (`instant`: `createSolo`, a host's `startGame` or a solo game's switch to Instant, of which the same request at another speed would start). The page waits before it tries again |
 | `draining` | The server is restarting: no table is made and no game starts. See [restarting](#restarting) |
 | `busy` | The server is running as many games, that someone is at, as it may, or holds as many tables as it may, so `createSolo`, `createTable` or `startGame` is refused. A game nobody is at does not count against the first, and a table does against the second whoever is at it. With `detail` `instant`, it runs as many games at Instant as it may: the same request at another speed would start, and a solo game's switch to Instant is refused this way too. Joining a table that exists, and a player coming back to their game or table, are never refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |

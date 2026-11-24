@@ -127,6 +127,12 @@ ServerOptions parseOptions(std::string_view json)
             options.onlineIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "solo_idle_ms")
             options.soloIdle = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "still_here_after_timeouts")
+            options.stillHereAfterTimeouts = static_cast<int>(readCount(value, key, 1, 1000));
+        else if(key == "still_here_after_ms")
+            options.stillHereAfter = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
+        else if(key == "still_here_answer_ms")
+            options.stillHereAnswer = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "forget_member_ms")
             options.forgetMember = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "drain_ms")
@@ -151,6 +157,8 @@ ServerOptions parseOptions(std::string_view json)
             options.maxRunningGames = readCount(value, key, 1, 1000000);
         else if(key == "max_instant_games")
             options.maxInstantGames = readCount(value, key, 1, 1000000);
+        else if(key == "max_instant_games_per_ip")
+            options.maxInstantGamesPerIp = readCount(value, key, 1, 1000000);
         else if(key == "max_tables")
             options.maxTables = readCount(value, key, 1, 1000000);
         else if(key == "trusted_proxies")

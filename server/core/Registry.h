@@ -38,6 +38,9 @@ struct RegistryOptions
     // Of those, the most at Instant speed. 0: any number.
     std::size_t maxInstantGames = 0;
 
+    // Of the Instant games, the most that one address may have started. 0: any number.
+    std::size_t maxInstantGamesPerAddress = 0;
+
     // The most tables that may exist at once, whoever is at them. 0: any number.
     std::size_t maxTables = 0;
 };
@@ -74,8 +77,8 @@ public:
     };
 
     // A private table with the member at its one human seat, or watching when there is none. The
-    // game starts at once.
-    Created createSolo(MemberId member, Settings settings);
+    // game starts at once, and counts as one of `address`'s.
+    Created createSolo(MemberId member, Settings settings, const std::string& address = {});
 
     // An online table in its lobby, with the member as its host in the first open seat.
     Created createTable(MemberId member, Settings settings, Profile profile);

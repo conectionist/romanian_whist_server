@@ -44,6 +44,9 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.gracePeriod == std::chrono::milliseconds(30000));
     CHECK(options.onlineIdle == std::chrono::minutes(5));
     CHECK(options.soloIdle == std::chrono::minutes(10));
+    CHECK(options.stillHereAfterTimeouts == 3);
+    CHECK(options.stillHereAfter == std::chrono::minutes(5));
+    CHECK(options.stillHereAnswer == std::chrono::seconds(30));
     CHECK(options.forgetMember == std::chrono::hours(1));
     CHECK(options.drainTime == std::chrono::minutes(15));
     CHECK(options.instantFloor == std::chrono::milliseconds(30));
@@ -57,6 +60,7 @@ TEST_CASE("An empty config keeps every default", "[options]")
     CHECK(options.failedJoinWindow == std::chrono::minutes(10));
     CHECK(options.maxRunningGames == 40);
     CHECK(options.maxInstantGames == 4);
+    CHECK(options.maxInstantGamesPerIp == 1);
     CHECK(options.maxTables == 400);
     CHECK(options.trustedProxies == std::vector<std::string>{"127.0.0.1", "::1"});
 }
@@ -69,6 +73,9 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
 
     CHECK(sample.onlineIdle == defaults.onlineIdle);
     CHECK(sample.soloIdle == defaults.soloIdle);
+    CHECK(sample.stillHereAfterTimeouts == defaults.stillHereAfterTimeouts);
+    CHECK(sample.stillHereAfter == defaults.stillHereAfter);
+    CHECK(sample.stillHereAnswer == defaults.stillHereAnswer);
     CHECK(sample.statusLogInterval == defaults.statusLogInterval);
     CHECK(sample.drainTime == defaults.drainTime);
     CHECK(sample.messagesPerSecond == defaults.messagesPerSecond);
@@ -80,6 +87,7 @@ TEST_CASE("The sample config says what the defaults are", "[options]")
     CHECK(sample.failedJoinWindow == defaults.failedJoinWindow);
     CHECK(sample.maxRunningGames == defaults.maxRunningGames);
     CHECK(sample.maxInstantGames == defaults.maxInstantGames);
+    CHECK(sample.maxInstantGamesPerIp == defaults.maxInstantGamesPerIp);
     CHECK(sample.maxTables == defaults.maxTables);
     CHECK(sample.trustedProxies == defaults.trustedProxies);
 }
@@ -91,10 +99,11 @@ TEST_CASE("A config overrides the keys it names", "[options]")
         "io_threads": 4, "max_message_bytes": 1024, "ping_interval_ms": 250,
         "pong_timeout_ms": 900, "reap_interval_ms": 50, "status_log_interval_ms": 250, "grace_period_ms": 700,
         "online_idle_ms": 8000, "solo_idle_ms": 9000, "forget_member_ms": 7000,
+        "still_here_after_timeouts": 5, "still_here_after_ms": 120000, "still_here_answer_ms": 15000,
         "drain_ms": 61000, "instant_floor_ms": 0, "log_level": "debug",
         "messages_per_second": 5, "message_burst": 7, "max_connections": 100, "max_connections_per_ip": 3,
         "tables_per_ip_per_hour": 4, "failed_joins_per_ip": 2, "failed_join_window_ms": 60000,
-        "max_running_games": 9, "max_instant_games": 3, "max_tables": 13, "trusted_proxies": ["10.0.0.0/8", "2001:db8::/32", "192.0.2.7"]
+        "max_running_games": 9, "max_instant_games": 3, "max_instant_games_per_ip": 2, "max_tables": 13, "trusted_proxies": ["10.0.0.0/8", "2001:db8::/32", "192.0.2.7"]
     })");
 
     CHECK(options.address == "::1");
@@ -110,6 +119,9 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.onlineIdle == std::chrono::milliseconds(8000));
     CHECK(options.soloIdle == std::chrono::milliseconds(9000));
     CHECK(options.forgetMember == std::chrono::milliseconds(7000));
+    CHECK(options.stillHereAfterTimeouts == 5);
+    CHECK(options.stillHereAfter == std::chrono::milliseconds(120000));
+    CHECK(options.stillHereAnswer == std::chrono::milliseconds(15000));
     CHECK(options.drainTime == std::chrono::milliseconds(61000));
     CHECK(options.instantFloor == std::chrono::milliseconds(0));
     CHECK(options.logLevel == "debug");
@@ -122,6 +134,7 @@ TEST_CASE("A config overrides the keys it names", "[options]")
     CHECK(options.failedJoinWindow == std::chrono::milliseconds(60000));
     CHECK(options.maxRunningGames == 9);
     CHECK(options.maxInstantGames == 3);
+    CHECK(options.maxInstantGamesPerIp == 2);
     CHECK(options.maxTables == 13);
     CHECK(options.trustedProxies == std::vector<std::string>{"10.0.0.0/8", "2001:db8::/32", "192.0.2.7"});
 }
@@ -187,6 +200,7 @@ TEST_CASE("The load test's settings are the Docker image's, with the limits lift
     CHECK(options.failedJoinsPerIp >= 10000);
     CHECK(options.maxRunningGames >= 1000);
     CHECK(options.maxInstantGames >= 1000);
+    CHECK(options.maxInstantGamesPerIp >= 1000);
     CHECK(options.maxTables >= 1000);
 
     // It reports often, to be read as it goes, and stops quickly, with games still running.
@@ -196,7 +210,7 @@ TEST_CASE("The load test's settings are the Docker image's, with the limits lift
     // Everything else is the image's, so the server that is measured is the one that is deployed.
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
                            "tables_per_ip_per_hour", "failed_joins_per_ip", "max_running_games", "max_instant_games",
-                           "max_tables", "status_log_interval_ms", "drain_ms"})
+                           "max_instant_games_per_ip", "max_tables", "status_log_interval_ms", "drain_ms"})
     {
         CHECK(load.isMember(key));
         load.removeMember(key);
@@ -209,7 +223,9 @@ TEST_CASE("A limit is refused when it is 0, negative or not a number", "[options
 {
     for(const char* key : {"messages_per_second", "message_burst", "max_connections", "max_connections_per_ip",
                            "tables_per_ip_per_hour", "failed_joins_per_ip", "failed_join_window_ms",
-                           "max_running_games", "max_instant_games", "max_tables", "status_log_interval_ms"})
+                           "max_running_games", "max_instant_games", "max_instant_games_per_ip", "max_tables",
+                           "status_log_interval_ms", "still_here_after_timeouts", "still_here_after_ms",
+                           "still_here_answer_ms"})
     {
         for(const char* value : {"0", "-1", "\"20\"", "true", "1.5", "null"})
         {

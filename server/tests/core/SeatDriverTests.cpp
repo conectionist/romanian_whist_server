@@ -35,12 +35,12 @@ struct Seat0
     // How many moves the computer player made for the member.
     const std::shared_ptr<std::atomic<std::uint64_t>> standIns = std::make_shared<std::atomic<std::uint64_t>>(0);
 
-    explicit Seat0(std::optional<milliseconds> turnTimer = std::nullopt)
+    explicit Seat0(std::optional<milliseconds> turnTimer = std::nullopt, int timeoutsBeforeReplacement = 3)
     {
         outbox.attach(ana, recorder.connect(ana));
         driver = std::make_unique<SeatDriver>(Seat{0}, ana, makeComputerPlayer(Level::LowRisk, Seat{0}, std::nullopt),
                                               turnTimer, outbox, std::make_shared<std::atomic<std::uint64_t>>(0),
-                                              [this] { changes++; }, standIns);
+                                              [this] { changes++; }, standIns, timeoutsBeforeReplacement);
     }
 
     // Asks for a bid on another thread, as the engine would on the game thread.
@@ -409,6 +409,37 @@ TEST_CASE("A turn that comes after the grace period is the computer player's, wi
     // And so is every turn after it.
     CHECK(seat.play().get() == 1u);
     CHECK(seat.recorder.messagesTo(ana).empty());
+}
+
+TEST_CASE("A member is replaced after as many turns run out as the table says, and the seat tells how many did",
+          "[seat][timer]")
+{
+    Seat0 seat(milliseconds(200 * test::slowdown), 2);
+    CHECK_FALSE(seat.driver->openSince());
+
+    const auto timeOut = [&]
+    {
+        const Clock::time_point before = Clock::now();
+        auto play = seat.play();
+        seat.next();
+        const std::optional<Clock::time_point> opened = seat.driver->openSince();
+        REQUIRE(opened);
+        CHECK(*opened >= before);
+        CHECK(play.get() == 1u);
+        CHECK(seat.next()["by"] == "computer");
+        CHECK_FALSE(seat.driver->openSince());
+    };
+
+    timeOut();
+    CHECK(seat.driver->timeoutsInARow() == 1);
+    CHECK_FALSE(seat.driver->replaced());
+    timeOut();
+    CHECK(seat.driver->timeoutsInARow() == 2);
+    CHECK(seat.driver->replaced());
+
+    // The count stays for the table to read, until the member takes the seat back.
+    CHECK(seat.driver->reclaim());
+    CHECK(seat.driver->timeoutsInARow() == 0);
 }
 
 TEST_CASE("Three turns in a row that run out replace a connected member; an answer starts the count over",

@@ -24,6 +24,12 @@ struct TableMember
 
     // When their connection went, while it stays gone.
     std::optional<Clock::time_point> awaySince{};
+
+    // When they were asked whether they are still here, until they answer.
+    std::optional<Clock::time_point> askedSince{};
+
+    // When they last sent anything but a pong.
+    Clock::time_point lastActive{};
 };
 
 // Who sits where at a table, who hosts it, and the rules for changing them. Plain data: a table
@@ -51,6 +57,11 @@ public:
 
     // Records when the member's connection went, or that it is back.
     void setAway(MemberId member, std::optional<Clock::time_point> since);
+
+    // Records when the member was asked whether they are still here, or that they answered.
+    void setAsked(MemberId member, std::optional<Clock::time_point> since);
+
+    void setActive(MemberId member, Clock::time_point when);
 
     // The first member after the host, in the order they came, for whom `here` holds takes over
     // hosting. False when there is no one.

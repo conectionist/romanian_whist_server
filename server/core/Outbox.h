@@ -13,6 +13,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace whist
@@ -74,8 +75,17 @@ public:
     // closed does not.
     std::size_t openLinks() const;
 
+    // False for a member whose connection is open but who is absent.
     bool isConnected(MemberId member) const;
     bool isCurrent(MemberId member, const Connection* connection) const;
+
+    // The member's tab is open, answering pings, but they did not answer when asked whether they were
+    // still here: they count as gone, though they are still sent everything. A connection they open
+    // later, or setPresent, ends it. False when they have no connection.
+    bool setAbsent(MemberId member);
+
+    // True when the member was absent, and is not any more.
+    bool setPresent(MemberId member);
 
     // Stamps the connection's next seq and posts, in one step under that link's lock, so messages
     // leave in seq order. A member with no connection misses the message. Never blocks.
@@ -102,6 +112,9 @@ private:
 
     mutable std::mutex mutex_;
     std::unordered_map<MemberId, std::shared_ptr<Link>> links_;
+
+    // Only members who hold a link in links_.
+    std::unordered_set<MemberId> absent_;
 
     // Every link opened, held weakly, so a silent one is found whether or not a member holds it.
     std::vector<std::weak_ptr<Link>> opened_;

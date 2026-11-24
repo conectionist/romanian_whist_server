@@ -268,6 +268,14 @@ void Publisher::setPacing(Pacing pacing, bool waitAfterRound)
     restChanged_.notify_all();
 }
 
+std::optional<Clock::time_point> Publisher::openHoldSince() const
+{
+    std::lock_guard lock(restMutex_);
+    if(!heldRound_ || holdLimit_)
+        return std::nullopt;
+    return heldSince_;
+}
+
 bool Publisher::gameOverSent() const
 {
     std::lock_guard lock(cacheMutex_);
@@ -397,7 +405,10 @@ void Publisher::onRoundScored(const GameEngine& engine)
                 holdDeadline_ = Clock::now() + *holdLimit_;
         }
         if(hold)
+        {
             heldRound_ = round;
+            heldSince_ = Clock::now();
+        }
     }
 
     publish(engine, event);

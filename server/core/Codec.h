@@ -56,6 +56,10 @@ Json::Value gameMessage(unsigned int game, const GameEvent& event, Json::Value s
 Json::Value promptMessage(const Prompt& prompt, Clock::time_point now);
 Json::Value promptClosedMessage(std::uint64_t prompt, bool byYou);
 Json::Value heldMessage(const HoldView& hold, Clock::time_point now);
+
+// Whether the member is still here, to be answered by `deadline`, which goes out as the milliseconds
+// left at `now`.
+Json::Value stillHereMessage(Clock::time_point deadline, Clock::time_point now);
 Json::Value errorMessage(ErrorCode code, std::string_view detail = {});
 
 // The server is going to restart: its running games get until `deadline` at most. The deadline goes

@@ -365,6 +365,51 @@ TEST_CASE("A game becomes Instant only while there is room, and an Instant game 
     CHECK(games->count() == 0);
 }
 
+TEST_CASE("One address has at most its own number of Instant games, and an empty address any number", "[limits][games][instant][address]")
+{
+    const auto games = std::make_shared<RunningGames>(0, 0, 1);
+    const std::string ana = "10.0.0.1";
+    const std::string bea = "10.0.0.2";
+
+    std::optional<RunningGames::Slot> first = games->take(true, nullptr, ana);
+    REQUIRE(first);
+    RunningGames::Full full = RunningGames::Full::All;
+    CHECK_FALSE(games->take(true, &full, ana));
+    CHECK(full == RunningGames::Full::InstantAddress);
+    CHECK(games->attendedInstantFrom(ana) == 1);
+
+    // Another address, another speed, or no address at all is not refused.
+    std::optional<RunningGames::Slot> other = games->take(true, nullptr, bea);
+    std::optional<RunningGames::Slot> slower = games->take(false, nullptr, ana);
+    std::optional<RunningGames::Slot> nobody = games->take(true);
+    std::optional<RunningGames::Slot> nobodyAgain = games->take(true);
+    REQUIRE(other);
+    REQUIRE(slower);
+    REQUIRE(nobody);
+    REQUIRE(nobodyAgain);
+    CHECK(games->attendedInstant() == 4);
+
+    // A slower game of the same address may not become Instant while the first counts.
+    full = RunningGames::Full::All;
+    CHECK_FALSE(slower->setInstant(true, &full));
+    CHECK(full == RunningGames::Full::InstantAddress);
+
+    // Nobody at the first: it stops counting, and the address has its place back.
+    first->setAttended(false);
+    CHECK(games->attendedInstantFrom(ana) == 0);
+    CHECK(slower->setInstant(true));
+    CHECK(games->attendedInstantFrom(ana) == 1);
+
+    // A player coming back is never refused, even past the address's most.
+    first->setAttended(true);
+    CHECK(games->attendedInstantFrom(ana) == 2);
+
+    first.reset();
+    slower->setInstant(false);
+    CHECK(games->attendedInstantFrom(ana) == 0);
+    CHECK(games->take(true, nullptr, ana));
+}
+
 TEST_CASE("A maximum of 0 allows any number of games", "[limits][games]")
 {
     const auto games = std::make_shared<RunningGames>(0);

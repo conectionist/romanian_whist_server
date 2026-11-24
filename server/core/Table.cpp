@@ -24,7 +24,13 @@ bool runsAtInstant(const Settings& settings)
 
 Refusal busyFor(RunningGames::Full full)
 {
-    return full == RunningGames::Full::Instant ? Refusal(ErrorCode::Busy, "instant") : Refusal(ErrorCode::Busy);
+    switch(full)
+    {
+        case RunningGames::Full::All: return Refusal(ErrorCode::Busy);
+        case RunningGames::Full::Instant: return Refusal(ErrorCode::Busy, "instant");
+        case RunningGames::Full::InstantAddress: return Refusal(ErrorCode::RateLimited, "instant");
+    }
+    return Refusal(ErrorCode::Busy);
 }
 
 } // namespace
@@ -167,7 +173,7 @@ void Table::broadcastLocked(std::optional<MemberId> except) const
     }
 }
 
-std::optional<Refusal> Table::startGame(MemberId by)
+std::optional<Refusal> Table::startGame(MemberId by, const std::string& address)
 {
     std::unique_ptr<GameRun> previous;
     {
@@ -198,7 +204,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
         std::optional<RunningGames::Slot> slot;
         RunningGames::Full full = RunningGames::Full::All;
         if(options_.runningGames)
-            slot = options_.runningGames->take(runsAtInstant(seating_.settings()), &full);
+            slot = options_.runningGames->take(runsAtInstant(seating_.settings()), &full, address);
         if(options_.draining && options_.draining->load())
             return ErrorCode::Draining;
         if(options_.runningGames && !slot)
@@ -221,6 +227,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
         setup.threadNiceness = options_.threadNiceness;
         setup.promptIds = promptIds_;
         setup.standInMoves = options_.standInMoves;
+        setup.timeoutsBeforeReplacement = options_.timeoutsBeforeReplacement;
         setup.slot = std::move(slot);
         setup.changed = [self = weak_from_this(), game = setup.game]
         {
@@ -323,6 +330,7 @@ std::optional<Refusal> Table::setPaused(MemberId by, bool paused)
         return std::nullopt;
 
     paused_ = paused;
+    pausedSince_ = Clock::now();
     run_->setPaused(paused);
     broadcastLocked();
     return std::nullopt;
@@ -359,14 +367,15 @@ std::optional<Refusal> Table::updateSettings(MemberId by, const Settings& settin
 
     // Refused Instant, the game keeps its speed and takes the wait, and the tableState says so to a page
     // that showed the new speed already.
-    const bool instantRefused = run_ && !run_->setInstant(runsAtInstant(settings));
+    RunningGames::Full full = RunningGames::Full::Instant;
+    const bool instantRefused = run_ && !run_->setInstant(runsAtInstant(settings), &full);
     const int speed = instantRefused ? seating_.settings().botSpeed : settings.botSpeed;
     seating_.setPacing(speed, settings.waitAfterRound);
     if(run_)
         run_->setPacing(pacingFor(speed, options_.instantFloor), settings.waitAfterRound);
     broadcastLocked();
     if(instantRefused)
-        return busyFor(RunningGames::Full::Instant);
+        return busyFor(full);
     return std::nullopt;
 }
 
@@ -439,6 +448,7 @@ bool Table::settleLocked()
 void Table::arriveLocked(MemberId member)
 {
     seating_.setAway(member, std::nullopt);
+    seating_.setAsked(member, std::nullopt);
     if(run_)
     {
         run_->here(member);
@@ -447,14 +457,14 @@ void Table::arriveLocked(MemberId member)
     refreshPresenceLocked();
 }
 
-void Table::refreshPresenceLocked()
+void Table::refreshPresenceLocked(Clock::time_point now)
 {
     const bool here = std::ranges::any_of(seating_.members(),
                                           [this](const TableMember& m) { return outbox_.isConnected(m.id); });
     if(here)
         idleSince_.reset();
     else if(!idleSince_)
-        idleSince_ = Clock::now();
+        idleSince_ = now;
 
     if(run_)
     {
@@ -471,8 +481,74 @@ void Table::back(MemberId member)
     if(state_ == TableState::Closed || !seating_.hasMember(member))
         return;
 
+    seating_.setActive(member, Clock::now());
+    seating_.setAsked(member, std::nullopt);
+    if(outbox_.setPresent(member))
+    {
+        arriveLocked(member);
+        broadcastLocked();
+        return;
+    }
+
     if(run_ && stateLocked() == TableState::Playing && run_->reclaim(member))
         broadcastLocked();
+}
+
+bool Table::checkStillHereLocked(Clock::time_point now)
+{
+    const bool playing = run_ && stateLocked() == TableState::Playing;
+    std::vector<MemberId> asked;
+    std::vector<MemberId> gone;
+    for(const TableMember& member : seating_.members())
+    {
+        // An answer is only for the game it was asked in, and a member whose connection went is away
+        // already.
+        if(!playing || options_.stillHereAnswer.count() == 0 || !outbox_.isConnected(member.id))
+        {
+            if(member.askedSince)
+                seating_.setAsked(member.id, std::nullopt);
+            continue;
+        }
+
+        if(member.askedSince)
+        {
+            if(now >= *member.askedSince + options_.stillHereAnswer)
+                gone.push_back(member.id);
+            continue;
+        }
+
+        const std::optional<std::chrono::milliseconds>& timer = seating_.settings().turnTimer;
+        if(mode_ == Mode::Online && timer && timer->count() > 0)
+        {
+            if(run_->timeoutsInARow(member.id) >= options_.timeoutsBeforeReplacement)
+                asked.push_back(member.id);
+            continue;
+        }
+
+        if(options_.stillHereAfter.count() == 0)
+            continue;
+        std::optional<Clock::time_point> since = run_->waitingOnSince(member.id);
+        if(mode_ == Mode::Solo && paused_ && member.id == seating_.host() && (!since || pausedSince_ < *since))
+            since = pausedSince_;
+        if(since && now - std::max(*since, member.lastActive) >= options_.stillHereAfter)
+            asked.push_back(member.id);
+    }
+
+    for(MemberId member : asked)
+    {
+        seating_.setAsked(member, now);
+        outbox_.send(member, stillHereMessage(now + options_.stillHereAnswer, now));
+    }
+
+    // Their tab stays open, and is sent everything still, so that whatever they do next brings them
+    // back where they are.
+    for(MemberId member : gone)
+    {
+        seating_.setAsked(member, std::nullopt);
+        outbox_.setAbsent(member);
+        goneLocked(member, now);
+    }
+    return !gone.empty();
 }
 
 void Table::runChanged(unsigned int game)
@@ -501,10 +577,17 @@ bool Table::reap(Clock::time_point now)
     const std::chrono::milliseconds idleLimit = mode_ == Mode::Solo ? options_.soloIdle : options_.onlineIdle;
     if(idleSince_ && now - *idleSince_ >= idleLimit)
         return true;
-    if(mode_ == Mode::Solo)
-        return false;
 
-    bool changed = settleLocked();
+    // Those who went are told too, since their tab is still open.
+    bool changed = checkStillHereLocked(now);
+    if(mode_ == Mode::Solo)
+    {
+        if(changed)
+            broadcastLocked();
+        return false;
+    }
+
+    changed = settleLocked() || changed;
     const auto goneFor = [&](const TableMember& member)
     {
         return member.awaySince && now >= *member.awaySince + options_.gracePeriod;
@@ -558,6 +641,10 @@ void Table::close()
         if(state_ == TableState::Closed)
             return;
         state_ = TableState::Closed;
+
+        // Absent means gone from this table; at no table their open tab is simply connected.
+        for(const TableMember& member : seating_.members())
+            outbox_.setPresent(member.id);
         run = std::move(run_);
         if(run)
         {

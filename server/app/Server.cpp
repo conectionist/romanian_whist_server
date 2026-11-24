@@ -221,9 +221,13 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     serviceOptions.registry.table.gracePeriod = options.gracePeriod;
     serviceOptions.registry.table.onlineIdle = options.onlineIdle;
     serviceOptions.registry.table.soloIdle = options.soloIdle;
+    serviceOptions.registry.table.timeoutsBeforeReplacement = options.stillHereAfterTimeouts;
+    serviceOptions.registry.table.stillHereAfter = options.stillHereAfter;
+    serviceOptions.registry.table.stillHereAnswer = options.stillHereAnswer;
     serviceOptions.registry.forgetMember = options.forgetMember;
     serviceOptions.registry.maxRunningGames = options.maxRunningGames;
     serviceOptions.registry.maxInstantGames = options.maxInstantGames;
+    serviceOptions.registry.maxInstantGamesPerAddress = options.maxInstantGamesPerIp;
     serviceOptions.registry.maxTables = options.maxTables;
     serviceOptions.limits.messagesPerSecond = options.messagesPerSecond;
     serviceOptions.limits.messageBurst = options.messageBurst;

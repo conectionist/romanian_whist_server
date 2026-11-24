@@ -128,20 +128,25 @@ void Table::presenceChanged(MemberId member)
     if(outbox_.isConnected(member))
         return;
 
+    goneLocked(member, Clock::now());
+
+    // Solo, nobody else is there to be told.
+    if(mode_ == Mode::Online)
+        broadcastLocked();
+}
+
+void Table::goneLocked(MemberId member, Clock::time_point now)
+{
     if(!seating_.awaySince(member))
-        seating_.setAway(member, Clock::now());
-    refreshPresenceLocked();
+        seating_.setAway(member, now);
+    refreshPresenceLocked(now);
 
-    // A solo game never replaces anyone, and nobody else is there to be told.
-    if(mode_ != Mode::Online)
-        return;
-
-    if(run_ && stateLocked() == TableState::Playing)
+    // A solo game never replaces anyone.
+    if(mode_ == Mode::Online && run_ && stateLocked() == TableState::Playing)
     {
         run_->away(member, *seating_.awaySince(member) + options_.gracePeriod);
         run_->excuse(member);
     }
-    broadcastLocked();
 }
 
 } // namespace whist
