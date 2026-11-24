@@ -67,6 +67,7 @@ std::vector<MemberId> Outbox::closeSilent(Clock::time_point cutoff)
             if(it->second == link)
             {
                 gone.push_back(it->first);
+                absent_.erase(it->first);
                 links_.erase(it);
                 break;
             }
@@ -96,6 +97,7 @@ bool Outbox::attach(MemberId member, const std::shared_ptr<Link>& link, Json::Va
         {
             std::lock_guard lock(mutex_);
             previous = std::exchange(links_[member], link);
+            absent_.erase(member);
             announcement = announcement_;
         }
         if(announcement)
@@ -154,6 +156,7 @@ bool Outbox::detach(MemberId member, const Connection* connection)
     if(found == links_.end() || found->second->connection() != connection)
         return false;
     links_.erase(found);
+    absent_.erase(member);
     return true;
 }
 
@@ -180,7 +183,22 @@ std::size_t Outbox::openLinks() const
 bool Outbox::isConnected(MemberId member) const
 {
     std::lock_guard lock(mutex_);
-    return links_.contains(member);
+    return links_.contains(member) && !absent_.contains(member);
+}
+
+bool Outbox::setAbsent(MemberId member)
+{
+    std::lock_guard lock(mutex_);
+    if(!links_.contains(member))
+        return false;
+    absent_.insert(member);
+    return true;
+}
+
+bool Outbox::setPresent(MemberId member)
+{
+    std::lock_guard lock(mutex_);
+    return absent_.erase(member) != 0;
 }
 
 bool Outbox::isCurrent(MemberId member, const Connection* connection) const
@@ -245,6 +263,7 @@ void Outbox::stop()
     }
     std::lock_guard lock(mutex_);
     links_.clear();
+    absent_.clear();
 }
 
 } // namespace whist

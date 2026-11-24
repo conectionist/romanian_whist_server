@@ -88,6 +88,18 @@ void Seating::setAway(MemberId member, std::optional<Clock::time_point> since)
         found->awaySince = since;
 }
 
+void Seating::setAsked(MemberId member, std::optional<Clock::time_point> since)
+{
+    if(TableMember* found = find(member))
+        found->askedSince = since;
+}
+
+void Seating::setActive(MemberId member, Clock::time_point when)
+{
+    if(TableMember* found = find(member))
+        found->lastActive = when;
+}
+
 bool Seating::passHost(const std::function<bool(MemberId)>& here)
 {
     for(const TableMember& m : members_)

@@ -325,6 +325,8 @@ std::string shapeError(const Json::Value& message)
         return object(with({{"round", whole()}, {"waitingFor", list(whole())}, {"deadline", nullable(whole())}}))(message);
     if(type == "restarting")
         return object(with({{"deadline", whole()}}))(message);
+    if(type == "stillHere")
+        return object(with({{"deadline", whole()}}))(message);
     if(type == "sync")
         return object(with({{"table", nullable(object(tableFields(), tableOptional()))},
                             {"game", nullable(whole())},

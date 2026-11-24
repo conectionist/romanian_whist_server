@@ -335,6 +335,33 @@ void drainingGame(Samples& samples)
     keepFirsts(recorder.messagesTo(1), samples);
 }
 
+// A player asked whether they are still here. The game waits on their first turn, so the question's
+// seq is the same on every run.
+void askedGame(Samples& samples)
+{
+    test::Recorder recorder;
+
+    ServiceOptions options;
+    options.registry.table.instantFloor = milliseconds(0);
+    options.registry.table.threadNiceness = 0;
+    options.registry.table.stillHereAfter = std::chrono::minutes(5);
+    options.registry.table.stillHereAnswer = std::chrono::seconds(30);
+    const auto service = std::make_shared<Service>(std::move(options));
+
+    test::Client client(service, recorder, 1);
+    client.hello();
+    Settings settings = test::tableSettings(3, {0}, Level::Cyborg);
+    settings.seed = 7;
+    Json::Value create = test::typed("createSolo");
+    create["settings"] = encodeSettings(settings);
+    client.send(create);
+    REQUIRE(recorder.waitFor(1, [](const Json::Value& m) { return m["type"] == "prompt"; }, patience));
+
+    service->registry().reap(Clock::now() + std::chrono::minutes(6));
+    keepFirsts(test::messagesOfType(recorder, 1, "stillHere"), samples);
+    service->registry().closeTable(service->registry().tableOf(*client.member())->code());
+}
+
 } // namespace
 
 TEST_CASE("Every message the server sends has a fixture, and it is up to date", "[fixtures]")
@@ -347,10 +374,11 @@ TEST_CASE("Every message the server sends has a fixture, and it is up to date", 
     droppedGame(samples);
     limitedGame(samples);
     drainingGame(samples);
+    askedGame(samples);
 
     const std::vector<std::string> expected{
         "welcome", "tableState", "tableState.online", "tableState.waiting", "tableState.replaced", "sync", "held",
-        "held.online", "error", "error.rateLimited", "error.busy", "error.draining", "restarting",
+        "held.online", "error", "error.rateLimited", "error.busy", "error.draining", "restarting", "stillHere",
         "prompt.bet", "prompt.play", "prompt.bet-blind", "prompt.play-blind",
         "promptClosed.you", "promptClosed.computer",
         "game.gameStarted", "game.roundStarted", "game.betRequested", "game.betPlaced", "game.bettingComplete",

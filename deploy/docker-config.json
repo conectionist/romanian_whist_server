@@ -11,6 +11,9 @@
     "grace_period_ms": 30000,
     "online_idle_ms": 300000,
     "solo_idle_ms": 600000,
+    "still_here_after_timeouts": 3,
+    "still_here_after_ms": 300000,
+    "still_here_answer_ms": 30000,
     "forget_member_ms": 3600000,
     "drain_ms": 900000,
     "instant_floor_ms": 30,
@@ -23,6 +26,7 @@
     "failed_join_window_ms": 600000,
     "max_running_games": 40,
     "max_instant_games": 4,
+    "max_instant_games_per_ip": 1,
     "max_tables": 400,
     "trusted_proxies": ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],
     "log_level": "info"

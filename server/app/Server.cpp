@@ -202,6 +202,31 @@ void serveTableLinks(const std::string& documentRoot)
 
 } // namespace
 
+ServiceOptions serviceOptionsFrom(const ServerOptions& options)
+{
+    ServiceOptions serviceOptions;
+    serviceOptions.registry.table.instantFloor = options.instantFloor;
+    serviceOptions.pongTimeout = options.pongTimeout;
+    serviceOptions.registry.table.gracePeriod = options.gracePeriod;
+    serviceOptions.registry.table.onlineIdle = options.onlineIdle;
+    serviceOptions.registry.table.soloIdle = options.soloIdle;
+    serviceOptions.registry.table.timeoutsBeforeReplacement = options.stillHereAfterTimeouts;
+    serviceOptions.registry.table.stillHereAfter = options.stillHereAfter;
+    serviceOptions.registry.table.stillHereAnswer = options.stillHereAnswer;
+    serviceOptions.registry.forgetMember = options.forgetMember;
+    serviceOptions.registry.maxRunningGames = options.maxRunningGames;
+    serviceOptions.registry.maxInstantGames = options.maxInstantGames;
+    serviceOptions.registry.maxInstantGamesPerAddress = options.maxInstantGamesPerIp;
+    serviceOptions.registry.maxTables = options.maxTables;
+    serviceOptions.limits.messagesPerSecond = options.messagesPerSecond;
+    serviceOptions.limits.messageBurst = options.messageBurst;
+    serviceOptions.limits.connectionsPerAddress = options.maxConnectionsPerIp;
+    serviceOptions.limits.tablesPerAddressPerHour = options.tablesPerIpPerHour;
+    serviceOptions.limits.failedJoinsPerAddress = options.failedJoinsPerIp;
+    serviceOptions.limits.failedJoinWindow = options.failedJoinWindow;
+    return serviceOptions;
+}
+
 void configureApp(const ServerOptions& options, std::function<void()> onListening)
 {
     // Drogon makes this folder, with 256 more inside it, at start, and writes there any request body
@@ -215,23 +240,7 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     // ico are for a favicon.
     const std::vector<std::string> fileTypes{"html", "js", "css", "svg", "webp", "png", "ico", "woff2", "txt", "json"};
 
-    ServiceOptions serviceOptions;
-    serviceOptions.registry.table.instantFloor = options.instantFloor;
-    serviceOptions.pongTimeout = options.pongTimeout;
-    serviceOptions.registry.table.gracePeriod = options.gracePeriod;
-    serviceOptions.registry.table.onlineIdle = options.onlineIdle;
-    serviceOptions.registry.table.soloIdle = options.soloIdle;
-    serviceOptions.registry.forgetMember = options.forgetMember;
-    serviceOptions.registry.maxRunningGames = options.maxRunningGames;
-    serviceOptions.registry.maxInstantGames = options.maxInstantGames;
-    serviceOptions.registry.maxTables = options.maxTables;
-    serviceOptions.limits.messagesPerSecond = options.messagesPerSecond;
-    serviceOptions.limits.messageBurst = options.messageBurst;
-    serviceOptions.limits.connectionsPerAddress = options.maxConnectionsPerIp;
-    serviceOptions.limits.tablesPerAddressPerHour = options.tablesPerIpPerHour;
-    serviceOptions.limits.failedJoinsPerAddress = options.failedJoinsPerIp;
-    serviceOptions.limits.failedJoinWindow = options.failedJoinWindow;
-    service() = std::make_shared<Service>(std::move(serviceOptions));
+    service() = std::make_shared<Service>(serviceOptionsFrom(options));
 
     drogon::app()
         .setLogLevel(toLogLevel(options.logLevel))

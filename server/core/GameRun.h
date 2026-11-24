@@ -52,6 +52,9 @@ struct GameRunSetup
     // Counts the moves computer players make for members.
     std::shared_ptr<std::atomic<std::uint64_t>> standInMoves;
 
+    // A member whose turns run out this many times in a row is replaced.
+    int timeoutsBeforeReplacement = 3;
+
     // The place this game holds among the running ones, given back when its thread is done with the
     // engine.
     std::optional<RunningGames::Slot> slot;
@@ -138,6 +141,14 @@ public:
     // The seat whose member is away, and the time left until the table stops waiting for them.
     std::optional<WaitingFor> waitingFor() const;
 
+    // Any thread. Since when the game has waited for something only the member can give: an answer
+    // to their seat's prompt, or a Continue for a round held with no deadline. None when it is not
+    // waiting for them.
+    std::optional<Clock::time_point> waitingOnSince(MemberId member) const;
+
+    // Any thread. How many of the member's turns in a row ran out, in the seat they play in this game.
+    int timeoutsInARow(MemberId member) const;
+
     // Any thread. Whether nobody who sees the game is connected: it holds at its next rest.
     void setNobodyHere(bool nobodyHere);
 
@@ -146,8 +157,9 @@ public:
     void setAttended(bool attended);
 
     // Any thread. Whether the game runs at Instant, which has a most of its own. False when becoming
-    // Instant is refused, and nothing changes. A game that has given its place back is never refused.
-    bool setInstant(bool instant);
+    // Instant is refused, and nothing changes; `full`, when given, says why. A game that has given its
+    // place back is never refused.
+    bool setInstant(bool instant, RunningGames::Full* full = nullptr);
 
     // Any thread. Stops the game counting against the caps before its thread is done, for a game that
     // has sent gameOver or was closed, and asks nothing more of the processor. It still counts as a thread.

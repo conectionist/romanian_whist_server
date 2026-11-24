@@ -314,6 +314,9 @@ class Person {
       case "restarting":
         world.count("restarting");
         return;
+      case "stillHere":
+        this.onStillHere(message);
+        return;
       case "error":
         world.count(`error ${message.code}`);
         if (!expectedErrors.has(message.code)) {
@@ -386,6 +389,16 @@ class Person {
     }
     this.continued = held.round;
     setTimeout(() => this.send({ type: "continue", round: held.round }), this.world.between(0, 300));
+  }
+
+  // Most people answer, some late; a few have walked off and come back later, as their next move.
+  onStillHere(question) {
+    this.world.count("asked whether still here");
+    if (this.world.random() < 0.2) {
+      this.world.count("still-here questions left unanswered");
+      return;
+    }
+    setTimeout(() => this.send({ type: "back" }), this.world.between(0, Math.min(question.deadline, 3000)));
   }
 
   // What a person does on seeing the table: the host starts games, anyone at no table joins one.
@@ -570,7 +583,9 @@ async function startServer(program) {
     // Everyone connects from 127.0.0.1, makes tables again and again, and answers as fast as the game asks.
     messages_per_second: 10000, message_burst: 10000, max_connections_per_ip: 10000,
     tables_per_ip_per_hour: 1000000, failed_joins_per_ip: 1000000, max_running_games: 10000,
-    max_instant_games: 10000, max_tables: 10000,
+    max_instant_games: 10000, max_instant_games_per_ip: 10000, max_tables: 10000,
+    // People who leave a turn to the timer are asked about it, and have a few seconds to answer.
+    still_here_answer_ms: 5000,
   }));
 
   const child = spawn(program, ["--config", join(directory, "config.json")], { stdio: ["ignore", "pipe", "inherit"] });

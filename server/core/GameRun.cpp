@@ -53,7 +53,7 @@ std::vector<std::unique_ptr<SeatDriver>> makeDrivers(const GameRunSetup& setup, 
 
         drivers.push_back(std::make_unique<SeatDriver>(Seat{i}, member, std::move(computer),
                                                        turnTimer, outbox, setup.promptIds, setup.changed,
-                                                       setup.standInMoves));
+                                                       setup.standInMoves, setup.timeoutsBeforeReplacement));
     }
     return drivers;
 }
@@ -264,6 +264,30 @@ std::optional<WaitingFor> GameRun::waitingFor() const
     return std::nullopt;
 }
 
+std::optional<Clock::time_point> GameRun::waitingOnSince(MemberId member) const
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen)
+        return std::nullopt;
+
+    std::optional<Clock::time_point> since = publisher_.openHoldSince();
+    if(seen->seat)
+    {
+        const std::optional<Clock::time_point> prompt = drivers_.at(*seen->seat)->openSince();
+        if(prompt && (!since || *prompt < *since))
+            since = prompt;
+    }
+    return since;
+}
+
+int GameRun::timeoutsInARow(MemberId member) const
+{
+    const std::optional<Viewer> seen = viewer(member);
+    if(!seen || !seen->seat)
+        return 0;
+    return drivers_.at(*seen->seat)->timeoutsInARow();
+}
+
 void GameRun::setNobodyHere(bool nobodyHere)
 {
     publisher_.setNobodyHere(nobodyHere);
@@ -280,14 +304,17 @@ void GameRun::releasePlace()
 {
     std::lock_guard lock(slotMutex_);
     if(slot_)
+    {
         slot_->setAttended(false);
+        slot_->leaveAddress();
+    }
     placeReleased_ = true;
 }
 
-bool GameRun::setInstant(bool instant)
+bool GameRun::setInstant(bool instant, RunningGames::Full* full)
 {
     std::lock_guard lock(slotMutex_);
-    return !slot_ || placeReleased_ || slot_->setInstant(instant);
+    return !slot_ || placeReleased_ || slot_->setInstant(instant, full);
 }
 
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)

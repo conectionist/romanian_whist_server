@@ -137,11 +137,15 @@ void Session::handle(const ClientMessage& message)
     const auto table = [&] { return registry.tableOf(member); };
 
     // Whatever else a member sends shows they are here, so it takes back a seat a computer player
-    // took over. Leaving does not, and the explicit `back` is just that and nothing more.
-    if(member_ && !std::holds_alternative<Hello>(message) && !std::holds_alternative<LeaveTable>(message))
+    // took over. Leaving does not, and the explicit `back` is just that and nothing more. Leaving, or
+    // anything sent at no table, ends an absence, which would make their next table hold for nobody.
+    if(member_ && !std::holds_alternative<Hello>(message))
     {
-        if(const auto at = table())
+        const auto at = table();
+        if(at && !std::holds_alternative<LeaveTable>(message))
             at->back(member);
+        else
+            service_->outbox().setPresent(member);
     }
 
     std::visit([&]([[maybe_unused]] const auto& m)
@@ -150,7 +154,7 @@ void Session::handle(const ClientMessage& message)
         if constexpr(std::is_same_v<M, Hello>)
             hello(m);
         else if constexpr(std::is_same_v<M, CreateSolo>)
-            create([&] { return registry.createSolo(member, m.settings); });
+            create([&] { return registry.createSolo(member, m.settings, address_); });
         else if constexpr(std::is_same_v<M, CreateTable>)
             create([&] { return registry.createTable(member, m.settings, m.profile); });
         else if constexpr(std::is_same_v<M, JoinTable>)
@@ -204,7 +208,7 @@ void Session::handle(const ClientMessage& message)
         else if constexpr(std::is_same_v<M, StartGame>)
         {
             const auto at = table();
-            refuse(at ? at->startGame(member) : Refusal(ErrorCode::Illegal));
+            refuse(at ? at->startGame(member, address_) : Refusal(ErrorCode::Illegal));
         }
         else if constexpr(std::is_same_v<M, LeaveTable>)
             leave();

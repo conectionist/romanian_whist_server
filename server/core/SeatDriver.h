@@ -37,13 +37,14 @@ public:
     // closes, and when the seat is replaced there: the table has something new to tell everyone.
     using Changed = std::function<void()>;
 
-    // A seat with a member asks that member, and its computer player (if any) stands in when a
-    // turn times out or the member is gone. A seat with no member is played by its computer player
-    // alone. `standInMoves`, when given, counts the moves a computer player makes for a member.
+    // A seat with a member asks that member, and its computer player (if any) stands in when a turn
+    // times out, `timeoutsBeforeReplacement` times in a row for good, or the member is gone. Without a
+    // member the computer player plays alone. `standInMoves` counts the moves it makes for a member.
     SeatDriver(romanian_whist::Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
                std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed = {},
-               std::shared_ptr<std::atomic<std::uint64_t>> standInMoves = {});
+               std::shared_ptr<std::atomic<std::uint64_t>> standInMoves = {},
+               int timeoutsBeforeReplacement = 3);
 
     SeatDriver(const SeatDriver&) = delete;
     SeatDriver& operator=(const SeatDriver&) = delete;
@@ -85,15 +86,19 @@ public:
     // The prompt open for a member who is away, and when it stops waiting for them.
     std::optional<Clock::time_point> awayDeadline() const;
 
+    // When the prompt open now was sent, if one is.
+    std::optional<Clock::time_point> openSince() const;
+
+    // How many of the member's turns in a row ran out, counted since they last answered or took the
+    // seat back.
+    int timeoutsInARow() const;
+
     // Whether a human is asked for this seat's moves just now.
     bool humanInCharge() const;
 
     // Fixed for the game: the person whose seat this is, if it has one.
     std::optional<MemberId> member() const;
     romanian_whist::IGameObserver* observer() const;
-
-    // A member whose turns time out this many times in a row is replaced.
-    static constexpr int timeoutsBeforeReplacement = 3;
 
 private:
     struct Pending
@@ -127,10 +132,12 @@ private:
     const romanian_whist::CardValidator validator_{};
     const Changed onChange_;
     const std::shared_ptr<std::atomic<std::uint64_t>> standInMoves_;
+    const int timeoutsBeforeReplacement_;
 
     mutable std::mutex mutex_;
     std::condition_variable changed_;
     std::optional<Prompt> open_;
+    Clock::time_point openedAt_{};
     std::optional<Pending> answer_;
     std::uint64_t lastPrompt_ = 0;
     bool abandoned_ = false;

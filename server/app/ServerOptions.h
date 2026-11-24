@@ -39,6 +39,13 @@ struct ServerOptions
     std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
     std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
+    // A tab left open answers pings, so its player is asked whether they are still here: after this
+    // many of their turns in a row ran out, or after the game waited this long on them. One who does
+    // not answer in time counts as away, as if the connection had closed.
+    int stillHereAfterTimeouts = 3;
+    std::chrono::milliseconds stillHereAfter{5 * 60 * 1000};
+    std::chrono::milliseconds stillHereAnswer{30000};
+
     // How long a member who is at no table and not connected is remembered.
     std::chrono::milliseconds forgetMember{60 * 60 * 1000};
 
@@ -73,8 +80,10 @@ struct ServerOptions
     std::size_t maxTables = 400;
 
     // Of the games that count against maxRunningGames, the most at Instant speed, past which one is
-    // refused as busy too.
+    // refused as busy too, and of those the most that one address may start, past which it is
+    // refused as rate limited.
     std::size_t maxInstantGames = 4;
+    std::size_t maxInstantGamesPerIp = 1;
 
     // Addresses and ranges whose X-Forwarded-For is believed. Never a range the open internet can
     // reach the server from: anyone in it could then write any address they like.

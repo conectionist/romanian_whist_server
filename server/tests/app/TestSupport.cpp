@@ -201,7 +201,7 @@ const TestServer& testServer()
     // Every test client connects from 127.0.0.1, and some play at once as fast as they can.
     options.messagesPerSecond = options.messageBurst = 100000;
     options.maxConnectionsPerIp = options.tablesPerIpPerHour = options.failedJoinsPerIp = 100000;
-    options.maxRunningGames = options.maxInstantGames = options.maxTables = 1000;
+    options.maxRunningGames = options.maxInstantGames = options.maxInstantGamesPerIp = options.maxTables = 1000;
 
     auto listening = std::make_shared<std::promise<void>>();
     std::future<void> ready = listening->get_future();

@@ -88,13 +88,23 @@ docker compose up -d
 - **Limits:** `config.json` also holds the limits: messages per second on a connection, connections
   and new tables from one address, joins that found no table from one address, connections in all,
   games running at once that someone is at (`max_running_games`), the ones of those at Instant
-  (`max_instant_games`), and tables in all (`max_tables`, which counts a table nobody is at too).
+  (`max_instant_games`), the Instant games one address started, while they run
+  (`max_instant_games_per_ip`, 1), and tables in all (`max_tables`, which counts a table nobody is
+  at too).
   Past one the server answers `rateLimited`, or `busy` for a game or a table, and the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
   processor, so it does not count, and a player who comes back to their game is never refused.
   An address is the client's: when a connection comes from one of `trusted_proxies`, it is the
   rightmost address in `X-Forwarded-For` that is not in that list, or the leftmost when all are. The
   image trusts the loopback and the private ranges, where Caddy and a proxy on the same host
   connect from, and believes the header from nowhere else.
+- **Players who left their tab open** still answer pings, so the server asks them whether they are
+  still here, and one who does not answer within `still_here_answer_ms` (30 s) counts as gone, as if
+  the tab had closed. It asks when the game has waited `still_here_after_ms` (5 minutes) on them and
+  heard nothing: a turn, solo a held round or a pause. Online with a turn timer it also asks when
+  `still_here_after_timeouts` (3) of their turns in a row have run out, which also gives their seat
+  to a computer player, whichever of the two comes first. So no game holds a place for ever: a game with
+  nobody left stops counting after `grace_period_ms` and closes after `online_idle_ms` or
+  `solo_idle_ms`.
 - **Pairing:** the page and the server speak the same protocol only when their versions match. Each
   image carries the version as the label `io.github.conectionist.whist.protocol`:
   ```
@@ -495,8 +505,8 @@ How each column scales:
   computer players think on game threads of their own, at a lower priority.
 
 The limits per address (`messages_per_second`, `message_burst`, `max_connections_per_ip`,
-`tables_per_ip_per_hour`, `failed_joins_per_ip`) protect the server from a single client, not from
-too many players, so they stay the same on every machine.
+`tables_per_ip_per_hour`, `failed_joins_per_ip`, `max_instant_games_per_ip`) protect the server
+from a single client, not from too many players, so they stay the same on every machine.
 
 With every game at its cap, the 2-vCPU defaults could reach about 85% of the machine: 36 online
 tables of people who answer at once and 4 Instant games. People who think before they play use far
@@ -515,7 +525,10 @@ the 2-vCPU VPS, 10 Instant tables took 88% of the machine. A game past the cap i
 `busy` and `detail` `instant` when it starts, and a solo game that is switched to Instant is refused
 the switch and keeps its speed. Four Instant games take about a third of that machine and leave room
 for the rest of `max_running_games`; a load run of Instant tables beside normal ones would confirm
-it.
+it. One address may have at most `max_instant_games_per_ip` (1) of them, past which it is refused
+with `rateLimited` and `detail` `instant`, so nobody can hold every Instant place. The game counts as
+its starter's, the solo player's or an online table's host's, from its start until it is over or its
+table closes, whether or not anyone is at it.
 
 The `max_running_games` number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays
 many tables against a server, ramps them in steps, and says how many the machine carries. It needs

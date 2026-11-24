@@ -85,6 +85,10 @@ public:
     // round, so a hold already on stays on.
     void setPacing(Pacing pacing, bool waitAfterRound);
 
+    // Any thread. Since when a round has been held with no deadline, as in solo, so that only a
+    // Continue ends it. None when no such hold is on.
+    std::optional<Clock::time_point> openHoldSince() const;
+
     // Any thread. True once gameOver has been sent: nothing else of this game's follows it. Read
     // under the lock it is sent under, so it never reads false after gameOver has gone out.
     bool gameOverSent() const;
@@ -152,7 +156,7 @@ private:
 
     // Guards everything below. It may be held while cacheMutex_ is taken, to send the hold, and
     // never the other way round.
-    std::mutex restMutex_;
+    mutable std::mutex restMutex_;
     std::condition_variable restChanged_;
     Pacing pacing_;
     std::uint64_t pacingVersion_ = 0;
@@ -164,6 +168,7 @@ private:
     // The hold after a scored round. It is set up before the round's result goes out, so a Continue
     // sent on seeing the result always counts, and announced just after it.
     std::optional<unsigned int> heldRound_;
+    Clock::time_point heldSince_{};
     bool holdAnnounced_ = false;
     std::vector<unsigned int> awaited_;
     std::optional<Clock::time_point> holdDeadline_;

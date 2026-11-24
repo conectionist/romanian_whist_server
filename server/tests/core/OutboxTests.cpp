@@ -187,3 +187,43 @@ TEST_CASE("Once stopped, the Outbox aborts nothing", "[outbox][silent]")
     CHECK(outbox.closeSilent(Clock::now() + std::chrono::hours(1)).empty());
     CHECK_FALSE(recorder.closedAfter(1));
 }
+
+TEST_CASE("An absent member is not connected, but is still sent everything, until a new tab or setPresent", "[outbox][absent]")
+{
+    test::Recorder recorder;
+    Outbox outbox;
+    Json::Value message(Json::objectValue);
+    message["type"] = "error";
+
+    // Nobody to be absent.
+    CHECK_FALSE(outbox.setAbsent(1));
+    CHECK_FALSE(outbox.setPresent(1));
+
+    const auto first = outbox.open(recorder.connect(11));
+    outbox.attach(1, first, Json::Value(Json::nullValue));
+    CHECK(outbox.setAbsent(1));
+    CHECK_FALSE(outbox.isConnected(1));
+    CHECK(outbox.isCurrent(1, first->connection()));
+    outbox.send(1, message);
+    CHECK(recorder.messagesTo(11).size() == 1);
+
+    // A pong is the browser's, so it changes nothing.
+    outbox.heard(*first);
+    CHECK_FALSE(outbox.isConnected(1));
+
+    CHECK(outbox.setPresent(1));
+    CHECK(outbox.isConnected(1));
+    CHECK_FALSE(outbox.setPresent(1));
+
+    // A reload is a new tab, which is here.
+    CHECK(outbox.setAbsent(1));
+    outbox.attach(1, recorder.connect(12));
+    CHECK(outbox.isConnected(1));
+    CHECK_FALSE(outbox.setPresent(1));
+
+    // Absence goes with the connection it was on.
+    CHECK(outbox.setAbsent(1));
+    const std::vector<MemberId> gone = outbox.closeSilent(Clock::now() + std::chrono::hours(1));
+    CHECK(gone == std::vector<MemberId>{1});
+    CHECK_FALSE(outbox.setPresent(1));
+}
