@@ -520,23 +520,35 @@ TEST_CASE("A solo game is refused Instant while as many run as may, and keeps it
     const std::shared_ptr<Table> table = registry.tableOf(*bea.member());
     REQUIRE(table);
 
-    // The refusal follows a tableState with the speed the game keeps.
+    // The refusal follows a tableState with the speed the game keeps, and the wait sent with it.
+    Settings fasterWithWait = soloAt(fastestSpeed);
+    fasterWithWait.waitAfterRound = true;
     Json::Value faster = test::typed("updateSettings");
-    faster["settings"] = encodeSettings(soloAt(fastestSpeed));
+    faster["settings"] = encodeSettings(fasterWithWait);
     const std::size_t before = recorder.messagesTo(2).size();
     bea.send(faster);
-    const std::vector<Json::Value> told = recorder.messagesTo(2);
-    REQUIRE(told.size() == before + 2);
-    CHECK(told[before]["type"] == "tableState");
-    CHECK(told[before]["settings"]["botSpeed"] == slowestSpeed);
-    CHECK(told[before + 1]["code"] == "busy");
-    CHECK(told[before + 1]["detail"] == "instant");
+    // The game's own messages come from its thread in between, so only these two are read.
+    std::vector<Json::Value> told;
+    const std::vector<Json::Value> all = recorder.messagesTo(2);
+    for(std::size_t i = before ; i < all.size() ; i++)
+    {
+        if(all[i]["type"] == "tableState" || all[i]["type"] == "error")
+            told.push_back(all[i]);
+    }
+    REQUIRE(told.size() == 2);
+    CHECK(told[0]["type"] == "tableState");
+    CHECK(told[0]["settings"]["botSpeed"] == slowestSpeed);
+    CHECK(told[0]["settings"]["waitAfterRound"] == true);
+    CHECK(told[1]["code"] == "busy");
+    CHECK(told[1]["detail"] == "instant");
     CHECK(table->settings().botSpeed == slowestSpeed);
+    CHECK(table->settings().waitAfterRound);
     CHECK(registry.instantGames() == 1);
 
-    // Once Ana's game is gone there is room, and slowing down again gives the place back.
+    // Ana's game stops counting as she leaves, though its thread may still be ending, and slowing down
+    // again gives the place back.
     ana.send(test::typed("leaveTable"));
-    REQUIRE(waitUntil([&] { return registry.instantGames() == 0; }));
+    CHECK(registry.instantGames() == 0);
     bea.send(faster);
     CHECK(errors(recorder, 2).size() == 1);
     CHECK(table->settings().botSpeed == fastestSpeed);
@@ -549,7 +561,7 @@ TEST_CASE("A solo game is refused Instant while as many run as may, and keeps it
     CHECK(registry.countedGames() == 1);
 }
 
-TEST_CASE("An online game of people alone is not counted as Instant, whatever its speed", "[limits][busy][instant][session]")
+TEST_CASE("An online game of people alone at Instant counts, since computers may take their seats", "[limits][busy][instant][session]")
 {
     test::Recorder recorder;
     const auto clock = std::make_shared<test::ManualClock>();
@@ -572,10 +584,10 @@ TEST_CASE("An online game of people alone is not counted as Instant, whatever it
     REQUIRE(table);
     ana.send(joinTable(table->code(), "Ana"));
     host.send(test::typed("startGame"));
-    CHECK(errors(recorder, 2).empty());
-    CHECK(table->state() == TableState::Playing);
-    CHECK(registry.countedGames() == 2);
-    CHECK(registry.instantGames() == 1);
+    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+    CHECK(lastError(recorder, 2)["detail"] == "instant");
+    CHECK(table->state() == TableState::Lobby);
+    CHECK(registry.countedGames() == 1);
 }
 
 namespace

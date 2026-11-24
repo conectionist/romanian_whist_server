@@ -448,8 +448,8 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 `busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
 holds the games nobody is at. The default is 40, which the load test below gave on the VPS.
 
-`max_instant_games` (4) is how many of those games may be at Instant speed with a computer player,
-which `instant_games` in the status line counts. An Instant game's computer players move back to
+`max_instant_games` (4) is how many of those games may be at Instant speed, which `instant_games` in
+the status line counts. An Instant game's computer players move back to
 back, so it takes about a sixth of a core, where a game at any other speed takes a few percent: on
 the 2-vCPU VPS, 10 Instant tables took 88% of the machine. A game past the cap is refused with
 `busy` and `detail` `instant` when it starts, and a solo game that is switched to Instant is refused
