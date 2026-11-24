@@ -120,7 +120,8 @@ covers the other case: the page alone, pointed at any server.
 
 ### On a VPS, step by step
 
-A small Linux machine of your own (2 vCPUs and 2 GB do) running Ubuntu LTS, a domain name you
+A small Linux machine of your own (2 vCPUs and 2 GB do; see [Hardware, and the settings for
+it](#hardware-and-the-settings-for-it)) running Ubuntu LTS, a domain name you
 control, and a shell on the machine over SSH. `whist.example.org` stands for your domain below.
 
 **1. Docker, from Docker's own apt repository** (these are the steps on
@@ -441,6 +442,65 @@ node tools/smoke/smoke.mjs --url https://whist.example.org
 
 **Updating:** repeat 1 to 3 for the new commit, then `sudo systemctl restart whist-server`. Install
 the binary under a new name and `mv` it over, if the old one is running while you copy.
+
+## Hardware, and the settings for it
+
+The defaults in [`server/app/config.json`](server/app/config.json) are for the machine the load test
+ran on: 2 vCPUs and 2 GB. On another machine, start from the row nearest to it below, then run the
+load test of [Finding the cap on running games](#finding-the-cap-on-running-games) on it, because
+one provider's vCPU is not another's.
+
+|  | vCPUs | RAM | Disk |
+|---|---|---|---|
+| **Minimum** | 1 | 1 GB | 10 GB |
+| **Recommended** | 2 | 2 GB | 20 GB |
+
+Only the recommended machine has been tested. The minimum is an estimate, from the memory and
+processor figures below.
+
+Memory is rarely what limits the server: it is about 15 MB when idle, and each table adds 0.06 MB
+(solo) to 0.23 MB (online), so 400 tables take about 92 MB. The rest of the RAM is for the system,
+Docker and Caddy. Building the server on the machine, as [Deploying without
+Docker](#deploying-without-docker) does, needs more than running it: 2 GB, or 1 GB and a swap file.
+The processor is what limits it. On the VPS, a game takes about this much of one core:
+
+| Each game | Share of a core |
+|---|---|
+| Solo, one person and five computer players, at normal speed | 1.3% |
+| Online, six people who answer at once | 2.7% |
+| Solo at Instant | 18% |
+
+The rows other than 2 vCPUs are scaled from those figures, not measured:
+
+| Machine | `io_threads` | `max_running_games` | `max_instant_games` | `max_tables` | `max_connections` |
+|---|---|---|---|---|---|
+| 1 vCPU, 1 GB | 1 | 20 | 2 | 200 | 1000 |
+| **2 vCPUs, 2 GB (measured, the defaults)** | **2** | **40** | **4** | **400** | **2000** |
+| 4 vCPUs, 4 GB | 2 | 80 | 8 | 800 | 4000 |
+| 8 vCPUs, 8 GB | 4 | 160 | 16 | 1600 | 8000 |
+| 16 vCPUs, 16 GB | 8 | 320 | 32 | 3200 | 16000 |
+
+How each column scales:
+
+- **`max_running_games`:** 20 a vCPU. The load test gave 40 on 2 vCPUs, from the online tables, the
+  most expensive kind of game after Instant.
+- **`max_instant_games`:** 2 a vCPU, so Instant games take at most about a third of the machine and
+  leave the rest for the other games.
+- **`max_tables`:** 10 times `max_running_games`. A table stays after its game ends, and a table
+  nobody is at stays until its idle time is over. Even 3200 tables take under 1 GB.
+- **`max_connections`:** 50 times `max_running_games`, several times the six seats of every running
+  game, which leaves room for watchers and for the tables between games. The Docker stack and the
+  systemd unit allow 65536 open files, far more than any row needs.
+- **`io_threads`:** about half the vCPUs, from 2 vCPUs up. The I/O threads carry the messages, and the
+  computer players think on game threads of their own, at a lower priority.
+
+The limits per address (`messages_per_second`, `message_burst`, `max_connections_per_ip`,
+`tables_per_ip_per_hour`, `failed_joins_per_ip`) protect the server from a single client, not from
+too many players, so they stay the same on every machine.
+
+With every game at its cap, the 2-vCPU defaults could reach about 85% of the machine: 36 online
+tables of people who answer at once and 4 Instant games. People who think before they play use far
+less, so real tables do not get there.
 
 ## Finding the cap on running games
 
