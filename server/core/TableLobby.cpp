@@ -70,6 +70,8 @@ Table::Left Table::leave(MemberId member)
     else
         seating_.leave(member);
 
+    // A reap may have marked them absent since their message cleared it.
+    outbox_.setPresent(member);
     refreshPresenceLocked();
     if(seating_.members().empty())
         return {std::nullopt, true};

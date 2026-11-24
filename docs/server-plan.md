@@ -664,17 +664,18 @@ with it off; with it on, the computer players play the seat, but the game still 
 
 So the reaper asks. The table sends `stillHere {deadline}`:
 
-- **online, with a turn timer,** when `still_here_after_timeouts` (3) of the member's turns in a row
-  have run out, on the turn that replaces them;
-- **solo, or online with the timer off,** when the game has waited `still_here_after_ms` (5 minutes)
-  on something only the member can give, and heard nothing from them: an answer to their prompt, or,
-  solo, a Continue for a held round, or a resume.
+- when the game has waited `still_here_after_ms` (5 minutes) on something only the member can give,
+  and heard nothing from them: an answer to their prompt, or, solo, a Continue for a held round, or a
+  resume. A turn timer may be as long as an hour, so this holds online with one too;
+- **online, with a turn timer,** also when `still_here_after_timeouts` (3) of the member's turns in a
+  row have run out, on the turn that replaces them.
 
 The answer is `back`, or anything else they send but `leaveTable`; pongs are the browser's and do not
 count. With no answer within `still_here_answer_ms` (30 s) the member is **absent**: the `Outbox`
 keeps sending to their tab, but no longer counts them as connected, and the table treats them as it
 treats a closed connection, from that moment. So the rest is the machinery above: the others see
-them away, a computer player takes their seat after the grace period, and a game nobody else is at
+them away (or still replaced, if their timer had already given their seat to a computer player), a
+computer player takes their seat after the grace period, and a game nobody else is at
 holds, stops counting after the grace period, and closes after the idle timeout. Their next message,
 or a reload, brings them back, and is never refused.
 

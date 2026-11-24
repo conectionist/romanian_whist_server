@@ -329,11 +329,11 @@ namespace
 
 struct Asking : test::Online
 {
-    Asking()
-        : Online(milliseconds(30000), [](ServiceOptions& options)
+    explicit Asking(milliseconds turnTimer = milliseconds(150 * test::slowdown))
+        : Online(milliseconds(30000), [turnTimer](ServiceOptions& options)
         {
             askAfterWaits(options);
-            options.registry.table.turnTimerOverride = milliseconds(150 * test::slowdown);
+            options.registry.table.turnTimerOverride = turnTimer;
         })
     {
     }
@@ -375,11 +375,17 @@ TEST_CASE("Online with a turn timer: the turns that replace a player ask whether
 
     test::ScriptedHuman ana(o.recorder, 1, o.answerer(1), test::Behaviour::Silent);
     o.send(1, test::typed("startGame"));
+
+    // Not before her turns ran out three times: one or two is a short wait.
+    for(unsigned int timedOut = 1 ; timedOut < 3 ; timedOut++)
+    {
+        REQUIRE(eventually([&] { return ana.counts().closedByComputer >= timedOut; }));
+        o.registry().reap(Clock::now());
+        CHECK(messagesOfType(o.recorder, 1, "stillHere").empty());
+    }
     REQUIRE(o.recorder.waitFor(1, [](const Json::Value& m) { return presenceIs(m, 0, "replaced"); }, patience));
     REQUIRE(eventually([&] { return ana.counts().closedByComputer == 3; }));
 
-    // The table asks at the next reap, and not before her turns ran out.
-    CHECK(messagesOfType(o.recorder, 1, "stillHere").empty());
     const Clock::time_point asked = Clock::now();
     o.registry().reap(asked);
     REQUIRE(messagesOfType(o.recorder, 1, "stillHere").size() == 1);
@@ -399,6 +405,73 @@ TEST_CASE("Online with a turn timer: the turns that replace a player ask whether
     o.registry().reap(gone + onlineIdle);
     CHECK_FALSE(o.theTable());
     CHECK(ana.problems().empty());
+}
+
+TEST_CASE("Online with a turn timer: an answer in time keeps her here and her game counting", "[stillhere][online]")
+{
+    Asking o;
+    o.open(1);
+    Settings settings = test::onlineSettings(3, 1);
+    settings.botSpeed = fastestSpeed - 1;
+    o.create(1, settings, "Ana");
+    const MemberId member = *o.tab(1).member();
+
+    test::ScriptedHuman ana(o.recorder, 1, o.answerer(1), test::Behaviour::Silent);
+    o.send(1, test::typed("startGame"));
+    REQUIRE(eventually([&] { return ana.counts().closedByComputer == 3; }));
+    const Clock::time_point asked = Clock::now();
+    o.registry().reap(asked);
+    REQUIRE(messagesOfType(o.recorder, 1, "stillHere").size() == 1);
+
+    o.send(1, test::typed("back"));
+    o.registry().reap(asked + toAnswer);
+    o.registry().reap(asked + toAnswer + grace);
+    CHECK(o.service->outbox().isConnected(member));
+    CHECK(o.registry().countedGames() == 1);
+}
+
+TEST_CASE("Online with a long turn timer: a turn left open is asked about before the timer runs out", "[stillhere][online]")
+{
+    Asking o(std::chrono::hours(1));
+    o.open(1);
+    o.open(2);
+    o.create(1, test::onlineSettings(3, 2), "Ana");
+    o.ask(2, o.join("Bea"), ofType("sync"));
+
+    test::ScriptedHuman ana(o.recorder, 1, o.answerer(1), test::Behaviour::Good);
+    test::ScriptedHuman bea(o.recorder, 2, o.answerer(2), test::Behaviour::Silent);
+    o.send(1, test::typed("startGame"));
+    REQUIRE(bea.waitForPrompt(patience));
+    const Clock::time_point start = Clock::now();
+
+    o.registry().reap(start + waitedOn - margin);
+    CHECK(messagesOfType(o.recorder, 2, "stillHere").empty());
+    o.registry().reap(start + waitedOn + margin);
+    CHECK(messagesOfType(o.recorder, 2, "stillHere").size() == 1);
+    CHECK(messagesOfType(o.recorder, 1, "stillHere").empty());
+}
+
+TEST_CASE("An arrival, or leaving, ends an absence even when a reap marked it on the new tab", "[stillhere][online]")
+{
+    Asking o;
+    o.open(1);
+    o.open(2);
+    o.create(1, test::onlineSettings(3, 2), "Ana");
+    o.ask(2, o.join("Bea"), ofType("sync"));
+    const MemberId ana = *o.tab(1).member();
+    const MemberId bea = *o.tab(2).member();
+    const std::shared_ptr<Table> table = o.theTable();
+    REQUIRE(table);
+
+    // A reap that ran between a new tab and its sync, with her answer's time up.
+    Outbox& outbox = o.service->outbox();
+    REQUIRE(outbox.setAbsent(ana));
+    REQUIRE(table->sync(ana));
+    CHECK(outbox.isConnected(ana));
+
+    REQUIRE(outbox.setAbsent(bea));
+    REQUIRE_FALSE(table->leave(bea).refused);
+    CHECK(outbox.isConnected(bea));
 }
 
 TEST_CASE("Online with no turn timer: a turn left open asks, and with no answer the others play on after the grace period",

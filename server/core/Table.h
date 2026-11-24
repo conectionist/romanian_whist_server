@@ -43,9 +43,8 @@ struct TableOptions
     // and asked whether they are still here.
     int timeoutsBeforeReplacement = 3;
 
-    // Solo, or online with no turn timer: how long the game waits for something only a member can
-    // give, and hears nothing from them, before they are asked whether they are still here. A tab
-    // left open answers pings, so without this its game would wait for ever. 0: never.
+    // How long the game waits for something only a member can give, and hears nothing from them,
+    // before they are asked whether they are still here. 0: never.
     std::chrono::milliseconds stillHereAfter{0};
 
     // How long a member who was asked has to answer before they count as gone, as if their connection

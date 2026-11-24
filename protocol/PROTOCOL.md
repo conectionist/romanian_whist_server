@@ -430,18 +430,18 @@ tab left open answers pings, so without the question its game would wait for eve
 the server's places.
 
 - It is sent:
-  - online, with a turn timer, when their turns have run out three times in a row, as their seat is
-    replaced;
-  - solo, or online with no turn timer, when the game has waited five minutes on something only
-    they can give, and heard nothing from them: an answer to their prompt, or, solo, a Continue for
-    a held round, or a `resume`.
+  - when the game has waited five minutes on something only they can give, and heard nothing from
+    them: an answer to their prompt, or, solo, a Continue for a held round, or a `resume`;
+  - online, with a turn timer, also when their turns have run out three times in a row, as their
+    seat is replaced.
 - `deadline`: the milliseconds left, when it was sent, to answer. It is 30 s by default.
 - **The answer** is `back`, or any other message but `leaveTable`. Pongs do not count.
 - **No answer in time,** and they count as [away](#going-away-and-coming-back) from then, as if
   their connection had closed: the table is sent a `tableState` with their seat's `presence` `away`,
-  and they are sent it too, since their tab is open. A solo watcher has no seat to show it, and their
-  `tableState` does not change; their game only holds until they send something. The grace period runs, and so on. A game nobody
-  else is at holds, and its table closes as one nobody is connected to.
+  and they are sent it too, since their tab is open. A seat already replaced stays `replaced`, and a
+  solo watcher has no seat to show it: their `tableState` does not change, and their game only holds
+  until they send something. The grace period runs, and so on. A game nobody else is at holds, and
+  its table closes as one nobody is connected to.
 - **Coming back** after that is the same as answering: anything they send gives them their seat
   again, and everyone is sent a `tableState` with `presence` `here`. A player coming back is never
   refused, however busy the server is.

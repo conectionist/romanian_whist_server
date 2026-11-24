@@ -447,6 +447,8 @@ bool Table::settleLocked()
 
 void Table::arriveLocked(MemberId member)
 {
+    // Under this table's lock, so a reap between a new tab and its sync cannot leave the tab absent.
+    outbox_.setPresent(member);
     seating_.setAway(member, std::nullopt);
     seating_.setAsked(member, std::nullopt);
     seating_.setActive(member, Clock::now());
@@ -518,11 +520,12 @@ bool Table::checkStillHereLocked(Clock::time_point now)
             continue;
         }
 
+        // A turn timer may be as long as an hour, so its turns running out are not the only sign.
         const std::optional<std::chrono::milliseconds>& timer = seating_.settings().turnTimer;
-        if(mode_ == Mode::Online && timer && timer->count() > 0)
+        const bool timed = mode_ == Mode::Online && timer && timer->count() > 0;
+        if(timed && run_->timeoutsInARow(member.id) >= options_.timeoutsBeforeReplacement)
         {
-            if(run_->timeoutsInARow(member.id) >= options_.timeoutsBeforeReplacement)
-                asked.push_back(member.id);
+            asked.push_back(member.id);
             continue;
         }
 
