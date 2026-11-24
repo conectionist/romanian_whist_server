@@ -11,8 +11,6 @@ namespace whist
 
 // The game threads running, and the games among them that count against the most that may run: those
 // someone is at. A game nobody is at holds and uses no processor, so it is no reason to refuse another.
-// Instant games have a smaller most of their own as well: their computer players move back to back,
-// so each takes several times the processor of a game at any other speed.
 // A game takes a Slot before its thread starts and gives it back when the thread is done with the engine.
 class RunningGames : public std::enable_shared_from_this<RunningGames>
 {

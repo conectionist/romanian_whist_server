@@ -489,7 +489,8 @@ How each column scales:
 - **`max_tables`:** 10 times `max_running_games`. A table stays after its game ends, and a table
   nobody is at stays until its idle time is over. Even 3200 tables take under 1 GB.
 - **`max_connections`:** 50 times `max_running_games`, several times the six seats of every running
-  game, which leaves room for watchers and for the tables between games. The Docker stack and the systemd unit allow 65536 open files, far more than any row needs.
+  game, which leaves room for watchers and for the tables between games. The Docker stack and the
+  systemd unit allow 65536 open files, far more than any row needs.
 - **`io_threads`:** about half the vCPUs, from 2 vCPUs up. The I/O threads carry the messages, and the
   computer players think on game threads of their own, at a lower priority.
 
