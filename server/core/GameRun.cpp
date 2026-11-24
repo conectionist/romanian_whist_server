@@ -276,6 +276,12 @@ void GameRun::setAttended(bool attended)
         slot_->setAttended(attended);
 }
 
+void GameRun::releasePlace()
+{
+    std::lock_guard lock(slotMutex_);
+    slot_.reset();
+}
+
 bool GameRun::setInstant(bool instant)
 {
     std::lock_guard lock(slotMutex_);

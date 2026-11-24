@@ -147,7 +147,9 @@ connection at that moment, which may be a newer tab.
   answered with a `tableState`, whose `paused` says which it is; pausing twice changes nothing and sends nothing.
 - **`updateSettings`** takes the whole settings, of which only `botSpeed` and `waitAfterRound` may
   differ from the table's (`illegal` otherwise). A new speed applies at once, even to the rest under
-  way. The wait applies from the next scored round. Answered with a `tableState`.
+  way. The wait applies from the next scored round. Answered with a `tableState`. A switch to Instant,
+  while the server runs as many Instant games as it may, is answered with a `tableState` that keeps
+  the speed the game had, then `busy` with `detail` `instant`.
 - **The wait after each round:** see [The round hold](#the-round-hold).
 - **`startGame`**, once a game is over, starts another with the same settings, at once.
 - **`leaveTable`** closes the table, game and all. You can then `createSolo` again.
@@ -450,7 +452,7 @@ drops it. A second one within 10 seconds of the last closes the connection.
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
 | `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`) or joins that found no table (`joins`). The page waits before it tries again |
 | `draining` | The server is restarting: no table is made and no game starts. See [restarting](#restarting) |
-| `busy` | The server is running as many games, that someone is at, as it may, or holds as many tables as it may, so `createSolo`, `createTable` or `startGame` is refused. A game nobody is at does not count against the first, and a table does against the second whoever is at it. Joining a table that exists, and a player coming back to their game or table, are never refused. Try again later |
+| `busy` | The server is running as many games, that someone is at, as it may, or holds as many tables as it may, so `createSolo`, `createTable` or `startGame` is refused. A game nobody is at does not count against the first, and a table does against the second whoever is at it. With `detail` `instant`, it runs as many games with computer players at Instant as it may: the same request at another speed would start, and a solo game's switch to Instant is refused this way too. Joining a table that exists, and a player coming back to their game or table, are never refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |
 
 ## Catalogues

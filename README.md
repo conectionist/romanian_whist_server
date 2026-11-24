@@ -448,19 +448,21 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 `busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
 holds the games nobody is at. The default is 40, which the load test below gave on the VPS.
 
-`max_instant_games` (4) is how many of those games may be at Instant speed, which `instant_games` in
-the status line counts. An Instant game's computer players move back to back, so it takes about a
-sixth of a core, where a game at any other speed takes a few percent: on the 2-vCPU VPS, 10 Instant
-tables took 88% of the machine. A game past the cap is refused with `busy` when it starts, and a solo
-game that is switched to Instant is refused the switch and keeps its speed. Four Instant games take
-about a third of that machine and leave room for the rest of `max_running_games`; a load run of
-Instant tables beside normal ones would confirm it.
+`max_instant_games` (4) is how many of those games may be at Instant speed with a computer player,
+which `instant_games` in the status line counts. An Instant game's computer players move back to
+back, so it takes about a sixth of a core, where a game at any other speed takes a few percent: on
+the 2-vCPU VPS, 10 Instant tables took 88% of the machine. A game past the cap is refused with
+`busy` and `detail` `instant` when it starts, and a solo game that is switched to Instant is refused
+the switch and keeps its speed. Four Instant games take about a third of that machine and leave room
+for the rest of `max_running_games`; a load run of Instant tables beside normal ones would confirm
+it.
 
-The `max_running_games` number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
-ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
-packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is
-the Docker image's configuration with every limit per address lifted (the script plays from one
-address), a status line every 5 s and a drain of 5 s.
+The `max_running_games` number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays
+many tables against a server, ramps them in steps, and says how many the machine carries. It needs
+Node 22 or later and no packages, and a server running with
+[`deploy/load-config.json`](deploy/load-config.json), which is the Docker image's configuration with
+every limit per address lifted (the script plays from one address), a status line every 5 s and a
+drain of 5 s.
 
 One run is one kind of table, over the steps `10,20,40,60,80,100` (`--steps`), each held for
 `--hold` seconds (180) after `--settle` seconds (15) to start its tables:
@@ -542,6 +544,11 @@ table is measured above the idle server's. Put the stack back with `docker compo
 three runs. The cap that the `solo` and `online` runs agree on, the smaller of them, goes into
 `"max_running_games"` in [`server/app/config.json`](server/app/config.json) and
 [`deploy/docker-config.json`](deploy/docker-config.json).
+
+The `instant` run suggests `max_instant_games` instead, without rounding to 10, so give it small steps
+(`--steps 2,4,6,8,10`). Its number is how many Instant games the machine carries with nothing else
+running: leave the rest of the machine for the other games, as the default of 4 leaves about two
+thirds of the VPS.
 
 ## Tests
 

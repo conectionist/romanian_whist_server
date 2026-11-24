@@ -11,14 +11,26 @@ namespace whist
 
 // The game threads running, and the games among them that count against the most that may run: those
 // someone is at. A game nobody is at holds and uses no processor, so it is no reason to refuse another.
-// Instant games have a smaller most of their own as well: their computer players move back to back,
-// so each takes several times the processor of a game at any other speed.
 // A game takes a Slot before its thread starts and gives it back when the thread is done with the engine.
 class RunningGames : public std::enable_shared_from_this<RunningGames>
 {
 public:
     // `max` and `maxInstant` 0 allow any number of attended games, or attended Instant games.
     explicit RunningGames(std::size_t max, std::size_t maxInstant = 0);
+
+    // Which most refused a game.
+    enum class Full
+    {
+        All,
+        Instant
+    };
+
+    struct Counts
+    {
+        std::size_t threads = 0;
+        std::size_t attended = 0;
+        std::size_t attendedInstant = 0;
+    };
 
     class Slot
     {
@@ -52,8 +64,11 @@ public:
     };
 
     // A place for one more game, or nothing when `max` attended games are running, or, for an Instant
-    // game, `maxInstant` attended Instant games.
-    std::optional<Slot> take(bool instant = false);
+    // game, `maxInstant` attended Instant games. `full`, when given, says which.
+    std::optional<Slot> take(bool instant = false, Full* full = nullptr);
+
+    // The three counts below, read together.
+    Counts counts() const;
 
     // The game threads running.
     std::size_t count() const;
@@ -71,6 +86,9 @@ private:
     bool instantFullLocked() const;
 
     const std::size_t max_;
+
+    // Instant games' computer players move back to back, so each takes several times the processor
+    // of a game at any other speed.
     const std::size_t maxInstant_;
 
     mutable std::mutex mutex_;

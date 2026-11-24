@@ -69,9 +69,10 @@ ServerStatus Service::status() const
     status.tablesInLobby = tables.lobby;
     status.tablesPlaying = tables.playing;
     status.tablesFinished = tables.finished;
-    status.gameThreads = registry_.runningGames();
-    status.attendedGames = registry_.countedGames();
-    status.instantGames = registry_.instantGames();
+    const RunningGames::Counts games = registry_.gameCounts();
+    status.gameThreads = games.threads;
+    status.attendedGames = games.attended;
+    status.instantGames = games.attendedInstant;
     status.standInMoves = registry_.standInMoves();
     return status;
 }

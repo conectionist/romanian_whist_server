@@ -101,6 +101,9 @@ public:
     // Of the counted games, those at Instant speed.
     std::size_t instantGames() const;
 
+    // The three counts above, read at one moment.
+    RunningGames::Counts gameCounts() const;
+
     // How many of the running games are attended, as Table::attended says: the ones a drain waits
     // for, since a game nobody is at cannot go on.
     std::size_t attendedGames(Clock::time_point now) const;

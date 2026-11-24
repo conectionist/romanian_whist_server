@@ -149,6 +149,10 @@ public:
     // Instant is refused, and nothing changes. A game that has given its place back is never refused.
     bool setInstant(bool instant);
 
+    // Any thread. Gives the place back before the thread is done, for a game that has sent gameOver
+    // and asks nothing more of the processor.
+    void releasePlace();
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 

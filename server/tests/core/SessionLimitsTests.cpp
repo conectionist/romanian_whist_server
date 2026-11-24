@@ -490,8 +490,10 @@ TEST_CASE("No more Instant games run than may, and games at other speeds still s
     REQUIRE(registry.tableOf(*ana.member()));
     CHECK(registry.instantGames() == 1);
 
+    // The detail tells the page that another speed would start.
     bea.send(createSolo(soloAt(fastestSpeed)));
     REQUIRE(lastError(recorder, 2)["code"] == "busy");
+    CHECK(lastError(recorder, 2)["detail"] == "instant");
     CHECK_FALSE(registry.tableOf(*bea.member()));
     CHECK(registry.runningGames() == 1);
 
@@ -518,10 +520,17 @@ TEST_CASE("A solo game is refused Instant while as many run as may, and keeps it
     const std::shared_ptr<Table> table = registry.tableOf(*bea.member());
     REQUIRE(table);
 
+    // The refusal follows a tableState with the speed the game keeps.
     Json::Value faster = test::typed("updateSettings");
     faster["settings"] = encodeSettings(soloAt(fastestSpeed));
+    const std::size_t before = recorder.messagesTo(2).size();
     bea.send(faster);
-    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+    const std::vector<Json::Value> told = recorder.messagesTo(2);
+    REQUIRE(told.size() == before + 2);
+    CHECK(told[before]["type"] == "tableState");
+    CHECK(told[before]["settings"]["botSpeed"] == slowestSpeed);
+    CHECK(told[before + 1]["code"] == "busy");
+    CHECK(told[before + 1]["detail"] == "instant");
     CHECK(table->settings().botSpeed == slowestSpeed);
     CHECK(registry.instantGames() == 1);
 
@@ -538,6 +547,35 @@ TEST_CASE("A solo game is refused Instant while as many run as may, and keeps it
     bea.send(slower);
     CHECK(registry.instantGames() == 0);
     CHECK(registry.countedGames() == 1);
+}
+
+TEST_CASE("An online game of people alone is not counted as Instant, whatever its speed", "[limits][busy][instant][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = instantCappedService(clock);
+    Registry& registry = service->registry();
+
+    test::Client solo(service, recorder, 1);
+    test::Client host(service, recorder, 2);
+    test::Client ana(service, recorder, 3);
+    solo.hello();
+    host.hello();
+    ana.hello();
+    solo.send(createSolo(soloAt(fastestSpeed)));
+    REQUIRE(registry.instantGames() == 1);
+
+    Settings people = test::onlineSettings(2, 2);
+    REQUIRE(people.botSpeed == fastestSpeed);
+    host.send(createTable("Host", people));
+    const std::shared_ptr<Table> table = registry.tableOf(*host.member());
+    REQUIRE(table);
+    ana.send(joinTable(table->code(), "Ana"));
+    host.send(test::typed("startGame"));
+    CHECK(errors(recorder, 2).empty());
+    CHECK(table->state() == TableState::Playing);
+    CHECK(registry.countedGames() == 2);
+    CHECK(registry.instantGames() == 1);
 }
 
 namespace

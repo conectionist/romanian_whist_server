@@ -555,11 +555,13 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   count lags the grace period by up to a second. `game_threads` in the status line is every game
   thread, and `attended_games` is the ones the maximum counts.
 - **Instant games have a smaller maximum of their own.** `max_instant_games` (4) counts the games
-  above that are at Instant speed. Their computer players move back to back, with only
-  `instant_floor_ms` between moves, so each takes about a sixth of a core: the load test had 10 Instant
-  tables at 88% of the VPS's two cores. `createSolo` and `startGame` past it are refused with `busy`,
-  and so is a solo game's switch to Instant, which keeps the speed it had. Like the first maximum it
-  counts only the games someone is at, and a player coming back is never refused.
+  above that are at Instant speed and have a computer player; an online game of people alone moves at
+  their pace. The computer players move back to back, with only `instant_floor_ms` between moves, so
+  each game takes about a sixth of a core: the load test had 10 Instant tables at 88% of the VPS's two
+  cores. `createSolo` and `startGame` past it are refused with `busy` and `detail` `instant`, and so
+  is a solo game's switch to Instant, which keeps the speed it had. Like the first maximum it counts
+  only the games someone is at, and a player coming back is never refused. A game that has sent
+  gameOver gives its place back when the next one starts, even if its thread has not ended yet.
   `instant_games` in the status line is the count.
 - **A third maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
   or not, since a table holds its memory for as long as it is kept, a parked game included, until the

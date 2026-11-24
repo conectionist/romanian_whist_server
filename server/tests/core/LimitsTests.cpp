@@ -291,14 +291,17 @@ TEST_CASE("Instant games have a most of their own, inside the most of all games"
     CHECK_FALSE(games->take(true));
     CHECK(games->attendedInstant() == 1);
 
-    // Games at other speeds take the places left, and then Instant is refused for the most of all too.
+    // Games at other speeds take the places left, and the refusal says which most it was.
     std::optional<RunningGames::Slot> second = games->take();
     std::optional<RunningGames::Slot> third = games->take();
     REQUIRE(second);
     REQUIRE(third);
-    CHECK_FALSE(games->take());
+    RunningGames::Full full = RunningGames::Full::Instant;
+    CHECK_FALSE(games->take(false, &full));
+    CHECK(full == RunningGames::Full::All);
     third.reset();
-    CHECK_FALSE(games->take(true));
+    CHECK_FALSE(games->take(true, &full));
+    CHECK(full == RunningGames::Full::Instant);
     CHECK(games->count() == 2);
 
     // A refused Instant game took nothing, and the Instant place comes back with its game.
@@ -306,6 +309,24 @@ TEST_CASE("Instant games have a most of their own, inside the most of all games"
     CHECK(games->attendedInstant() == 0);
     CHECK(games->attended() == 1);
     CHECK(games->take(true));
+}
+
+TEST_CASE("An Instant game is refused by the most of all games, with Instant places free", "[limits][games][instant]")
+{
+    const auto games = std::make_shared<RunningGames>(2, 2);
+
+    std::optional<RunningGames::Slot> first = games->take();
+    std::optional<RunningGames::Slot> second = games->take();
+    REQUIRE(first);
+    REQUIRE(second);
+    RunningGames::Full full = RunningGames::Full::Instant;
+    CHECK_FALSE(games->take(true, &full));
+    CHECK(full == RunningGames::Full::All);
+
+    const RunningGames::Counts counts = games->counts();
+    CHECK(counts.threads == 2);
+    CHECK(counts.attended == 2);
+    CHECK(counts.attendedInstant == 0);
 }
 
 TEST_CASE("A game becomes Instant only while there is room, and an Instant game nobody is at does not count", "[limits][games][instant]")

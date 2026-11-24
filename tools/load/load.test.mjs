@@ -44,6 +44,7 @@ const step = (tables, p99, cpuShare) => ({ tables, latency: { count: 100, p99 },
 test("the cap is the largest step that is quick and leaves room, rounded down to ten", () => {
   assert.deepEqual(suggestCap([step(10, 20, 0.1), step(20, 40, 0.3), step(40, 90, 0.6)]), { cap: 40, why: null });
   assert.deepEqual(suggestCap([step(10, 20, 0.1), step(25, 40, 0.3)]), { cap: 20, why: null });
+  assert.deepEqual(suggestCap([step(2, 20, 0.2), step(4, 30, 0.4), step(6, 40, 0.8)], { roundTo: 1 }), { cap: 4, why: null });
 
   // The first step that is too slow, or too busy, ends it, though a later one might look better.
   assert.equal(suggestCap([step(10, 20, 0.1), step(20, 250, 0.3), step(40, 90, 0.5)]).cap, 10);
