@@ -438,9 +438,9 @@ the server's places.
 - **The answer** is `back`, or any other message but `leaveTable`. Pongs do not count.
 - **No answer in time,** and they count as [away](#going-away-and-coming-back) from then, as if
   their connection had closed: the table is sent a `tableState` with their seat's `presence` `away`,
-  and they are sent it too, since their tab is open. A seat already replaced stays `replaced`, and a
-  solo watcher has no seat to show it: their `tableState` does not change, and their game only holds
-  until they send something. The grace period runs, and so on. A game nobody else is at holds, and
+  and they are sent it too, since their tab is open. A seat already replaced stays `replaced`. A solo
+  watcher has no seat to show it: their `tableState` does not change, and their game only holds until
+  they send something. The grace period runs, and so on. A game nobody else is at holds, and
   its table closes as one nobody is connected to.
 - **Coming back** after that is the same as answering: anything they send gives them their seat
   again, and everyone is sent a `tableState` with `presence` `here`. A player coming back is never

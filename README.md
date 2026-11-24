@@ -100,9 +100,9 @@ docker compose up -d
 - **Players who left their tab open** still answer pings, so the server asks them whether they are
   still here, and one who does not answer within `still_here_answer_ms` (30 s) counts as gone, as if
   the tab had closed. It asks when the game has waited `still_here_after_ms` (5 minutes) on them and
-  heard nothing: a turn, solo a held round or a pause. Online with a turn timer it also asks, sooner,
-  when `still_here_after_timeouts` (3) of their turns in a row have run out, which also gives their
-  seat to a computer player. So no game holds a place for ever: a game with
+  heard nothing: a turn, solo a held round or a pause. Online with a turn timer it also asks when
+  `still_here_after_timeouts` (3) of their turns in a row have run out, which also gives their seat
+  to a computer player, whichever of the two comes first. So no game holds a place for ever: a game with
   nobody left stops counting after `grace_period_ms` and closes after `online_idle_ms` or
   `solo_idle_ms`.
 - **Pairing:** the page and the server speak the same protocol only when their versions match. Each
