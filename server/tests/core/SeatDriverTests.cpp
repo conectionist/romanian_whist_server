@@ -509,17 +509,19 @@ TEST_CASE("A seat with no computer player to stand in is never replaced", "[seat
 TEST_CASE("An answer and the end of the grace period at the same moment: exactly one wins", "[seat][away][race]")
 {
     std::mt19937 random(5);
+    const milliseconds grace(2 * test::slowdown);
     int answers = 0;
     int replaced = 0;
 
     for(int round = 0 ; round < 300 ; round++)
     {
         Seat0 seat;
-        seat.driver->away(Clock::now() + milliseconds(2));
         auto bid = seat.bid();
         const Json::Value prompt = seat.next();
 
-        std::this_thread::sleep_for(std::chrono::microseconds(random() % 4000));
+        // Started only once the prompt is open: a grace period that ends before the turn comes skips the prompt.
+        seat.driver->away(Clock::now() + grace);
+        std::this_thread::sleep_for(std::chrono::microseconds(random() % (4000 * test::slowdown)));
         const SeatDriver::Submitted submitted =
             seat.driver->submit(seat.answer(PromptKind::Bet, prompt["id"].asUInt64(), 3));
         const unsigned int made = bid.get();
