@@ -72,6 +72,10 @@ struct ServerOptions
     std::size_t maxRunningGames = 40;
     std::size_t maxTables = 400;
 
+    // Of the games that count against maxRunningGames, the most at Instant speed, past which one is
+    // refused as busy too.
+    std::size_t maxInstantGames = 4;
+
     // Addresses and ranges whose X-Forwarded-For is believed. Never a range the open internet can
     // reach the server from: anyone in it could then write any address they like.
     std::vector<std::string> trustedProxies{"127.0.0.1", "::1"};

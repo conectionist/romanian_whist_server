@@ -58,9 +58,9 @@ docker compose up -d
   `tmux` or `nohup` keeps the command alive if your connection drops.
 - **Logs:** `docker compose logs -f server`, or `web`. The server writes a line that starts with
   `status` once a minute (`status_log_interval_ms`): connections, tables by state, game threads,
-  the games someone is at (`attended_games`, which `max_running_games` limits), moves made for
-  players who went away, the share of a core it used since the last line, and its processor time
-  and peak memory.
+  the games someone is at (`attended_games`, which `max_running_games` limits), those of them at
+  Instant (`instant_games`, which `max_instant_games` limits), moves made for players who went
+  away, the share of a core it used since the last line, and its processor time and peak memory.
 - **Stopping:** `docker compose down`. The certificates stay in a volume.
 - **Stopping the server** is a drain. On SIGTERM it takes no new tables or games, tells everyone it
   is restarting, and waits for the games that someone is at to end, for at most `drain_ms` (15
@@ -87,9 +87,9 @@ docker compose up -d
   Caddy use them. Behind your own proxy, the port on the host is `WHIST_LISTEN` in `.env`.
 - **Limits:** `config.json` also holds the limits: messages per second on a connection, connections
   and new tables from one address, joins that found no table from one address, connections in all,
-  and games running at once that someone is at, and tables in all (`max_tables`, which counts a table
-  nobody is at too). Past one the server answers `rateLimited`, or `busy` for a game or a table, and
-  the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
+  games running at once that someone is at (`max_running_games`), the ones of those at Instant
+  (`max_instant_games`), and tables in all (`max_tables`, which counts a table nobody is at too).
+  Past one the server answers `rateLimited`, or `busy` for a game or a table, and the page says so. A game nobody has been at for `grace_period_ms` holds and takes no
   processor, so it does not count, and a player who comes back to their game is never refused.
   An address is the client's: when a connection comes from one of `trusted_proxies`, it is the
   rightmost address in `X-Forwarded-For` that is not in that list, or the leftmost when all are. The
@@ -446,12 +446,23 @@ the binary under a new name and `mv` it over, if the old one is running while yo
 
 `max_running_games` is how many games someone is at that the server runs at once before it answers
 `busy`; the status line's `attended_games` is the count it compares with, and `game_threads` also
-holds the games nobody is at. The default is 40, which the load test below gave on the VPS. The number
-is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays many tables against a server,
-ramps them in steps, and says how many the machine carries. It needs Node 22 or later and no
-packages, and a server running with [`deploy/load-config.json`](deploy/load-config.json), which is
-the Docker image's configuration with every limit per address lifted (the script plays from one
-address), a status line every 5 s and a drain of 5 s.
+holds the games nobody is at. The default is 40, which the load test below gave on the VPS.
+
+`max_instant_games` (4) is how many of those games may be at Instant speed, which `instant_games` in
+the status line counts. An Instant game's computer players move back to
+back, so it takes about a sixth of a core, where a game at any other speed takes a few percent: on
+the 2-vCPU VPS, 10 Instant tables took 88% of the machine. A game past the cap is refused with
+`busy` and `detail` `instant` when it starts, and a solo game that is switched to Instant is refused
+the switch and keeps its speed. Four Instant games take about a third of that machine and leave room
+for the rest of `max_running_games`; a load run of Instant tables beside normal ones would confirm
+it.
+
+The `max_running_games` number is not a guess: [`tools/load/load.mjs`](tools/load/load.mjs) plays
+many tables against a server, ramps them in steps, and says how many the machine carries. It needs
+Node 22 or later and no packages, and a server running with
+[`deploy/load-config.json`](deploy/load-config.json), which is the Docker image's configuration with
+every limit per address lifted (the script plays from one address), a status line every 5 s and a
+drain of 5 s.
 
 One run is one kind of table, over the steps `10,20,40,60,80,100` (`--steps`), each held for
 `--hold` seconds (180) after `--settle` seconds (15) to start its tables:
@@ -530,9 +541,14 @@ done
 Replace `master` with the commit the server runs. Each kind starts on a server of its own, because the
 status line gives the most memory the server has held, which never comes down, and the memory per
 table is measured above the idle server's. Put the stack back with `docker compose up -d` after the
-three runs. The cap that the three runs agree on, the smallest of them, goes into
+three runs. The cap that the `solo` and `online` runs agree on, the smaller of them, goes into
 `"max_running_games"` in [`server/app/config.json`](server/app/config.json) and
 [`deploy/docker-config.json`](deploy/docker-config.json).
+
+The `instant` run suggests `max_instant_games` instead, without rounding to 10, so give it small steps
+(`--steps 2,4,6,8,10`). Its number is how many Instant games the machine carries with nothing else
+running: leave the rest of the machine for the other games, as the default of 4 leaves about two
+thirds of the VPS.
 
 ## Tests
 

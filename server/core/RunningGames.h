@@ -1,9 +1,9 @@
 #ifndef WHIST_CORE_RUNNINGGAMES_H
 #define WHIST_CORE_RUNNINGGAMES_H
 
-#include <atomic>
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <optional>
 
 namespace whist
@@ -15,8 +15,22 @@ namespace whist
 class RunningGames : public std::enable_shared_from_this<RunningGames>
 {
 public:
-    // `max` 0 allows any number of attended games.
-    explicit RunningGames(std::size_t max);
+    // `max` and `maxInstant` 0 allow any number of attended games, or attended Instant games.
+    explicit RunningGames(std::size_t max, std::size_t maxInstant = 0);
+
+    // Which most refused a game.
+    enum class Full
+    {
+        All,
+        Instant
+    };
+
+    struct Counts
+    {
+        std::size_t threads = 0;
+        std::size_t attended = 0;
+        std::size_t attendedInstant = 0;
+    };
 
     class Slot
     {
@@ -33,19 +47,28 @@ public:
         // thread at a time.
         void setAttended(bool attended);
 
+        // Whether the game runs at Instant. Becoming Instant is refused, and nothing changes, when the
+        // game is attended and `maxInstant` attended Instant games are running. One thread at a time.
+        bool setInstant(bool instant);
+
         // Gives the place back at once. Safe to call again.
         void release();
 
     private:
         friend class RunningGames;
-        explicit Slot(std::shared_ptr<RunningGames> games);
+        Slot(std::shared_ptr<RunningGames> games, bool instant);
 
         std::shared_ptr<RunningGames> games_;
         bool attended_ = true;
+        bool instant_ = false;
     };
 
-    // A place for one more game, or nothing when `max` attended games are running.
-    std::optional<Slot> take();
+    // A place for one more game, or nothing when `max` attended games are running, or, for an Instant
+    // game, `maxInstant` attended Instant games. `full`, when given, says which.
+    std::optional<Slot> take(bool instant = false, Full* full = nullptr);
+
+    // The three counts below, read together.
+    Counts counts() const;
 
     // The game threads running.
     std::size_t count() const;
@@ -53,12 +76,25 @@ public:
     // The games that count against the most.
     std::size_t attended() const;
 
+    // The attended games at Instant, which count against `maxInstant` too.
+    std::size_t attendedInstant() const;
+
     std::size_t max() const;
+    std::size_t maxInstant() const;
 
 private:
+    bool instantFullLocked() const;
+
     const std::size_t max_;
-    std::atomic<std::size_t> count_{0};
-    std::atomic<std::size_t> attended_{0};
+
+    // Instant games' computer players move back to back, so each takes several times the processor
+    // of a game at any other speed.
+    const std::size_t maxInstant_;
+
+    mutable std::mutex mutex_;
+    std::size_t count_ = 0;
+    std::size_t attended_ = 0;
+    std::size_t attendedInstant_ = 0;
 };
 
 } // namespace whist

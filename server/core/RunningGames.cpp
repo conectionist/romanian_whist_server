@@ -5,15 +5,16 @@
 namespace whist
 {
 
-RunningGames::RunningGames(std::size_t max) : max_(max)
+RunningGames::RunningGames(std::size_t max, std::size_t maxInstant) : max_(max), maxInstant_(maxInstant)
 {
 }
 
-RunningGames::Slot::Slot(std::shared_ptr<RunningGames> games) : games_(std::move(games))
+RunningGames::Slot::Slot(std::shared_ptr<RunningGames> games, bool instant) : games_(std::move(games)), instant_(instant)
 {
 }
 
-RunningGames::Slot::Slot(Slot&& other) noexcept : games_(std::move(other.games_)), attended_(other.attended_)
+RunningGames::Slot::Slot(Slot&& other) noexcept
+    : games_(std::move(other.games_)), attended_(other.attended_), instant_(other.instant_)
 {
 }
 
@@ -24,6 +25,7 @@ RunningGames::Slot& RunningGames::Slot::operator=(Slot&& other) noexcept
         release();
         games_ = std::move(other.games_);
         attended_ = other.attended_;
+        instant_ = other.instant_;
     }
     return *this;
 }
@@ -38,50 +40,118 @@ void RunningGames::Slot::setAttended(bool attended)
     if(!games_ || attended == attended_)
         return;
 
+    std::lock_guard lock(games_->mutex_);
     attended_ = attended;
     if(attended)
+    {
         games_->attended_++;
+        if(instant_)
+            games_->attendedInstant_++;
+    }
     else
+    {
         games_->attended_--;
+        if(instant_)
+            games_->attendedInstant_--;
+    }
+}
+
+bool RunningGames::Slot::setInstant(bool instant)
+{
+    if(!games_ || instant == instant_)
+        return true;
+
+    std::lock_guard lock(games_->mutex_);
+    if(attended_)
+    {
+        if(instant && games_->instantFullLocked())
+            return false;
+        if(instant)
+            games_->attendedInstant_++;
+        else
+            games_->attendedInstant_--;
+    }
+    instant_ = instant;
+    return true;
 }
 
 void RunningGames::Slot::release()
 {
     if(const std::shared_ptr<RunningGames> games = std::move(games_))
     {
+        std::lock_guard lock(games->mutex_);
         games->count_--;
         if(attended_)
+        {
             games->attended_--;
+            if(instant_)
+                games->attendedInstant_--;
+        }
     }
 }
 
-std::optional<RunningGames::Slot> RunningGames::take()
+std::optional<RunningGames::Slot> RunningGames::take(bool instant, Full* full)
 {
-    std::size_t seen = attended_.load();
-    do
     {
-        if(max_ != 0 && seen >= max_)
+        std::lock_guard lock(mutex_);
+        if(max_ != 0 && attended_ >= max_)
+        {
+            if(full)
+                *full = Full::All;
             return std::nullopt;
-    }
-    while(!attended_.compare_exchange_weak(seen, seen + 1));
+        }
+        if(instant && instantFullLocked())
+        {
+            if(full)
+                *full = Full::Instant;
+            return std::nullopt;
+        }
 
-    count_++;
-    return Slot(shared_from_this());
+        count_++;
+        attended_++;
+        if(instant)
+            attendedInstant_++;
+    }
+    return Slot(shared_from_this(), instant);
+}
+
+RunningGames::Counts RunningGames::counts() const
+{
+    std::lock_guard lock(mutex_);
+    return {count_, attended_, attendedInstant_};
+}
+
+bool RunningGames::instantFullLocked() const
+{
+    return maxInstant_ != 0 && attendedInstant_ >= maxInstant_;
 }
 
 std::size_t RunningGames::count() const
 {
-    return count_.load();
+    std::lock_guard lock(mutex_);
+    return count_;
 }
 
 std::size_t RunningGames::attended() const
 {
-    return attended_.load();
+    std::lock_guard lock(mutex_);
+    return attended_;
+}
+
+std::size_t RunningGames::attendedInstant() const
+{
+    std::lock_guard lock(mutex_);
+    return attendedInstant_;
 }
 
 std::size_t RunningGames::max() const
 {
     return max_;
+}
+
+std::size_t RunningGames::maxInstant() const
+{
+    return maxInstant_;
 }
 
 } // namespace whist

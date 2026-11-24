@@ -76,8 +76,8 @@ public:
     Settings settings() const;
 
     // The host starts the first game, or a new one once the last is over. The old game goes to the
-    // joiner, and everyone is sent the new tableState. A drain refuses it with Draining, and the most games
-    // that may run, or a game thread that cannot start, with Busy; the table is left as it was.
+    // joiner, and everyone is sent the new tableState. A drain refuses it with Draining, and a cap on
+    // games or a game thread that cannot start with Busy; the table is left as it was.
     std::optional<Refusal> startGame(MemberId by);
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
@@ -89,8 +89,8 @@ public:
     std::optional<Refusal> setPaused(MemberId by, bool paused);
 
     // Solo: only the bot speed and the wait after each round may change once the table exists. A
-    // running game takes them up at once. Online: the host's, between games, of which the seats
-    // give only their number.
+    // running game takes them up at once, though the cap on Instant games may refuse that speed. Online:
+    // the host's, between games, of which the seats give only their number.
     std::optional<Refusal> updateSettings(MemberId by, const Settings& settings);
 
     // A Continue for a held round. Solo, the host's ends the hold; online, each seated member's

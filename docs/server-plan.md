@@ -554,7 +554,18 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   `createSolo` and `startGame` are what it refuses. The table counts the game at each reap, so the
   count lags the grace period by up to a second. `game_threads` in the status line is every game
   thread, and `attended_games` is the ones the maximum counts.
-- **A second maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
+- **Instant games have a smaller maximum of their own.** `max_instant_games` (4) counts the games
+  above that are at Instant speed, a game of people alone too, since computers take the seats of
+  those who stop answering and play them at the game's speed. The computer players move back to
+  back, with only `instant_floor_ms` between moves, so each game takes about a sixth of a core: the
+  load test had 10 Instant tables at 88% of the VPS's two cores. `createSolo` and `startGame` past
+  it are refused with `busy` and `detail` `instant`, and so is a solo game's switch to Instant,
+  which keeps the speed it had. Like the first maximum it counts only the games someone is at, and a
+  player coming back is never refused. A game that has sent gameOver gives its place back when the
+  next one starts, and a game whose table closes gives it back at once, even if its thread has not
+  ended yet; it counts in `game_threads` until it has. `instant_games` in the status line is the
+  count.
+- **A third maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
   or not, since a table holds its memory for as long as it is kept, a parked game included, until the
   idle timeouts (5 minutes online, 10 solo) end it. `createSolo` and `createTable` past it are refused with `busy`, and the
   address's quota of new tables is given back. Joining a table that exists is not making one, and a
@@ -1462,7 +1473,7 @@ request. The commits after it change only this plan.
     `{"version", "commit", "protocol"}`;
   - one log line a minute (`status_log_interval_ms`), starting with `status `, of `key=value`
     pairs: connections, tables by state, game threads, the attended games that
-    `max_running_games` limits, moves made by stand-ins, the share of a core used since the last
+    `max_running_games` limits, those at Instant that `max_instant_games` limits, moves made by stand-ins, the share of a core used since the last
     line, processor seconds and peak memory.
 - **The licence:** `GET /version` gives the commit, and the page's footer links "Source" to this
   repository at that commit, which covers the AGPL's section 13 for the server and the engine. It
@@ -2304,7 +2315,7 @@ on its branch `web/phase-9-deployment` (PR #13).
     shortened to 5 minutes online and 10 solo; the load test's memory per table.
   - **After the second review:** fix all 13, and no third review: the orchestrator checks the fixes
     and CI runs.
-  - **After the load test:** `max_running_games` is 40 (#19 is open on Instant games' CPU).
+  - **After the load test:** `max_running_games` is 40, and `max_instant_games` 4 (#19, Instant games' CPU).
 - **Built.**
   - **The client's address** (`ClientAddress`): from a peer in `trusted_proxies`, the rightmost
     `X-Forwarded-For` entry not in that list, or the leftmost when every one is; an IPv6 address
@@ -2314,7 +2325,9 @@ on its branch `web/phase-9-deployment` (PR #13).
     first excess gets `rateLimited`, a second within 10 s closes the connection); per address, 16
     connections, 30 new tables an hour and 10 joins that found no table in 10 minutes; 2000
     connections in all; `max_running_games`, which counts only the games someone is at, so a game
-    nobody is at, which holds and takes no processor, never makes `busy`; `max_tables`, every table
+    nobody is at, which holds and takes no processor, never makes `busy`; `max_instant_games`, the
+    attended games at Instant, which is also what a solo game's switch to Instant is refused for;
+    `max_tables`, every table
     attended or not. A player coming back to their game is never refused.
   - **HTTP:** every answer carries the content-security-policy, `nosniff` and `no-referrer` from one
     constant (`PageHeaders.h`), and `Cache-Control` on 2xx and 304; a path with a segment that

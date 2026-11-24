@@ -35,13 +35,14 @@ TEST_CASE("A status line is one line of pairs that starts with a word to search 
     status.tablesFinished = 3;
     status.gameThreads = 2;
     status.attendedGames = 1;
+    status.instantGames = 1;
     status.standInMoves = 17;
     status.cpuSeconds = 123.44;
     status.cpuPercent = 7.26;
     status.peakMemoryMb = 45;
 
     CHECK(statusLine(status) == "status connections=12 tables_lobby=1 tables_playing=2 tables_finished=3 "
-                                "game_threads=2 attended_games=1 stand_in_moves=17 cpu_percent=7.3 cpu_seconds=123.4 peak_memory_mb=45");
+                                "game_threads=2 attended_games=1 instant_games=1 stand_in_moves=17 cpu_percent=7.3 cpu_seconds=123.4 peak_memory_mb=45");
 }
 
 TEST_CASE("The CPU meter says how much of a core was used since the last time", "[status]")
@@ -125,6 +126,7 @@ TEST_CASE("A service says how many connections, tables and game threads it has",
     CHECK(status.tablesFinished == 0);
     CHECK(status.gameThreads == 1);
     CHECK(status.attendedGames == 1);
+    CHECK(status.instantGames == 1);
 
     // A game of computer players that has ended is a table still, and no longer a thread.
     cora->send(createSolo(test::tableSettings(3, {})));

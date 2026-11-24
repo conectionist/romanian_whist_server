@@ -74,7 +74,7 @@ export function parseDockerStats(text) {
 
 // A step is good when it is quick enough, leaves the machine enough room, and went without an error
 // from the server, a connection that closed, or a table that would not start.
-export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7 } = {}) {
+export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7, roundTo = 10 } = {}) {
   let cap = null;
   for (const step of steps) {
     if (step.cpuShare === null || step.cpuShare === undefined) {
@@ -92,10 +92,10 @@ export function suggestCap(steps, { p99Ms = 250, cpuShare = 0.7 } = {}) {
       why: `not even the first step had p99 under ${p99Ms} ms, the CPU under ${Math.round(cpuShare * 100)}%, and no errors, drops or tables that failed to start`,
     };
   }
-  const rounded = Math.floor(cap / 10) * 10;
+  const rounded = Math.floor(cap / roundTo) * roundTo;
   return rounded > 0
     ? { cap: rounded, why: null }
-    : { cap: null, why: `the largest good step, ${cap} tables, is under 10` };
+    : { cap: null, why: `the largest good step, ${cap} tables, is under ${roundTo}` };
 }
 
 // What each table cost: the memory above the idle server's, shared by the tables of the step. Null
@@ -195,10 +195,11 @@ export function chooseAnswer(prompt) {
   return { type: "play", prompt: prompt.id, index: prompt.legal[0] };
 }
 
+// The Instant cap is small, so its suggestion is not rounded to 10.
 const KINDS = {
-  solo: { name: "solo tables at normal speed", botSpeed: 2, online: false },
-  instant: { name: "solo tables at Instant", botSpeed: 4, online: false },
-  online: { name: "online tables of six people", botSpeed: null, online: true },
+  solo: { name: "solo tables at normal speed", botSpeed: 2, online: false, cap: "max_running_games", games: "running games", roundTo: 10 },
+  instant: { name: "solo tables at Instant", botSpeed: 4, online: false, cap: "max_instant_games", games: "Instant games", roundTo: 1 },
+  online: { name: "online tables of six people", botSpeed: null, online: true, cap: "max_running_games", games: "running games", roundTo: 10 },
 };
 
 const sleep = (time) => new Promise((resolve) => setTimeout(resolve, time));
@@ -731,10 +732,12 @@ async function main() {
       const note = MEMORY_KINDS[baseline.memoryKind].note;
       console.log(`\nMemory: ${memory.perTableMb.toFixed(2)} MB a table at ${memory.tables} tables, so ${memory.maxTables} tables (\`max_tables\`) would take about ${Math.round(memory.capMb)} MB more than an idle server. It is ${note}.`);
     }
-    const { cap, why } = suggestCap(results, limits);
+    const kind = KINDS[values.kind];
+    const { cap, why } = suggestCap(results, { ...limits, roundTo: kind.roundTo });
     console.log(cap === null
       ? `\nNo cap to suggest: ${why}.`
-      : `\nSuggested cap: ${cap} running games ("max_running_games": ${cap}), the largest step with p99 under ${limits.p99Ms} ms and the server under ${Math.round(limits.cpuShare * 100)}% of ${cores} cores.`);
+      : `\nSuggested cap: ${cap} ${kind.games} ("${kind.cap}": ${cap}), the largest step with p99 under ${limits.p99Ms} ms and the server under ${Math.round(limits.cpuShare * 100)}% of ${cores} cores.`
+        + (values.kind === "instant" ? " That is with nothing else running: leave room for the other games." : ""));
     if (Object.keys(run.errors).length > 0) {
       console.log(`The server sent errors: ${JSON.stringify(run.errors)}. Its limits may be in the way: it should run with deploy/load-config.json.`);
     }

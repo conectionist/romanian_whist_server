@@ -30,6 +30,7 @@ std::string statusLine(const ServerStatus& status)
          + " tables_finished=" + std::to_string(status.tablesFinished)
          + " game_threads=" + std::to_string(status.gameThreads)
          + " attended_games=" + std::to_string(status.attendedGames)
+         + " instant_games=" + std::to_string(status.instantGames)
          + " stand_in_moves=" + std::to_string(status.standInMoves)
          + " " + cpu
          + " peak_memory_mb=" + std::to_string(status.peakMemoryMb);

@@ -145,6 +145,14 @@ public:
     // it, or was lately. Counting again is never refused.
     void setAttended(bool attended);
 
+    // Any thread. Whether the game runs at Instant, which has a most of its own. False when becoming
+    // Instant is refused, and nothing changes. A game that has given its place back is never refused.
+    bool setInstant(bool instant);
+
+    // Any thread. Stops the game counting against the caps before its thread is done, for a game that
+    // has sent gameOver or was closed, and asks nothing more of the processor. It still counts as a thread.
+    void releasePlace();
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 
@@ -169,6 +177,9 @@ private:
     // The game thread gives the slot back as the table counts the game or not.
     std::mutex slotMutex_;
     std::optional<RunningGames::Slot> slot_;
+
+    // Once set, the slot counts as a thread only, until the thread gives it back.
+    bool placeReleased_ = false;
 
     // The order is the design: destruction runs in reverse, so the thread is joined first, and the
     // engine goes before the observers it points at.

@@ -282,6 +282,89 @@ TEST_CASE("Running games are counted, and the most that may run is held to", "[l
     CHECK(games->count() == 0);
 }
 
+TEST_CASE("Instant games have a most of their own, inside the most of all games", "[limits][games][instant]")
+{
+    const auto games = std::make_shared<RunningGames>(3, 1);
+
+    std::optional<RunningGames::Slot> instant = games->take(true);
+    REQUIRE(instant);
+    CHECK_FALSE(games->take(true));
+    CHECK(games->attendedInstant() == 1);
+
+    // Games at other speeds take the places left, and the refusal says which most it was.
+    std::optional<RunningGames::Slot> second = games->take();
+    std::optional<RunningGames::Slot> third = games->take();
+    REQUIRE(second);
+    REQUIRE(third);
+    RunningGames::Full full = RunningGames::Full::Instant;
+    CHECK_FALSE(games->take(false, &full));
+    CHECK(full == RunningGames::Full::All);
+    third.reset();
+    CHECK_FALSE(games->take(true, &full));
+    CHECK(full == RunningGames::Full::Instant);
+    CHECK(games->count() == 2);
+
+    // A refused Instant game took nothing, and the Instant place comes back with its game.
+    instant.reset();
+    CHECK(games->attendedInstant() == 0);
+    CHECK(games->attended() == 1);
+    CHECK(games->take(true));
+}
+
+TEST_CASE("An Instant game is refused by the most of all games, with Instant places free", "[limits][games][instant]")
+{
+    const auto games = std::make_shared<RunningGames>(2, 2);
+
+    std::optional<RunningGames::Slot> first = games->take();
+    std::optional<RunningGames::Slot> second = games->take();
+    REQUIRE(first);
+    REQUIRE(second);
+    RunningGames::Full full = RunningGames::Full::Instant;
+    CHECK_FALSE(games->take(true, &full));
+    CHECK(full == RunningGames::Full::All);
+
+    const RunningGames::Counts counts = games->counts();
+    CHECK(counts.threads == 2);
+    CHECK(counts.attended == 2);
+    CHECK(counts.attendedInstant == 0);
+}
+
+TEST_CASE("A game becomes Instant only while there is room, and an Instant game nobody is at does not count", "[limits][games][instant]")
+{
+    const auto games = std::make_shared<RunningGames>(0, 1);
+
+    std::optional<RunningGames::Slot> ana = games->take(true);
+    std::optional<RunningGames::Slot> bea = games->take();
+    REQUIRE(ana);
+    REQUIRE(bea);
+    CHECK_FALSE(bea->setInstant(true));
+    CHECK(games->attendedInstant() == 1);
+
+    ana->setAttended(false);
+    CHECK(games->attendedInstant() == 0);
+    CHECK(bea->setInstant(true));
+    CHECK(games->attendedInstant() == 1);
+
+    // Coming back is never refused, so the most is soft for returns, as it is for all games.
+    ana->setAttended(true);
+    CHECK(games->attendedInstant() == 2);
+    CHECK(ana->setInstant(false));
+    CHECK(games->attendedInstant() == 1);
+
+    // A game nobody is at may become Instant, and counts when someone is back.
+    ana->setAttended(false);
+    CHECK(ana->setInstant(true));
+    CHECK(games->attendedInstant() == 1);
+    ana->setAttended(true);
+    CHECK(games->attendedInstant() == 2);
+
+    ana.reset();
+    bea.reset();
+    CHECK(games->attendedInstant() == 0);
+    CHECK(games->attended() == 0);
+    CHECK(games->count() == 0);
+}
+
 TEST_CASE("A maximum of 0 allows any number of games", "[limits][games]")
 {
     const auto games = std::make_shared<RunningGames>(0);

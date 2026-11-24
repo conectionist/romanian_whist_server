@@ -22,6 +22,7 @@
     "failed_joins_per_ip": 10,
     "failed_join_window_ms": 600000,
     "max_running_games": 40,
+    "max_instant_games": 4,
     "max_tables": 400,
     "trusted_proxies": ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],
     "log_level": "info"
