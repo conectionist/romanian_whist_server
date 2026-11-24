@@ -202,19 +202,8 @@ void serveTableLinks(const std::string& documentRoot)
 
 } // namespace
 
-void configureApp(const ServerOptions& options, std::function<void()> onListening)
+ServiceOptions serviceOptionsFrom(const ServerOptions& options)
 {
-    // Drogon makes this folder, with 256 more inside it, at start, and writes there any request body
-    // over its in-memory limit. No route takes a body, so bodies are capped at that limit and
-    // nothing is written; the folder is one per user, out of the way.
-    constexpr std::size_t maxRequestBody = 16 * 1024;
-    const std::filesystem::path uploads = std::filesystem::temp_directory_path()
-                                        / ("whist_server-uploads-" + std::to_string(::getuid()));
-
-    // Drogon serves only the file types on its list, from anywhere under the document root. png and
-    // ico are for a favicon.
-    const std::vector<std::string> fileTypes{"html", "js", "css", "svg", "webp", "png", "ico", "woff2", "txt", "json"};
-
     ServiceOptions serviceOptions;
     serviceOptions.registry.table.instantFloor = options.instantFloor;
     serviceOptions.pongTimeout = options.pongTimeout;
@@ -235,7 +224,23 @@ void configureApp(const ServerOptions& options, std::function<void()> onListenin
     serviceOptions.limits.tablesPerAddressPerHour = options.tablesPerIpPerHour;
     serviceOptions.limits.failedJoinsPerAddress = options.failedJoinsPerIp;
     serviceOptions.limits.failedJoinWindow = options.failedJoinWindow;
-    service() = std::make_shared<Service>(std::move(serviceOptions));
+    return serviceOptions;
+}
+
+void configureApp(const ServerOptions& options, std::function<void()> onListening)
+{
+    // Drogon makes this folder, with 256 more inside it, at start, and writes there any request body
+    // over its in-memory limit. No route takes a body, so bodies are capped at that limit and
+    // nothing is written; the folder is one per user, out of the way.
+    constexpr std::size_t maxRequestBody = 16 * 1024;
+    const std::filesystem::path uploads = std::filesystem::temp_directory_path()
+                                        / ("whist_server-uploads-" + std::to_string(::getuid()));
+
+    // Drogon serves only the file types on its list, from anywhere under the document root. png and
+    // ico are for a favicon.
+    const std::vector<std::string> fileTypes{"html", "js", "css", "svg", "webp", "png", "ico", "woff2", "txt", "json"};
+
+    service() = std::make_shared<Service>(serviceOptionsFrom(options));
 
     drogon::app()
         .setLogLevel(toLogLevel(options.logLevel))

@@ -438,8 +438,9 @@ the server's places.
 - `deadline`: the milliseconds left, when it was sent, to answer. It is 30 s by default.
 - **The answer** is `back`, or any other message but `leaveTable`. Pongs do not count.
 - **No answer in time,** and they count as [away](#going-away-and-coming-back) from then, as if
-  their connection had closed: the table is sent a `tableState` with their `presence` `away`, and
-  they are sent it too, since their tab is open. The grace period runs, and so on. A game nobody
+  their connection had closed: the table is sent a `tableState` with their seat's `presence` `away`,
+  and they are sent it too, since their tab is open. A solo watcher has no seat to show it, and their
+  `tableState` does not change; their game only holds until they send something. The grace period runs, and so on. A game nobody
   else is at holds, and its table closes as one nobody is connected to.
 - **Coming back** after that is the same as answering: anything they send gives them their seat
   again, and everyone is sent a `tableState` with `presence` `here`. A player coming back is never
@@ -482,7 +483,7 @@ drops it. A second one within 10 seconds of the last closes the connection.
 | `notYourTurn` | You have no open prompt |
 | `stalePrompt` | That prompt is no longer open |
 | `illegal` | An answer the rules do not allow, or not allowed now: at a table already, at no table, during a game, a seat someone holds, a start with an open seat, and so on |
-| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`), joins that found no table (`joins`), or Instant games that run at once (`instant`: `createSolo`, a host's `startGame` or a solo game's switch to Instant, of which the same request at another speed would start). The page waits before it tries again |
+| `rateLimited` | Too many messages on this connection (no `detail`); or, from one address, too many connections (`detail` `connections`, and the server closes this one), tables made in an hour (`tables`), joins that found no table (`joins`), or Instant games that run at once (`instant`: `createSolo`, a host's `startGame` or a solo game's switch to Instant, of which the same request at another speed would start; a game counts until it is over or its table closes, even with nobody at it). The page waits before it tries again |
 | `draining` | The server is restarting: no table is made and no game starts. See [restarting](#restarting) |
 | `busy` | The server is running as many games, that someone is at, as it may, or holds as many tables as it may, so `createSolo`, `createTable` or `startGame` is refused. A game nobody is at does not count against the first, and a table does against the second whoever is at it. With `detail` `instant`, it runs as many games at Instant as it may: the same request at another speed would start, and a solo game's switch to Instant is refused this way too. Joining a table that exists, and a player coming back to their game or table, are never refused. Try again later |
 | `openElsewhere` | Another connection has taken this member over; this one is closed |

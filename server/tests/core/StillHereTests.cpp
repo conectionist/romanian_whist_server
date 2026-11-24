@@ -37,6 +37,10 @@ constexpr std::chrono::seconds grace{30};
 constexpr std::chrono::minutes soloIdle{10};
 constexpr std::chrono::minutes onlineIdle{5};
 
+// How far a reap is put on either side of the moment a question is due. The time the game started
+// waiting is read a little before the test's own clock, and more so with sanitizers.
+const std::chrono::seconds margin(test::slowdown);
+
 void askAfterWaits(ServiceOptions& options)
 {
     options.registry.table.stillHereAfter = waitedOn;
@@ -107,10 +111,10 @@ TEST_CASE("Solo: a turn left open is asked about, and no answer makes the player
     const Clock::time_point start = Clock::now();
 
     // Thinking, even for a long time, is not asked about.
-    registry.reap(start + waitedOn - 1s);
+    registry.reap(start + waitedOn - margin);
     CHECK(messagesOfType(recorder, 1, "stillHere").empty());
 
-    const Clock::time_point asked = start + waitedOn + 1s;
+    const Clock::time_point asked = start + waitedOn + margin;
     registry.reap(asked);
     const std::vector<Json::Value> questions = messagesOfType(recorder, 1, "stillHere");
     REQUIRE(questions.size() == 1);
@@ -166,7 +170,7 @@ TEST_CASE("Solo: `back` in time keeps the player here, a pong does not, and a mo
     REQUIRE(table);
     const Clock::time_point start = Clock::now();
 
-    const Clock::time_point asked = start + waitedOn + 1s;
+    const Clock::time_point asked = start + waitedOn + margin;
     registry.reap(asked);
     REQUIRE(messagesOfType(recorder, 1, "stillHere").size() == 1);
     ana.send(test::typed("back"));
@@ -214,14 +218,14 @@ TEST_CASE("Solo: a pause, or a round held for Continue, is a wait on the player 
         REQUIRE(prompt);
         ana.send(test::typed("pause"));
         ana.send(goodAnswer(*prompt));
+        const Clock::time_point answered = Clock::now();
         REQUIRE(recorder.waitFor(1, ofType("promptClosed"), patience));
 
         // The game holds at its next rest, with no turn of hers open.
         std::this_thread::sleep_for(test::quiet);
-        const Clock::time_point paused = Clock::now();
-        registry.reap(paused + waitedOn - 1s);
+        registry.reap(answered + waitedOn - margin);
         CHECK(messagesOfType(recorder, 1, "stillHere").empty());
-        registry.reap(paused + waitedOn + 1s);
+        registry.reap(answered + waitedOn + margin);
         CHECK(messagesOfType(recorder, 1, "stillHere").size() == 1);
     }
 
@@ -236,12 +240,49 @@ TEST_CASE("Solo: a pause, or a round held for Continue, is a wait on the player 
         REQUIRE(recorder.waitFor(1, ofType("held"), patience));
 
         const Clock::time_point held = Clock::now();
-        registry.reap(held + waitedOn - 1s);
+        registry.reap(held + waitedOn - margin);
         CHECK(messagesOfType(recorder, 1, "stillHere").empty());
-        registry.reap(held + waitedOn + 1s);
+        registry.reap(held + waitedOn + margin);
         CHECK(messagesOfType(recorder, 1, "stillHere").size() == 1);
         registry.closeTable(registry.tableOf(*ana.member())->code());
     }
+}
+
+TEST_CASE("A player who comes back by reloading is not asked again at once", "[stillhere][solo]")
+{
+    // Waited out for real: the reload is stamped with the real time, which the reaper compares.
+    const milliseconds shortWait(200 * test::slowdown);
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = askingService(clock, [&](ServiceOptions& options)
+    {
+        options.registry.table.stillHereAfter = shortWait;
+    });
+    Registry& registry = service->registry();
+
+    auto ana = std::make_unique<test::Client>(service, recorder, 1);
+    const std::string token = ana->hello()["token"].asString();
+    ana->send(createSolo(test::tableSettings(3, {0})));
+    REQUIRE(recorder.waitFor(1, ofType("prompt"), patience));
+    const std::shared_ptr<Table> table = registry.tableOf(*ana->member());
+    REQUIRE(table);
+
+    std::this_thread::sleep_for(shortWait * 2);
+    const Clock::time_point asked = Clock::now();
+    registry.reap(asked);
+    REQUIRE(messagesOfType(recorder, 1, "stillHere").size() == 1);
+    registry.reap(asked + toAnswer);
+    REQUIRE(presence(*table, *ana->member(), 0) == "away");
+
+    // The same prompt is still open, long past the wait, but a reload is the player, here.
+    ana->drop();
+    ana = std::make_unique<test::Client>(service, recorder, 2);
+    ana->hello(token);
+    REQUIRE(presence(*table, *ana->member(), 0) == "here");
+    registry.reap(Clock::now());
+    CHECK(messagesOfType(recorder, 2, "stillHere").empty());
+    registry.reap(Clock::now() + shortWait + margin);
+    CHECK(messagesOfType(recorder, 2, "stillHere").size() == 1);
 }
 
 TEST_CASE("A player who went away with the tab open comes back with anything they send, even past the most games",
@@ -263,7 +304,7 @@ TEST_CASE("A player who went away with the tab open comes back with anything the
     const std::shared_ptr<Table> table = registry.tableOf(*ana.member());
     REQUIRE(table);
 
-    const Clock::time_point gone = Clock::now() + waitedOn + 1s + toAnswer;
+    const Clock::time_point gone = Clock::now() + waitedOn + margin + toAnswer;
     registry.reap(gone - toAnswer);
     registry.reap(gone);
     registry.reap(gone + grace);
@@ -378,7 +419,7 @@ TEST_CASE("Online with no turn timer: a turn left open asks, and with no answer 
     const Clock::time_point start = Clock::now();
     const std::size_t prompts = ana.counts().prompts;
 
-    const Clock::time_point asked = start + waitedOn + 1s;
+    const Clock::time_point asked = start + waitedOn + margin;
     o.registry().reap(asked);
     CHECK(messagesOfType(o.recorder, 2, "stillHere").size() == 1);
     CHECK(messagesOfType(o.recorder, 1, "stillHere").empty());
@@ -416,7 +457,7 @@ TEST_CASE("A player who went away with the tab open and then leaves is here at t
     test::ScriptedHuman bea(o.recorder, 2, o.answerer(2), test::Behaviour::Silent);
     o.send(1, test::typed("startGame"));
     REQUIRE(bea.waitForPrompt(patience));
-    const Clock::time_point asked = Clock::now() + waitedOn + 1s;
+    const Clock::time_point asked = Clock::now() + waitedOn + margin;
     o.registry().reap(asked);
     o.registry().reap(asked + toAnswer);
     REQUIRE(eventually([&] { return presence(*o.theTable(), *o.tab(1).member(), 1) == "away"; }));
@@ -482,6 +523,39 @@ TEST_CASE("One address runs at most its number of Instant games; another address
     CHECK(test::errors(recorder, 2).size() == 2);
     CHECK(slower->settings().botSpeed == fastestSpeed);
     CHECK(registry.instantGames() == 2);
+}
+
+TEST_CASE("An address's Instant game counts while it runs, so leaving it and coming back cannot add another",
+          "[stillhere][limits][instant][address]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = askingService(clock, [](ServiceOptions& options)
+    {
+        options.registry.maxInstantGamesPerAddress = 1;
+    });
+    Registry& registry = service->registry();
+
+    test::Client ana(service, recorder, 1, "10.0.0.1");
+    test::Client anaAgain(service, recorder, 2, "10.0.0.1");
+    ana.hello();
+    anaAgain.hello();
+    ana.send(createSolo(soloAt(fastestSpeed)));
+    REQUIRE(registry.tableOf(*ana.member()));
+
+    // Nobody at her game: it no longer counts against the most of all, but still against her address.
+    ana.drop();
+    registry.reap(Clock::now() + grace + margin);
+    REQUIRE(registry.instantGames() == 0);
+    anaAgain.send(createSolo(soloAt(fastestSpeed)));
+    CHECK(lastError(recorder, 2)["code"] == "rateLimited");
+    CHECK(lastError(recorder, 2)["detail"] == "instant");
+
+    // Once its table closes, the address has its place back.
+    registry.reap(Clock::now() + soloIdle + margin);
+    REQUIRE(registry.tableCount() == 0);
+    anaAgain.send(createSolo(soloAt(fastestSpeed)));
+    CHECK(registry.tableOf(*anaAgain.member()));
 }
 
 TEST_CASE("An online Instant game counts as its host's address's", "[stillhere][limits][instant][address]")

@@ -37,10 +37,9 @@ public:
     // closes, and when the seat is replaced there: the table has something new to tell everyone.
     using Changed = std::function<void()>;
 
-    // A seat with a member asks that member, and its computer player (if any) stands in when a
-    // turn times out or the member is gone. A seat with no member is played by its computer player
-    // alone. `standInMoves`, when given, counts the moves a computer player makes for a member. A
-    // member whose turns time out `timeoutsBeforeReplacement` times in a row is replaced.
+    // A seat with a member asks that member, and its computer player (if any) stands in when a turn
+    // times out, `timeoutsBeforeReplacement` times in a row for good, or the member is gone. Without a
+    // member the computer player plays alone. `standInMoves` counts the moves it makes for a member.
     SeatDriver(romanian_whist::Seat seat, std::optional<MemberId> member, ComputerPlayer computer,
                std::optional<std::chrono::milliseconds> turnTimer, Outbox& outbox,
                std::shared_ptr<std::atomic<std::uint64_t>> promptIds, Changed changed = {},

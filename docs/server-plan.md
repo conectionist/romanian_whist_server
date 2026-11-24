@@ -569,11 +569,13 @@ Configure a maximum number of running games, rather than relying on the CPU runn
   ended yet; it counts in `game_threads` until it has. `instant_games` in the status line is the
   count.
 - **One address has a maximum of its own among the Instant games.** `max_instant_games_per_ip` (1)
-  counts the Instant games above that one address started: the solo player's, or the host's who
-  pressed start online. Past it `createSolo`, `startGame` and a solo game's switch to Instant are
-  refused with `rateLimited` and `detail` `instant`, and the address's quota of new tables is given
-  back. Without it, one address that answers every question of [§5.6](#56-here-but-gone) could hold
-  every Instant place. As with the others, a player coming back is never refused.
+  counts the Instant games that one address started: the solo player's, or the host's who pressed
+  start online. Past it `createSolo`, `startGame` and a solo game's switch to Instant are refused
+  with `rateLimited` and `detail` `instant`, and the address's quota of new tables is given back.
+  Without it, one address that answers every question of [§5.6](#56-here-but-gone) could hold every
+  Instant place. Unlike the maximums above, it counts a game from its start until it is over or its
+  table closes, attended or not: a player coming back is never refused, so counting only attended
+  games would let an address leave a game, start another, and come back to both.
 - **A third maximum counts tables.** `max_tables` (400) limits the tables that exist at once, attended
   or not, since a table holds its memory for as long as it is kept, a parked game included, until the
   idle timeouts (5 minutes online, 10 solo) end it. `createSolo` and `createTable` past it are refused with `busy`, and the

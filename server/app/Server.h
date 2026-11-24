@@ -2,11 +2,15 @@
 #define WHIST_APP_SERVER_H
 
 #include "app/ServerOptions.h"
+#include "core/Service.h"
 
 #include <functional>
 
 namespace whist
 {
+
+// The part of the options the core reads.
+ServiceOptions serviceOptionsFrom(const ServerOptions& options);
 
 // Sets up drogon::app() from the options. Call it once, before app().run(). onListening runs on
 // the main loop once every listener accepts connections.

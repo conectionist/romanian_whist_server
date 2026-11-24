@@ -1,3 +1,4 @@
+#include "app/Server.h"
 #include "app/ServerOptions.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -269,4 +270,37 @@ TEST_CASE("The Docker image's settings are server/app/config.json's, listening o
     CHECK(image == local);
 
     CHECK_NOTHROW(whist::loadOptions(imagePath));
+}
+
+TEST_CASE("Every setting the core reads reaches it", "[options]")
+{
+    const whist::ServerOptions options = parseOptions(R"({
+        "pong_timeout_ms": 31000, "grace_period_ms": 700, "online_idle_ms": 8000, "solo_idle_ms": 9000,
+        "still_here_after_timeouts": 5, "still_here_after_ms": 120000, "still_here_answer_ms": 15000,
+        "forget_member_ms": 7000, "instant_floor_ms": 7, "messages_per_second": 5, "message_burst": 6,
+        "max_connections_per_ip": 3, "tables_per_ip_per_hour": 4, "failed_joins_per_ip": 2,
+        "failed_join_window_ms": 60000, "max_running_games": 9, "max_instant_games": 8,
+        "max_instant_games_per_ip": 2, "max_tables": 13
+    })");
+    const whist::ServiceOptions service = whist::serviceOptionsFrom(options);
+
+    CHECK(service.pongTimeout == std::chrono::milliseconds(31000));
+    CHECK(service.registry.table.gracePeriod == std::chrono::milliseconds(700));
+    CHECK(service.registry.table.onlineIdle == std::chrono::milliseconds(8000));
+    CHECK(service.registry.table.soloIdle == std::chrono::milliseconds(9000));
+    CHECK(service.registry.table.timeoutsBeforeReplacement == 5);
+    CHECK(service.registry.table.stillHereAfter == std::chrono::milliseconds(120000));
+    CHECK(service.registry.table.stillHereAnswer == std::chrono::milliseconds(15000));
+    CHECK(service.registry.table.instantFloor == std::chrono::milliseconds(7));
+    CHECK(service.registry.forgetMember == std::chrono::milliseconds(7000));
+    CHECK(service.registry.maxRunningGames == 9);
+    CHECK(service.registry.maxInstantGames == 8);
+    CHECK(service.registry.maxInstantGamesPerAddress == 2);
+    CHECK(service.registry.maxTables == 13);
+    CHECK(service.limits.messagesPerSecond == 5);
+    CHECK(service.limits.messageBurst == 6);
+    CHECK(service.limits.connectionsPerAddress == 3);
+    CHECK(service.limits.tablesPerAddressPerHour == 4);
+    CHECK(service.limits.failedJoinsPerAddress == 2);
+    CHECK(service.limits.failedJoinWindow == std::chrono::milliseconds(60000));
 }

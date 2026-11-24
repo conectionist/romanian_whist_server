@@ -449,6 +449,7 @@ void Table::arriveLocked(MemberId member)
 {
     seating_.setAway(member, std::nullopt);
     seating_.setAsked(member, std::nullopt);
+    seating_.setActive(member, Clock::now());
     if(run_)
     {
         run_->here(member);

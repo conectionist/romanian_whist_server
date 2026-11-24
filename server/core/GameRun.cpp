@@ -304,7 +304,10 @@ void GameRun::releasePlace()
 {
     std::lock_guard lock(slotMutex_);
     if(slot_)
+    {
         slot_->setAttended(false);
+        slot_->leaveAddress();
+    }
     placeReleased_ = true;
 }
 

@@ -56,6 +56,10 @@ public:
         // `maxInstantPerAddress` of them. `full`, when given, says which. One thread at a time.
         bool setInstant(bool instant, Full* full = nullptr);
 
+        // The game is over, or its table closed: it no longer counts against its address, though its
+        // thread may still be ending. Safe to call again.
+        void leaveAddress();
+
         // Gives the place back at once. Safe to call again.
         void release();
 
@@ -69,11 +73,12 @@ public:
 
         // Whoever started the game. An empty address is never limited.
         std::string address_;
+        bool countsForAddress_ = true;
     };
 
     // A place for one more game, or nothing when `max` attended games are running, or, for an Instant
-    // game, `maxInstant` attended Instant games, or `maxInstantPerAddress` of them from `address`.
-    // `full`, when given, says which.
+    // game, `maxInstant` attended Instant games, or `maxInstantPerAddress` Instant games from `address`,
+    // attended or not. `full`, when given, says which.
     std::optional<Slot> take(bool instant = false, Full* full = nullptr, std::string address = {});
 
     // The three counts below, read together.
@@ -88,18 +93,18 @@ public:
     // The attended games at Instant, which count against `maxInstant` too.
     std::size_t attendedInstant() const;
 
-    // The attended Instant games that `address` started.
-    std::size_t attendedInstantFrom(const std::string& address) const;
+    // The Instant games that `address` started, attended or not, until each is over.
+    std::size_t instantFrom(const std::string& address) const;
 
     std::size_t max() const;
     std::size_t maxInstant() const;
 
 private:
-    // Why an attended Instant game more from `address` would be refused, if it would.
-    std::optional<Full> instantFullLocked(const std::string& address) const;
+    // Why an Instant game more from `address`, attended if `attended`, would be refused, if it would.
+    std::optional<Full> instantFullLocked(const std::string& address, bool attended) const;
 
-    // One attended Instant game more, or one fewer, from `address`.
-    void countInstantLocked(const std::string& address, bool more);
+    // One Instant game more, or one fewer, from `address`.
+    void countAddressLocked(const std::string& address, bool more);
 
     const std::size_t max_;
 
@@ -107,7 +112,9 @@ private:
     // of a game at any other speed.
     const std::size_t maxInstant_;
 
-    // So that one address, however many checks it answers, cannot hold every Instant place.
+    // So that one address cannot hold every Instant place. Its games count while they run, attended
+    // or not: one that is attended again is never refused, so counting only those would let an address
+    // leave a game, start another, and come back to both.
     const std::size_t maxInstantPerAddress_;
 
     mutable std::mutex mutex_;
@@ -116,7 +123,7 @@ private:
     std::size_t attendedInstant_ = 0;
 
     // Only addresses with at least one.
-    std::unordered_map<std::string, std::size_t> attendedInstantByAddress_;
+    std::unordered_map<std::string, std::size_t> instantByAddress_;
 };
 
 } // namespace whist

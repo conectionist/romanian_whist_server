@@ -39,10 +39,9 @@ struct ServerOptions
     std::chrono::milliseconds onlineIdle{5 * 60 * 1000};
     std::chrono::milliseconds soloIdle{10 * 60 * 1000};
 
-    // A tab left open answers pings, so its player is asked whether they are still here: online,
-    // after this many of their turns in a row ran out, which also gives their seat to a computer
-    // player; solo, or with no turn timer, after the game has waited this long for them and heard
-    // nothing. One who does not answer in time counts as away, as if the connection had closed.
+    // A tab left open answers pings, so its player is asked whether they are still here: after this
+    // many of their turns in a row ran out, or, with no turn timer, after the game waited this long on
+    // them. One who does not answer in time counts as away, as if the connection had closed.
     int stillHereAfterTimeouts = 3;
     std::chrono::milliseconds stillHereAfter{5 * 60 * 1000};
     std::chrono::milliseconds stillHereAnswer{30000};

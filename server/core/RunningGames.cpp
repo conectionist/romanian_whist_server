@@ -19,7 +19,8 @@ RunningGames::Slot::Slot(Slot&& other) noexcept
     : games_(std::move(other.games_)),
       attended_(other.attended_),
       instant_(other.instant_),
-      address_(std::move(other.address_))
+      address_(std::move(other.address_)),
+      countsForAddress_(other.countsForAddress_)
 {
 }
 
@@ -32,6 +33,7 @@ RunningGames::Slot& RunningGames::Slot::operator=(Slot&& other) noexcept
         attended_ = other.attended_;
         instant_ = other.instant_;
         address_ = std::move(other.address_);
+        countsForAddress_ = other.countsForAddress_;
     }
     return *this;
 }
@@ -49,11 +51,17 @@ void RunningGames::Slot::setAttended(bool attended)
     std::lock_guard lock(games_->mutex_);
     attended_ = attended;
     if(attended)
+    {
         games_->attended_++;
+        if(instant_)
+            games_->attendedInstant_++;
+    }
     else
+    {
         games_->attended_--;
-    if(instant_)
-        games_->countInstantLocked(address_, attended);
+        if(instant_)
+            games_->attendedInstant_--;
+    }
 }
 
 bool RunningGames::Slot::setInstant(bool instant, Full* full)
@@ -62,21 +70,39 @@ bool RunningGames::Slot::setInstant(bool instant, Full* full)
         return true;
 
     std::lock_guard lock(games_->mutex_);
+    if(instant)
+    {
+        if(const std::optional<Full> refused =
+               games_->instantFullLocked(countsForAddress_ ? address_ : std::string(), attended_))
+        {
+            if(full)
+                *full = *refused;
+            return false;
+        }
+    }
+
     if(attended_)
     {
         if(instant)
-        {
-            if(const std::optional<Full> refused = games_->instantFullLocked(address_))
-            {
-                if(full)
-                    *full = *refused;
-                return false;
-            }
-        }
-        games_->countInstantLocked(address_, instant);
+            games_->attendedInstant_++;
+        else
+            games_->attendedInstant_--;
     }
+    if(countsForAddress_)
+        games_->countAddressLocked(address_, instant);
     instant_ = instant;
     return true;
+}
+
+void RunningGames::Slot::leaveAddress()
+{
+    if(!games_ || !countsForAddress_)
+        return;
+
+    std::lock_guard lock(games_->mutex_);
+    if(instant_)
+        games_->countAddressLocked(address_, false);
+    countsForAddress_ = false;
 }
 
 void RunningGames::Slot::release()
@@ -89,8 +115,10 @@ void RunningGames::Slot::release()
         {
             games->attended_--;
             if(instant_)
-                games->countInstantLocked(address_, false);
+                games->attendedInstant_--;
         }
+        if(instant_ && countsForAddress_)
+            games->countAddressLocked(address_, false);
     }
 }
 
@@ -102,7 +130,7 @@ std::optional<RunningGames::Slot> RunningGames::take(bool instant, Full* full, s
         if(max_ != 0 && attended_ >= max_)
             refused = Full::All;
         else if(instant)
-            refused = instantFullLocked(address);
+            refused = instantFullLocked(address, true);
         if(refused)
         {
             if(full)
@@ -113,7 +141,10 @@ std::optional<RunningGames::Slot> RunningGames::take(bool instant, Full* full, s
         count_++;
         attended_++;
         if(instant)
-            countInstantLocked(address, true);
+        {
+            attendedInstant_++;
+            countAddressLocked(address, true);
+        }
     }
     return Slot(shared_from_this(), instant, std::move(address));
 }
@@ -124,33 +155,28 @@ RunningGames::Counts RunningGames::counts() const
     return {count_, attended_, attendedInstant_};
 }
 
-std::optional<RunningGames::Full> RunningGames::instantFullLocked(const std::string& address) const
+std::optional<RunningGames::Full> RunningGames::instantFullLocked(const std::string& address, bool attended) const
 {
-    if(maxInstant_ != 0 && attendedInstant_ >= maxInstant_)
+    if(attended && maxInstant_ != 0 && attendedInstant_ >= maxInstant_)
         return Full::Instant;
     if(maxInstantPerAddress_ != 0 && !address.empty())
     {
-        const auto found = attendedInstantByAddress_.find(address);
-        if(found != attendedInstantByAddress_.end() && found->second >= maxInstantPerAddress_)
+        const auto found = instantByAddress_.find(address);
+        if(found != instantByAddress_.end() && found->second >= maxInstantPerAddress_)
             return Full::InstantAddress;
     }
     return std::nullopt;
 }
 
-void RunningGames::countInstantLocked(const std::string& address, bool more)
+void RunningGames::countAddressLocked(const std::string& address, bool more)
 {
-    if(more)
-        attendedInstant_++;
-    else
-        attendedInstant_--;
-
     if(address.empty())
         return;
     if(more)
-        attendedInstantByAddress_[address]++;
-    else if(const auto found = attendedInstantByAddress_.find(address);
-            found != attendedInstantByAddress_.end() && --found->second == 0)
-        attendedInstantByAddress_.erase(found);
+        instantByAddress_[address]++;
+    else if(const auto found = instantByAddress_.find(address);
+            found != instantByAddress_.end() && --found->second == 0)
+        instantByAddress_.erase(found);
 }
 
 std::size_t RunningGames::count() const
@@ -171,11 +197,11 @@ std::size_t RunningGames::attendedInstant() const
     return attendedInstant_;
 }
 
-std::size_t RunningGames::attendedInstantFrom(const std::string& address) const
+std::size_t RunningGames::instantFrom(const std::string& address) const
 {
     std::lock_guard lock(mutex_);
-    const auto found = attendedInstantByAddress_.find(address);
-    return found == attendedInstantByAddress_.end() ? 0 : found->second;
+    const auto found = instantByAddress_.find(address);
+    return found == instantByAddress_.end() ? 0 : found->second;
 }
 
 std::size_t RunningGames::max() const

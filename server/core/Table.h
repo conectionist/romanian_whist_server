@@ -88,11 +88,9 @@ public:
     bool hasMember(MemberId member) const;
     Settings settings() const;
 
-    // The host starts the first game, or a new one once the last is over, from `address`, which the
-    // Instant games of one address are counted by. The old game goes to the joiner, and everyone is
-    // sent the new tableState. A drain refuses it with Draining, a cap on games or a game thread that
-    // cannot start with Busy, and the address's cap on Instant games with RateLimited; the table is
-    // left as it was.
+    // The host starts the first game, or a new one, from `address`. The old game goes to the joiner.
+    // A drain refuses it with Draining, a cap on games or a thread that cannot start with Busy, and the
+    // address's cap on Instant games with RateLimited; the table is left as it was.
     std::optional<Refusal> startGame(MemberId by, const std::string& address = {});
 
     // A bet or a play from an I/O thread. An answer to no open prompt is refused with the code
@@ -121,10 +119,9 @@ public:
     // open is back, and a seat a computer player took over is theirs again.
     void back(MemberId member);
 
-    // Called every second or so. Asks members the game has waited on too long whether they are still
-    // here, and counts those who did not answer as gone. Replaces members who are away past the grace
-    // period, hands over a host who is, and lets go of those who left a finished game. True when the
-    // table has been idle too long, and is to close.
+    // Called every second or so. Asks whether they are still here those the game waited on too long,
+    // replaces members away past the grace period, hands over a host who is, and lets go of those who
+    // left a finished game. True when the table has been idle too long, and is to close.
     bool reap(Clock::time_point now);
 
     // The game's callback, from its own thread: something it waits for or has done is for the table
