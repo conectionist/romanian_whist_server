@@ -25,6 +25,9 @@ struct ServerStatus
     // Of those, the games someone is at, which are the ones max_running_games limits.
     std::size_t attendedGames = 0;
 
+    // Of those, the games at Instant speed, which max_instant_games limits.
+    std::size_t instantGames = 0;
+
     // Moves a computer player made for a member, since the server started.
     std::uint64_t standInMoves = 0;
 

@@ -276,6 +276,12 @@ void GameRun::setAttended(bool attended)
         slot_->setAttended(attended);
 }
 
+bool GameRun::setInstant(bool instant)
+{
+    std::lock_guard lock(slotMutex_);
+    return !slot_ || slot_->setInstant(instant);
+}
+
 void GameRun::setPacing(Pacing pacing, bool waitAfterRound)
 {
     publisher_.setPacing(pacing, waitAfterRound);

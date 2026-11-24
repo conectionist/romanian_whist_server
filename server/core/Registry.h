@@ -35,6 +35,9 @@ struct RegistryOptions
     // The most games someone is at that may run at once. 0: any number.
     std::size_t maxRunningGames = 0;
 
+    // Of those, the most at Instant speed. 0: any number.
+    std::size_t maxInstantGames = 0;
+
     // The most tables that may exist at once, whoever is at them. 0: any number.
     std::size_t maxTables = 0;
 };
@@ -94,6 +97,9 @@ public:
     // How many of them count against the most that may run: the games someone is at, or was within
     // the grace period as of the last reap, and none that has ended.
     std::size_t countedGames() const;
+
+    // Of the counted games, those at Instant speed.
+    std::size_t instantGames() const;
 
     // How many of the running games are attended, as Table::attended says: the ones a drain waits
     // for, since a game nobody is at cannot go on.

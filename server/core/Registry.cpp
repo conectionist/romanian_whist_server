@@ -41,7 +41,7 @@ TableOptions withShared(TableOptions options, std::shared_ptr<RunningGames> game
 
 Registry::Registry(Outbox& outbox, RegistryOptions options)
     : outbox_(outbox),
-      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames)),
+      runningGames_(std::make_shared<RunningGames>(options.maxRunningGames, options.maxInstantGames)),
       tableOptions_(withShared(options.table, runningGames_, standInMoves_, draining_)),
       maxTables_(options.maxTables),
       forgetMember_(options.forgetMember),
@@ -326,6 +326,11 @@ std::size_t Registry::runningGames() const
 std::size_t Registry::countedGames() const
 {
     return runningGames_->attended();
+}
+
+std::size_t Registry::instantGames() const
+{
+    return runningGames_->attendedInstant();
 }
 
 std::uint64_t Registry::standInMoves() const

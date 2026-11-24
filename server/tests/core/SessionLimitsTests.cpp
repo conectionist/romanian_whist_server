@@ -455,6 +455,94 @@ TEST_CASE("A game the host starts is refused when too many are running, and the 
 namespace
 {
 
+// A solo game at `speed`, waiting for its one human.
+Settings soloAt(int speed)
+{
+    Settings settings = test::tableSettings(3, {0}, Level::Cyborg);
+    settings.botSpeed = speed;
+    return settings;
+}
+
+std::shared_ptr<Service> instantCappedService(const std::shared_ptr<test::ManualClock>& clock)
+{
+    return test::clockedService(clock, [](ServiceOptions& options)
+    {
+        options.registry.maxRunningGames = 3;
+        options.registry.maxInstantGames = 1;
+    });
+}
+
+} // namespace
+
+TEST_CASE("No more Instant games run than may, and games at other speeds still start", "[limits][busy][instant][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = instantCappedService(clock);
+    Registry& registry = service->registry();
+
+    test::Client ana(service, recorder, 1);
+    test::Client bea(service, recorder, 2);
+    ana.hello();
+    bea.hello();
+
+    ana.send(createSolo(soloAt(fastestSpeed)));
+    REQUIRE(registry.tableOf(*ana.member()));
+    CHECK(registry.instantGames() == 1);
+
+    bea.send(createSolo(soloAt(fastestSpeed)));
+    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+    CHECK_FALSE(registry.tableOf(*bea.member()));
+    CHECK(registry.runningGames() == 1);
+
+    bea.send(createSolo(soloAt(fastestSpeed - 1)));
+    CHECK(registry.tableOf(*bea.member()));
+    CHECK(errors(recorder, 2).size() == 1);
+    CHECK(registry.countedGames() == 2);
+    CHECK(registry.instantGames() == 1);
+}
+
+TEST_CASE("A solo game is refused Instant while as many run as may, and keeps its speed", "[limits][busy][instant][session]")
+{
+    test::Recorder recorder;
+    const auto clock = std::make_shared<test::ManualClock>();
+    const auto service = instantCappedService(clock);
+    Registry& registry = service->registry();
+
+    test::Client ana(service, recorder, 1);
+    test::Client bea(service, recorder, 2);
+    ana.hello();
+    bea.hello();
+    ana.send(createSolo(soloAt(fastestSpeed)));
+    bea.send(createSolo(soloAt(slowestSpeed)));
+    const std::shared_ptr<Table> table = registry.tableOf(*bea.member());
+    REQUIRE(table);
+
+    Json::Value faster = test::typed("updateSettings");
+    faster["settings"] = encodeSettings(soloAt(fastestSpeed));
+    bea.send(faster);
+    REQUIRE(lastError(recorder, 2)["code"] == "busy");
+    CHECK(table->settings().botSpeed == slowestSpeed);
+    CHECK(registry.instantGames() == 1);
+
+    // Once Ana's game is gone there is room, and slowing down again gives the place back.
+    ana.send(test::typed("leaveTable"));
+    REQUIRE(waitUntil([&] { return registry.instantGames() == 0; }));
+    bea.send(faster);
+    CHECK(errors(recorder, 2).size() == 1);
+    CHECK(table->settings().botSpeed == fastestSpeed);
+    CHECK(registry.instantGames() == 1);
+
+    Json::Value slower = test::typed("updateSettings");
+    slower["settings"] = encodeSettings(soloAt(slowestSpeed));
+    bea.send(slower);
+    CHECK(registry.instantGames() == 0);
+    CHECK(registry.countedGames() == 1);
+}
+
+namespace
+{
+
 // A service that allows `most` attended games, and waits ten seconds for a player who has gone.
 std::shared_ptr<Service> cappedService(const std::shared_ptr<test::ManualClock>& clock, std::size_t most)
 {

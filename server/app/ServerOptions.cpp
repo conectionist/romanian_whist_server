@@ -149,6 +149,8 @@ ServerOptions parseOptions(std::string_view json)
             options.failedJoinWindow = std::chrono::milliseconds(readCount(value, key, 1, maxMs));
         else if(key == "max_running_games")
             options.maxRunningGames = readCount(value, key, 1, 1000000);
+        else if(key == "max_instant_games")
+            options.maxInstantGames = readCount(value, key, 1, 1000000);
         else if(key == "max_tables")
             options.maxTables = readCount(value, key, 1, 1000000);
         else if(key == "trusted_proxies")

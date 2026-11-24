@@ -176,7 +176,7 @@ std::optional<Refusal> Table::startGame(MemberId by)
         // during the drain is either refused here or counted by it.
         std::optional<RunningGames::Slot> slot;
         if(options_.runningGames)
-            slot = options_.runningGames->take();
+            slot = options_.runningGames->take(seating_.settings().botSpeed == fastestSpeed);
         if(options_.draining && options_.draining->load())
             return ErrorCode::Draining;
         if(options_.runningGames && !slot)
@@ -334,6 +334,9 @@ std::optional<Refusal> Table::updateSettings(MemberId by, const Settings& settin
     unchanged.waitAfterRound = seating_.settings().waitAfterRound;
     if(unchanged != seating_.settings())
         return ErrorCode::Illegal;
+
+    if(run_ && !run_->setInstant(settings.botSpeed == fastestSpeed))
+        return ErrorCode::Busy;
 
     seating_.setPacing(settings.botSpeed, settings.waitAfterRound);
     if(run_)

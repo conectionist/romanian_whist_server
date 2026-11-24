@@ -145,6 +145,10 @@ public:
     // it, or was lately. Counting again is never refused.
     void setAttended(bool attended);
 
+    // Any thread. Whether the game runs at Instant, which has a most of its own. False when becoming
+    // Instant is refused, and nothing changes. A game that has given its place back is never refused.
+    bool setInstant(bool instant);
+
     // Any thread. The member's sync, with the open prompt of the seat they play in this game.
     void sendSync(MemberId member, TableView table);
 
