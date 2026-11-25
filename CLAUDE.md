@@ -35,13 +35,9 @@ in PRs of their own, one area at a time, not mixed into unrelated changes.
 
 ## Branch workflow
 
-Branches are stacked: `master` -> the parent branch -> `web/phase-N-<name>`. The parent branch is
-currently `ccr-c8ac042f-e6e18n`.
-
-Phase branches are reviewed and PR'd against the parent branch, never `master`. When running
-`/code-review` on a phase branch, diff against the parent, or pass the PR number so GitHub's base
-branch is used. The review procedure, and when a phase branch is merged, are in section 13 of
-`docs/server-plan.md`.
+Work goes on a branch off `master` and is PR'd against `master`. When running `/code-review` on a
+branch, diff against `master`, or pass the PR number so GitHub's base branch is used. The review
+procedure is in section 13 of `docs/server-plan.md`.
 
 ## Changing a PR: never `gh pr edit`
 

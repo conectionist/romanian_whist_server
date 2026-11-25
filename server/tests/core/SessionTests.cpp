@@ -17,8 +17,6 @@ using std::chrono::milliseconds;
 namespace
 {
 
-const milliseconds patience(60000 * test::slowdown);
-
 std::shared_ptr<Service> quickService(milliseconds instantFloor = milliseconds(0))
 {
     ServiceOptions options;
